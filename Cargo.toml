@@ -1,0 +1,43 @@
+[package]
+name = "zfx-subzero"
+version = "0.1.0"
+authors = ["zero.fx <contact@zerofxlabs.com>"]
+license = "MIT"
+edition = "2018"
+
+[[bin]]
+name = "node"
+path = "./bin/main.rs"
+
+[[bin]]
+name = "client_test"
+path = "./bin/client_test.rs"
+
+[dependencies]
+zfx-id = { path = "../zfx/zfx-id" }
+zfx-sortition = { path = "../zfx-sortition" }
+sled = "0.34.6"
+actix = "0.12.0"
+actix-rt = "*"
+actix_derive = "0.6.0-beta.1"
+clap = "2.33.3"
+colored = "2"
+env_logger = "*"
+rand = "*"
+bytes = "*"
+byteorder = "*"
+zerocopy = "*"
+blake3 = "*"
+bincode = "*"
+tokio = { version = "*", features = ["full"] }
+tokio-util = { version = "*", features = ["codec"] }
+tokio-serde = { version = "*", features = ["bincode"] }
+tracing = "*"
+tracing-futures = { version = "*" }
+tracing-subscriber = "*"
+futures = "*"
+futures-util = "*"
+serde = { version = "1.0.132", features = ["derive"] }
+serde_derive = "1.0.132"
+hex = "*"
+tai64 = { version = "4.0.0", features = ["serde"] }
