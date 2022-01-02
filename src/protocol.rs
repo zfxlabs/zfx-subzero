@@ -1,6 +1,7 @@
 use crate::version;
 use crate::ice;
 use crate::chain::alpha;
+use crate::hail;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
@@ -12,6 +13,8 @@ pub enum Request {
     // Chain Bootstrapping
     GetLastAccepted,
     GetAncestors,
+    // Hail
+    Query(hail::Query),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -23,6 +26,8 @@ pub enum Response {
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,
+    // Hail
+    QueryResult(hail::QueryResult),
     // Error
     Unknown,
 }
