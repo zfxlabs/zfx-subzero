@@ -114,17 +114,18 @@ impl Handler<LiveNetwork> for Alpha {
 
     fn handle(&mut self, msg: LiveNetwork, _ctx: &mut Context<Self>) -> Self::Result {
 	info!("handling LiveNetwork");
+
 	// Process the live peers in `msg`
 	let mut peers = vec![];
 	for (_, ip) in msg.clone().live_peers {
 	    peers.push(ip);
 	}
+
 	// Read the last accepted final block (or genesis)
 	let (last_hash, last_block) = state::get_last_accepted(&self.tree).unwrap();
 
 	let ice_addr = self.ice.clone();
 	let state = self.state.clone();
-	let vrf_out = last_block.vrf_out.clone();
 	Box::pin(async move {
 	    let last_accepted_hash = query_last_accepted(peers).await;
 	    if last_hash == last_accepted_hash {
@@ -132,42 +133,27 @@ impl Handler<LiveNetwork> for Alpha {
 		// and persist the missing transitions to the db.
 		// let (total_tokens, validators) = sync_state().await.unwrap();
 
+		let vrf_out = last_block.vrf_out.clone();
+
 		info!("bootstrapped => {:?}", hex::encode(last_accepted_hash));
 
 		info!("{}", state.format());
 
+		// If we are at the same level as the quorum then we are bootstrapped,
+		// send `ice` the most up to date information concerning the peers
+		// which are validating the network, such that we may determine the peers
+		// `uptime` and initiate consensus.
 		let () = ice_addr.send(LiveCommittee {
 		    height: state.height,
 		    total_tokens: state.total_tokens,
 		    validators: state.validators.clone(),
 		    vrf_out,
 		}).await.unwrap();
-
-		// If we are at the same level as the quorum then we are bootstrapped,
-		// send `ice` the most up to date information concerning the peers
-		// which are validating the network, such that we may determine the peers
-		// `uptime`. 
 	    } else {
 		info!("chain requires bootstrapping ...");
 		// Apply state transitions until the last accepted hash
 	    }
 	})
-
-	// Box::pin(async move {
-	//     let network_last_accepted_hash = query_last_accepted().await;
-	//     if last_accepted_hash == network_last_accepted_hash {
-	// 	info!(": last_accepted_hash => {:?}", hex::encode(last_accepted_hash));
-	//
-	// 	// Then alert `hail` consensus which will wait for blocks to be provided for
-	// 	// updating the directed acyclic graph over time.
-	//
-	// 	// Then create the mempool which will hold transactions intended to be
-	// 	// packaged into blocks and feed them to consensus.
-	//     } else {
-	// 	// Otherwise begin the `alpha` chain bootstrapping procedure.
-	// 	info!(": chain bootstrap initiated");
-	//     }
-	// })
     }
 }
 
