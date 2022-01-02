@@ -321,12 +321,12 @@ mod tests {
 	reservoir.insert(id2, ip2, Choice::Live, 0);
 	assert_eq!(reservoir.len(), 2);
 
-	let p1 = reservoir.get(&id1).unwrap();
-	let p2 = reservoir.get(&id2).unwrap();
+	let p1 = reservoir.get_decision(&id1).unwrap();
+	let p2 = reservoir.get_decision(&id2).unwrap();
 	assert_eq!(p1.clone(), (ip1.clone(), Choice::Live, 0));
 	assert_eq!(p2.clone(), (ip2.clone(), Choice::Live, 0));
 
-	let decisions = reservoir.decisions();
+	let decisions = reservoir.get_decisions();
 	if decisions.clone() != vec![p1.clone(), p2.clone()] {
 	    assert_eq!(decisions.clone(), vec![p2.clone(), p1.clone()]);
 	} else {
@@ -348,11 +348,11 @@ mod tests {
 	assert_eq!(reservoir.len(), 2);
 
 	reservoir.reset_faulty_decision(id1.clone());
-	let d1 = reservoir.get(&id1).unwrap();
+	let d1 = reservoir.get_decision(&id1).unwrap();
 	assert_eq!(d1, (ip1.clone(), Choice::Live, 0));
 
 	reservoir.reset_faulty_decision(id2.clone());
-	let d2 = reservoir.get(&id2).unwrap();
+	let d2 = reservoir.get_decision(&id2).unwrap();
 	assert_eq!(d2, (ip2.clone(), Choice::Live, 0));
     }
 
@@ -370,11 +370,11 @@ mod tests {
 	assert_eq!(reservoir.len(), 2);
 
 	reservoir.reset_conviction(id1.clone());
-	let d1 = reservoir.get(&id1).unwrap();
+	let d1 = reservoir.get_decision(&id1).unwrap();
 	assert_eq!(d1, (ip1.clone(), Choice::Faulty, 0));
 
 	reservoir.reset_conviction(id2.clone());
-	let d2 = reservoir.get(&id2).unwrap();
+	let d2 = reservoir.get_decision(&id2).unwrap();
 	assert_eq!(d2, (ip2.clone(), Choice::Faulty, 0));
     }
 
@@ -396,7 +396,7 @@ mod tests {
 	q1.insert(id1.clone(), Choice::Live);
 	q1.insert(id2.clone(), Choice::Faulty);
 	reservoir.process_decision(id1.clone(), q1.clone());
-	let d1 = reservoir.get(&id1).unwrap();
+	let d1 = reservoir.get_decision(&id1).unwrap();
 	assert_eq!(d1, (ip1.clone(), Choice::Faulty, 0));
 
 	// A quorum of `Faulty` | `Faulty` should increase conviction
@@ -404,7 +404,7 @@ mod tests {
 	q2.insert(id1.clone(), Choice::Faulty);
 	q2.insert(id2.clone(), Choice::Faulty);
 	reservoir.process_decision(id1.clone(), q2.clone());
-	let d2 = reservoir.get(&id1).unwrap();
+	let d2 = reservoir.get_decision(&id1).unwrap();
 	assert_eq!(d2, (ip1.clone(), Choice::Faulty, 1));
 
 	// A quorum of `Live` | `Live` should flip the decision
@@ -412,7 +412,7 @@ mod tests {
 	q3.insert(id1.clone(), Choice::Live);
 	q3.insert(id2.clone(), Choice::Live);
 	reservoir.process_decision(id1.clone(), q3.clone());
-	let d3 = reservoir.get(&id1).unwrap();
+	let d3 = reservoir.get_decision(&id1).unwrap();
 	assert_eq!(d3, (ip1.clone(), Choice::Live, 0));
     }
     

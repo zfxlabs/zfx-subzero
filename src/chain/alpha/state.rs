@@ -143,10 +143,6 @@ pub struct State {
 
 //-- Apply transactions to the current state
 
-fn percent_of(qty: u64, total: u64) -> f64 {
-    qty as f64 / total as f64
-}
-
 impl State {
     pub fn new() -> State {
 	State { height: 0, total_tokens: 0, validators: vec![] }
@@ -173,7 +169,7 @@ impl State {
 	for (id, w) in self.validators.clone() {
 	    let id_s = format!("{:?}", id).yellow();
 	    let w_s = format!("{:?}", w).magenta();
-	    s = format!("{} ν = {} {} | ω : {} {}\n", s, "⦑".cyan(), id_s, w_s, "⦒".cyan());
+	    s = format!("{} ν = {} {} | {} {}\n", s, "⦑".cyan(), id_s, w_s, "⦒".cyan());
 	}
 	s
     }
@@ -194,12 +190,14 @@ mod tests {
 	// Create a test db
         let db = sled::Config::new().temporary(true).open().unwrap();
 
+	let vout = [0u8; 32];
+
 	// Construct test blocks
 	let block0 = genesis();
 	let hash0 = block0.hash();
 	let encoded0 = bincode::serialize(&block0).unwrap();
 
-	let block1 = Block::new(hash0.clone(), 1u64, vec![]);
+	let block1 = Block::new(hash0.clone(), 1u64, vout, vec![]);
 	let hash1 = block1.hash();
 	let encoded1 = bincode::serialize(&block1).unwrap();
 
@@ -232,14 +230,16 @@ mod tests {
 	// Create a test db
         let db = sled::Config::new().temporary(true).open().unwrap();
 
+	let vout = [0u8; 32];
+
 	// Construct and insert test blocks
 	let block0 = genesis();
 	let hash0 = block0.hash();
 	let encoded0 = bincode::serialize(&block0).unwrap();
-	let block1 = Block::new(hash0.clone(), 1u64, vec![]);
+	let block1 = Block::new(hash0.clone(), 1u64, vout, vec![]);
 	let hash1 = block1.hash();
 	let encoded1 = bincode::serialize(&block1).unwrap();
-	let block2 = Block::new(hash1.clone(), 2u64, vec![]);
+	let block2 = Block::new(hash1.clone(), 2u64, vout, vec![]);
 	let hash2 = block2.hash();
 	let encoded2 = bincode::serialize(&block2).unwrap();
 

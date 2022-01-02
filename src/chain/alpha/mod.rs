@@ -1,6 +1,7 @@
-mod tx;
+pub mod tx;
+pub mod block;
+pub mod state;
+
 mod alpha;
-mod block;
-mod state;
 
 pub use alpha::*;

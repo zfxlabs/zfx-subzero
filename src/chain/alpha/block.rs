@@ -8,11 +8,12 @@ use std::net::SocketAddr;
 
 pub type BlockHash = [u8; 32];
 pub type VrfOutput = [u8; 32];
+pub type Height = u64;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Block {
     pub predecessor: Option<BlockHash>,
-    pub height: u64,
+    pub height: Height,
     pub vrf_out: VrfOutput,
     pub txs: Vec<StakeTx>,
 }
