@@ -9,6 +9,8 @@ pub struct DAG<V> {
     g: HashMap<V, Vec<V>>,
     /// `inv` defines a directed acyclic graph with the inverted edges of `g`.
     inv: HashMap<V, Vec<V>>,
+    /// `chits` defines a {0, 1} vote for a particular transaction.
+    chits: HashMap<V, u8>,
 }
 
 impl<V> std::ops::Deref for DAG<V>
@@ -33,13 +35,17 @@ where
 
 impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     pub fn new() -> Self {
-	DAG { g: HashMap::default(), inv: HashMap::default() }
+	DAG {
+	    g: HashMap::default(),
+	    inv: HashMap::default(),
+	    chits: HashMap::default(),
+	}
     }
 
     /// Inserts a new vertex into the DAG.
     ///   Note: Edges are always inserted when the vertex is initially created
     ///     when suitable parents have been selected.
-    pub fn insert_vx(&mut self, vx: V, edges: Vec<V>) -> Result<&mut Vec<V>> {
+    pub fn insert_vx(&mut self, vx: V, edges: Vec<V>) -> Result<()> {
 	// Insert the inversion of the edges
 	match self.inv.entry(vx.clone()) {
 	    Entry::Occupied(mut o) =>
@@ -61,11 +67,77 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	// Insert DAG with all inbound edges
 	match self.entry(vx.clone()) {
 	    Entry::Occupied(_) =>
-		Err(Error::VertexExists),
+		return Err(Error::VertexExists),
 	    Entry::Vacant(mut v1) => {
-		Ok(v1.insert(edges))
+		let _ = v1.insert(edges);
 	    },
 	}
+	// Insert a 0 chit for this vertex
+	self.set_chit(vx, 0)
+    }
+
+    /// Gets the chit of a particular node.
+    pub fn get_chit(&self, vx: V) -> Result<u8> {
+	match self.chits.get(&vx) {
+	    Some(chit) =>
+		Ok(chit.clone()),
+	    None =>
+		Err(Error::UndefinedChit),
+	}
+    }
+
+    /// Sets the chit of a particular node.
+    pub fn set_chit(&mut self, vx: V, chit: u8) -> Result<()> {
+	match self.chits.entry(vx) {
+	    Entry::Occupied(mut o) => {
+		let o = o.get_mut();
+		if *o == 1 {
+		    Err(Error::ChitReplace)
+		} else {
+		    *o = chit;
+		    Ok(())
+		}
+	    },
+	    Entry::Vacant(mut v) => {
+		let _ = v.insert(chit);
+		Ok(())
+	    },
+	}
+    }
+
+    /// Finds the conviction of a particular node which is the breadth-first-search of
+    /// the progeny of a node, summing the chits.
+    pub fn conviction(&mut self, vx: V) -> Result<u8> {
+	// Mark all vertices as not visited (empty)
+	let mut visited: HashMap<V, bool> = HashMap::default();
+	// A queue for the breadth first search
+	let mut queue = VecDeque::new();
+	// Mark the current node as visited and enqueue it
+	let _ = visited.insert(vx.clone(), true);
+	queue.push_back(vx);
+
+	// The resulting summation
+	let mut sum = 0;
+	loop {
+	    if queue.len() == 0 {
+		break;
+	    }
+	    let elt = queue.pop_front().unwrap();
+	    let chit = self.get_chit(elt.clone())?;
+	    sum += chit;
+	    
+	    let adj = self.inverse().get(&elt).unwrap();
+	    for edge in adj.iter().cloned() {
+		match visited.entry(edge.clone()) {
+		    Entry::Occupied(_) => (),
+		    Entry::Vacant(v) => {
+			let _ = v.insert(true);
+			queue.push_back(edge);
+		    },
+		}
+	    }
+	}
+	Ok(sum)
     }
 
     /// Performs a breadth-first-search from some vertex `vx`.
@@ -156,7 +228,7 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     /// Turns all inbound edges into outbound edges and returns the new graph.
     /// NOTE: This is only for testing.
     pub fn invert(&self) -> DAG<V> {
-	DAG { g: self.inv.clone(), inv: self.g.clone() }
+	DAG { g: self.inv.clone(), inv: self.g.clone(), chits: self.chits.clone() }
     }
 }
 
@@ -216,5 +288,30 @@ mod test {
 	if l != vec![4,5] && l != vec![5,4] {
 	    assert!(false);
 	}
+    }
+
+    #[actix_rt::test]
+    async fn test_conviction() {
+        let mut dag: DAG<u8> = DAG::new();
+
+	// Insert the genesis vertex
+	dag.insert_vx(0, vec![]);
+	dag.insert_vx(1, vec![0]);
+	dag.insert_vx(2, vec![0]);
+	dag.insert_vx(3, vec![1, 2]);
+	// Ensure only reachable vertices are taken into account
+	dag.insert_vx(4, vec![1, 2]);
+	dag.insert_vx(5, vec![3, 2]);
+
+	dag.set_chit(0, 1);
+	dag.set_chit(1, 1);
+	dag.set_chit(4, 1);
+
+	assert_eq!(dag.conviction(0).unwrap(), 3);
+	assert_eq!(dag.conviction(1).unwrap(), 2);
+	assert_eq!(dag.conviction(4).unwrap(), 1);
+	assert_eq!(dag.conviction(2).unwrap(), 1);
+	assert_eq!(dag.conviction(3).unwrap(), 0);
+	assert_eq!(dag.conviction(5).unwrap(), 0);
     }
 }
