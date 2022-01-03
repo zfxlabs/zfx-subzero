@@ -23,11 +23,12 @@ actix_derive = "0.6.0-beta.1"
 clap = "2.33.3"
 colored = "2"
 env_logger = "*"
-rand = "*"
+rand = "0.7.0"
 bytes = "*"
 byteorder = "*"
 zerocopy = "*"
 blake3 = "*"
+ed25519-dalek = { version = "1", features = ["serde"] }
 bincode = "*"
 tokio = { version = "*", features = ["full"] }
 tokio-util = { version = "*", features = ["codec"] }
