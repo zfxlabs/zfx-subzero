@@ -6,6 +6,7 @@ extern crate colored;
 
 pub mod util;
 pub mod channel;
+pub mod graph;
 pub mod version;
 pub mod protocol;
 pub mod view;
@@ -13,6 +14,8 @@ pub mod client;
 pub mod server;
 pub mod ice;
 pub mod chain;
+pub mod sleet;
+pub mod hail;
 
 use protocol::{Request, Response};
 
