@@ -24,17 +24,7 @@ impl ConflictMap {
 	}
     }
 
-    /// Whether a node is preferred and has accumulated confidence within its conflict set.
-    pub fn is_strongly_preferred(&self, t: TxHash) -> Result<bool> {
-	match self.inner.get(&t) {
-	    Some(cs) =>
-		Ok(cs.is_strongly_preferred(t)),
-	    None =>
-		Err(Error::UndefinedNode(t)),
-	}
-    }
-
-    /// Inserts a new node within some existing conflict set, or creates a singelton set.
+    /// Inserts a new node within some existing conflict set, or creates a singleton set.
     pub fn insert(&mut self, t: TxHash) {
 	match self.inner.entry(t.clone()) {
 	    Entry::Occupied(mut o) => {

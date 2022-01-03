@@ -45,8 +45,4 @@ where
     pub fn is_preferred(&self, t: T) -> bool {
 	self.pref == t
     }
-
-    pub fn is_strongly_preferred(&self, t: T) -> bool {
-	self.is_preferred(t) && self.cnt > 0
-    }
 }
