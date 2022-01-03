@@ -1,8 +1,9 @@
 use crate::graph::DAG;
+use crate::chain::alpha::Transaction;
 
 use super::Result;
-use super::tx::{Tx, TxHash};
 use super::conflict_map::ConflictMap;
+use super::tx::{Tx, TxHash};
 
 use std::collections::{HashMap, hash_map::Entry};
 use std::hash::Hash;
@@ -43,9 +44,9 @@ impl Sleet {
     
     // Branch preference
 
-    /// Starts at the live edges (the leaf nodes) of the `DAG` and does a depth first search
-    /// until `p` strongly preferred nodes are accumulated. Strongly preferred nodes are
-    /// leaf nodes whose parents are all preferred.
+    /// Starts at some vertex and does a depth first search in order to compute whether
+    /// the vertex is strongly preferred (by checking whether all its ancestry is
+    /// preferred).
     pub fn is_strongly_preferred(&self, t: TxHash) -> Result<bool> {
 	let mut visited: HashMap<TxHash, bool> = HashMap::default();
 	let mut stack = vec![];
@@ -62,7 +63,7 @@ impl Sleet {
 		    let _ = v.insert(true);
 		    // Instead of saving the node here we check if it is strongly preferred
 		    // along the dfs and return false if not.
-		    if !self.conflict_map.is_strongly_preferred(elt.clone())? {
+		    if !self.conflict_map.is_preferred(elt.clone())? {
 			return Ok(false);
 		    }
 		},
@@ -84,7 +85,8 @@ impl Sleet {
     // Adaptive Parent Selection
 
     /// Starts at the live edges (the leaf nodes) of the `DAG` and does a depth first
-    /// search until `p` preferrential parents are accumulated (or none if there are none).
+    /// search until `p` preferrential parents are accumulated (or none if there are
+    /// none).
     pub fn select_parents(&self, p: usize) -> Result<Vec<TxHash>> {
 	if self.dag.len() == 0 {
 	    Ok(vec![])
@@ -132,38 +134,60 @@ impl Sleet {
 	}
     }
 
-    // Chit Accumulation
-
-    // Finding the confidence of a vertex entails summing the progeny of a vertex. 
-
     // Ancestral Preference
 
-    // Receiving transactions
-
-    // pub fn on_receive(&mut self, t: Tx) {
-    // 	if !state::exists(self.known_txs, &t) {
-    // 	    self.insert(t);
-    // 	}
-    // }
+    // The ancestral update updates the preferred path through the DAG every time a new
+    // vertex is added. 
+    // pub fn update_ancestors(&mut self) { }
 
     // Live Frontier
 
     // The live frontier of the DAG is a depth-first-search on the leaves of the DAG
     // up to a vertices considered final.
+
+    // Receiving transactions
+
+    // pub fn on_receive(&mut self, t: Tx) {
+    // 	if !state::exists(self.known_txs, &t) {
+    //      // Check whether the inputs conflict with other inputs
+    // 	    self.insert(t);
+    // 	}
+    // }
+
+    // Spending transactions
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use rand::{CryptoRng, rngs::OsRng};
+    use ed25519_dalek::Keypair;
+
+    fn generate_coinbase(amount: u64) -> Transaction {
+	let mut csprng = OsRng{};
+	let kp = Keypair::generate(&mut csprng);
+	let enc = bincode::serialize(&kp.public).unwrap();
+	let pkh = blake3::hash(&enc);
+	Transaction::coinbase(pkh.as_bytes().clone(), amount)
+    }
 
     #[actix_rt::test]
-    async fn test_sleet() {
+    async fn test_strongly_preferred() {
 	let mut sleet = Sleet::new();
 
-	let tx1 = Tx::new(vec![], vec![1]);
-	let tx2 = Tx::new(vec![], vec![2]);
+	let tx1 = Tx::new(vec![], generate_coinbase(1000));
+	let tx2 = Tx::new(vec![], generate_coinbase(1000));
+	let tx3 = Tx::new(vec![], generate_coinbase(1000));
 
+	// Check that parent selection works with an empty DAG.
+	let v_empty: Vec<TxHash> = vec![];
+	assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
+
+	// Insert new vertices into the DAG.
 	sleet.insert(tx1);
 	sleet.insert(tx2);
+	sleet.insert(tx3);
+
+	// assert_eq!(sleet.select_parents(3).unwrap(), vec![tx1,tx2,tx3]);
     }
 }
