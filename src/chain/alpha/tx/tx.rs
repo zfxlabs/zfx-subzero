@@ -10,7 +10,7 @@ pub const fee: u64 = 100;
 
 pub type OutputId = [u8; 32];
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Input {
     /// The hash of the source transaction.
     pub source: TxHash,
@@ -20,6 +20,13 @@ pub struct Input {
     pub owner: PublicKey,
     /// The signature of the owner matching an output.
     pub signature: Signature,
+}
+
+impl std::fmt::Debug for Input {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+	let source = format!("{}", hex::encode(self.source));
+        write!(f, "{{source={},i={:?}}}", source, self.i)
+    }
 }
 
 impl Input {
@@ -33,12 +40,19 @@ impl Input {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Output {
     /// The public key hash of the owner.
     pub owner_hash: PublicKeyHash,
     /// The amount of tokens in the output.
     pub value: Amount,
+}
+
+impl std::fmt::Debug for Output {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+	let owner = format!("{}", hex::encode(self.owner_hash));
+        write!(f, "{{owner={},value={:?}}}", owner, self.value)
+    }
 }
 
 impl Output {
@@ -67,10 +81,18 @@ impl Tx {
 	Tx::new(vec![], vec![Output::new(owner, value)])
     }
 
-    pub fn spend(&self, keypair: Keypair, destination: PublicKeyHash, change: PublicKeyHash, value: Amount) -> Result<Tx> {
+    pub fn sum(&self) -> u64 {
+	let mut total = 0;
+	for output in self.outputs.iter() {
+	    total += output.value;
+	}
+	total
+    }
+
+    pub fn spend(&self, keypair: &Keypair, destination: PublicKeyHash, change: PublicKeyHash, value: Amount) -> Result<Tx> {
 	let owner = keypair.public.clone();
 
-	// sum output amounts
+	// Sum output amounts
 	let mut total = 0;
 	for output in self.outputs.iter() {
 	    total += output.value;
@@ -87,39 +109,49 @@ impl Tx {
 
 	let tx_hash = self.hash();
 
-	// consume outputs and construct inputs
+	// Consume outputs and construct inputs, remaining inputs should be reflected in
+	// the change amount.
 	let mut i = 0;
-	let mut running_total = 0;
-	let mut amount_left = value;
+	let mut amount_left = value.clone();
+	let mut change_amount = 0;
+	let mut consumed = 0;
 	let mut inputs = vec![];
-	let mut outputs = vec![];
 	for output in self.outputs.iter() {
-	    let output_hash = output.hash();
-	    let signature = keypair.sign(&output_hash);
-	    let input = Input {
-		source: tx_hash.clone(),
-		i: i.clone(),
-		owner: owner.clone(),
-		signature,
-	    };
-	    if amount_left > output.value + fee {
-		let out = Output::new(destination.clone(), output.value);
-		outputs.push(out);
-		running_total += output.value;
-		amount_left -= output.value;
-	    } else {
-		let final_amount = output.value - (amount_left - fee);
-		let final_output = Output::new(destination.clone(), final_amount);
-		outputs.push(final_output);
-		if (output.value - fee) - final_amount > 0 {
-		    let change_amount = (output.value) - fee - final_amount;
-		    let change_output = Output::new(change.clone(), change_amount);
-		    outputs.push(change_output);
+	    if consumed < value.clone() {
+		let output_hash = output.hash();
+		let signature = keypair.sign(&output_hash);
+		let input = Input {
+		    source: tx_hash.clone(),
+		    i: i.clone(),
+		    owner: owner.clone(),
+		    signature,
+		};
+		inputs.push(input);
+		if consumed + output.value > value.clone() {
+		    consumed = value - fee;
+		} else {
+		    consumed += output.value;
 		}
+		if output.value > amount_left {
+		    change_amount = output.value - amount_left;
+		    amount_left = 0;
+		} else {
+		    amount_left -= output.value;
+		}
+		i += 1;
+	    } else {
 		break;
 	    }
-	    i += 1;
 	}
+
+	// Aggregate the spent value into one main output.
+	let main_output = Output::new(destination.clone(), consumed.clone());
+	// Create a change output.
+	let outputs = if amount_left > 0 {
+	    vec![main_output, Output::new(change.clone(), change_amount.clone())]
+	} else {
+	    vec![main_output]
+	};
 
 	Ok(Tx::new(inputs, outputs))
     }
@@ -134,14 +166,50 @@ impl Tx {
 mod test {
     use super::*;
 
-    // #[actix_rt::test]
-    // async fn test_spend() {
-    // 	// let (pk, sk) = Keypair::new();
-    // 	// let pkh = hash(pk);
+    use rand::{CryptoRng, rngs::OsRng};
+    use ed25519_dalek::Keypair;
 
-    // 	let utxo1 = Transaction::coinbase(pkh1, 1000);
-    // 	let utxo2 = Transaction::coinbase(pkh2, 1000);
-    // 	let utxo3 = Transaction::coinbase(pkh3, 1000);
-	
-    // }
+    fn hash_public(keypair: &Keypair) -> [u8; 32] {
+	let enc = bincode::serialize(&keypair.public).unwrap();
+	blake3::hash(&enc).as_bytes().clone()
+    }
+
+    fn generate_coinbase(keypair: &Keypair, amount: u64) -> Tx {
+	let pkh = hash_public(keypair);
+	Tx::coinbase(pkh, amount)
+    }
+
+    #[actix_rt::test]
+    async fn test_spend() {
+	let mut csprng = OsRng{};
+	let kp1 = Keypair::generate(&mut csprng);
+	let kp2 = Keypair::generate(&mut csprng);
+
+	let pkh1 = hash_public(&kp1);
+	let pkh2 = hash_public(&kp2);
+
+	// Generate a coinbase transaction and spend it
+	let tx1 = generate_coinbase(&kp1, 1000);
+	let tx2 = tx1.spend(&kp1, pkh2, pkh1, 900).unwrap();
+
+	// Spending 0 is illegal
+	let err1 = tx1.spend(&kp1, pkh2, pkh1, 0);
+	assert_eq!(err1, Err(Error::ZeroSpend));
+	// Spending the total should exceed available funds, since the fee is 100
+	let err2 = tx1.spend(&kp1, pkh2, pkh1, 1000);
+	assert_eq!(err2, Err(Error::ExceedsAvailableFunds));
+	// Coinbase has 1 input thus one output is spent
+	assert_eq!(tx2.inputs.len(), 1);
+	// The sum of the outputs should be 1000 - fee = 900
+	assert_eq!(tx2.sum(), 900 - fee);
+
+	// Spend the result of spending the coinbase
+	let tx3 = tx2.spend(&kp2, pkh1, pkh2, 700).unwrap();
+	println!("{:?}", tx3.clone());
+	assert_eq!(tx3.inputs.len(), 1);
+	assert_eq!(tx3.sum(), 700 - fee);
+
+	let err3 = tx1.spend(&kp1, pkh2, pkh1, 700);
+	assert_eq!(err2, Err(Error::ExceedsAvailableFunds));
+    }
 }

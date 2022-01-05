@@ -4,7 +4,7 @@ mod tx;
 pub use tx::*;
 pub use stake_tx::*;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     ExceedsAvailableFunds,
     ZeroSpend,
