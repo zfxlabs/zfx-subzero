@@ -2,6 +2,8 @@ use crate::protocol::{Request, Response};
 use crate::view::View;
 use crate::ice::Ice;
 use crate::chain::{alpha, alpha::Alpha};
+use crate::sleet::Sleet;
+
 use tracing::{info, debug};
 
 use actix::{Actor, Context, Handler, Addr, ResponseFuture};
@@ -10,11 +12,17 @@ pub struct Router {
     view: Addr<View>,
     ice: Addr<Ice>,
     alpha: Addr<Alpha>,
+    sleet: Addr<Sleet>,
 }
 
 impl Router {
-    pub fn new(view: Addr<View>, ice: Addr<Ice>, alpha: Addr<Alpha>) -> Self {
-	Router { view, ice, alpha }
+    pub fn new(
+	view: Addr<View>,
+	ice: Addr<Ice>,
+	alpha: Addr<Alpha>,
+	sleet: Addr<Sleet>,
+    ) -> Self {
+	Router { view, ice, alpha, sleet }
     }
 }
 
@@ -33,6 +41,7 @@ impl Handler<Request> for Router {
 	let view = self.view.clone();
 	let ice = self.ice.clone();
 	let alpha = self.alpha.clone();
+	let sleet = self.sleet.clone();
 	Box::pin(async move {
 	    match msg {
 		Request::Version(version) => {
@@ -44,6 +53,11 @@ impl Handler<Request> for Router {
 		    info!("routing Ping -> Ice");
 		    let ack = ice.send(ping).await.unwrap();
 		    Response::Ack(ack)
+		},
+		Request::ReceiveTx(receive_tx) => {
+		    info!("routing ReceiveTx -> Sleet");
+		    let () = sleet.send(receive_tx).await.unwrap();
+		    Response::Unknown
 		},
 		Request::GetLastAccepted => {
 		    info!("routing GetLastAccepted -> Alpha");
