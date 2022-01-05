@@ -1,5 +1,4 @@
 mod tx;
-mod state;
 mod spend_map;
 mod conflict_set;
 mod conflict_map;
