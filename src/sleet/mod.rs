@@ -1,5 +1,6 @@
 mod tx;
 mod state;
+mod spend_map;
 mod conflict_set;
 mod conflict_map;
 mod sleet;
@@ -8,8 +9,10 @@ pub use sleet::*;
 
 #[derive(Debug)]
 pub enum Error {
-    UndefinedNode(tx::TxHash),
-    InvalidAncestor,
+    // UndefinedNode(tx::TxHash),
+    InvalidTransaction(crate::chain::alpha::tx::Tx),
+    InvalidTransactionHash(crate::chain::alpha::tx::TxHash),
+    InvalidConflictSet,
     Sled(sled::Error),
 }
 

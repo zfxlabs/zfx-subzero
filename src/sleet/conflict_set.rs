@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+#[derive(Clone)]
 pub struct ConflictSet<T> {
     conflicts: HashSet<T>,
     pub pref: T,
@@ -42,7 +43,15 @@ where
 	}
     }
 
+    pub fn is_equivalent(&self, hs: HashSet<T>) -> bool {
+	self.conflicts == hs
+    }
+
     pub fn is_preferred(&self, t: T) -> bool {
 	self.pref == t
+    }
+
+    pub fn set_conflicts(&mut self, conflicts: HashSet<T>) {
+	self.conflicts = conflicts;
     }
 }

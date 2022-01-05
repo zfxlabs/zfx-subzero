@@ -1,18 +1,16 @@
-use crate::chain::alpha::Transaction;
+use crate::chain::alpha;
 
-// Consensus representation of a transaction
-
-pub type TxHash = [u8; 32];
-
+/// The `SleetTx` is a consensus specific representation of a transaction, containing a
+/// chain specific transaction as its `inner` field.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Tx {
-    pub parents: Vec<TxHash>,
-    pub inner: Transaction,
+pub struct SleetTx {
+    pub parents: Vec<alpha::TxHash>,
+    pub inner: alpha::Tx,
 }
 
-impl Tx {
-    pub fn new(parents: Vec<TxHash>, inner: Transaction) -> Self {
-	Tx { parents, inner }
+impl SleetTx {
+    pub fn new(parents: Vec<alpha::TxHash>, inner: alpha::Tx) -> Self {
+	SleetTx { parents, inner }
     }
 
     pub fn hash(&self) -> [u8; 32] {
