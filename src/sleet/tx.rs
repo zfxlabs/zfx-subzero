@@ -13,8 +13,8 @@ impl SleetTx {
 	SleetTx { parents, inner }
     }
 
+    /// Returns the hash of the inner transaction.
     pub fn hash(&self) -> [u8; 32] {
-	let encoded = bincode::serialize(self).unwrap();
-	blake3::hash(&encoded).as_bytes().clone()
+	self.inner.hash()
     }
 }
