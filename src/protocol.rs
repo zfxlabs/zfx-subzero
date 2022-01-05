@@ -1,6 +1,7 @@
 use crate::version;
 use crate::ice;
 use crate::chain::alpha;
+use crate::sleet;
 use crate::hail;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
@@ -13,8 +14,11 @@ pub enum Request {
     // Chain Bootstrapping
     GetLastAccepted,
     GetAncestors,
+    // Sleet
+    ReceiveTx(sleet::ReceiveTx),
+    QueryTx(sleet::QueryTx),
     // Hail
-    Query(hail::Query),
+    QueryBlock(hail::QueryBlock),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -26,8 +30,11 @@ pub enum Response {
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,
+    // Sleet
+    ReceiveTxAck(sleet::ReceiveTxAck),
+    QueryTxAck(sleet::QueryTxAck),
     // Hail
-    QueryResult(hail::QueryResult),
+    QueryBlockAck(hail::QueryBlockAck),
     // Error
     Unknown,
 }
