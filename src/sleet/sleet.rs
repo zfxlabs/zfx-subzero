@@ -5,6 +5,10 @@ use super::Result;
 use super::conflict_map::ConflictMap;
 use super::tx::SleetTx;
 
+use tracing::{debug, info, error};
+
+use actix::{Actor, Context, Handler, Addr};
+
 use std::collections::{HashMap, hash_map::Entry};
 use std::hash::Hash;
 
@@ -37,8 +41,9 @@ impl Sleet {
     // Vertices
 
     pub fn insert(&mut self, tx: SleetTx) {
-     	self.conflict_map.insert_tx(tx.inner.clone());
-	self.dag.insert_vx(tx.inner.hash(), tx.parents.clone());
+	let inner_tx = tx.inner.clone();
+	self.conflict_map.insert_tx(inner_tx.clone());
+	self.dag.insert_vx(inner_tx.hash(), tx.parents.clone());
     }
     
     // Branch preference
@@ -143,18 +148,79 @@ impl Sleet {
 
     // The live frontier of the DAG is a depth-first-search on the leaves of the DAG
     // up to a vertices considered final.
-
-    // Receiving transactions
-
-    // pub fn on_receive(&mut self, t: Tx) {
-    // 	if !state::exists(self.known_txs, &t) {
-    //      // Check whether the inputs conflict with other inputs
-    // 	    self.insert(t);
-    // 	}
-    // }
-
-    // Spending transactions
 }
+
+impl Actor for Sleet {
+    type Context = Context<Self>;
+
+    fn started(&mut self, _ctx: &mut Context<Self>) {
+	debug!("started Sleet");
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct ReceiveTx {
+    pub tx: alpha::Tx,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct ReceiveTxAck {
+    pub tx_hash: alpha::TxHash,
+    pub outcome: bool,
+}
+
+// Receiving transactions
+
+// pub fn on_receive(&mut self, t: Tx) {
+// 	if !state::exists(self.known_txs, &t) {
+//      // Check whether the inputs conflict with other inputs
+// 	    self.insert(t);
+// 	}
+// }
+
+impl Handler<ReceiveTx> for Sleet {
+    type Result = ();
+
+    fn handle(&mut self, msg: ReceiveTx, _ctx: &mut Context<Self>) -> Self::Result {
+	info!("sleet: received {:?}", msg.clone());
+	()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "QueryTxAck")]
+pub struct QueryTx;
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct QueryTxAck;
+
+impl Handler<QueryTx> for Sleet {
+    type Result = QueryTxAck;
+
+    fn handle(&mut self, msg: QueryTx, _ctx: &mut Context<Self>) -> Self::Result {
+	QueryTxAck {}
+    }
+}
+
+// Runs the main consensus loop
+// pub async fn run() {
+//     loop {
+// 	// Receive an unqueried transaction.
+//
+// 	// Sample `k` random peers from the live committee.
+//
+// 	// Query the peers.
+//
+// 	// If `k` * `alpha` > `quiescent_point`:
+// 	//   -> chit = 1, update ancestors
+// 	// Otherwise:
+// 	//   -> chit = 0
+//
+// 	// Add the transaction to the queried set.
+//     }
+// }
+
 
 #[cfg(test)]
 mod test {
@@ -162,31 +228,39 @@ mod test {
     use rand::{CryptoRng, rngs::OsRng};
     use ed25519_dalek::Keypair;
 
-    fn generate_coinbase(amount: u64) -> alpha::Tx {
-	let mut csprng = OsRng{};
-	let kp = Keypair::generate(&mut csprng);
-	let enc = bincode::serialize(&kp.public).unwrap();
+    fn generate_coinbase(keypair: Keypair, amount: u64) -> alpha::Tx {
+	let enc = bincode::serialize(&keypair.public).unwrap();
 	let pkh = blake3::hash(&enc);
 	alpha::Tx::coinbase(pkh.as_bytes().clone(), amount)
     }
 
-    // #[actix_rt::test]
-    // async fn test_strongly_preferred() {
-    // 	let mut sleet = Sleet::new();
+    #[actix_rt::test]
+    async fn test_strongly_preferred() {
+	let mut sleet = Sleet::new();
 
-    // 	let tx1 = Tx::new(vec![], generate_coinbase(1000));
-    // 	let tx2 = Tx::new(vec![], generate_coinbase(1000));
-    // 	let tx3 = Tx::new(vec![], generate_coinbase(1000));
+	let mut csprng = OsRng{};
+	let root_kp = Keypair::generate(&mut csprng);
 
-    // 	// Check that parent selection works with an empty DAG.
-    // 	let v_empty: Vec<TxHash> = vec![];
-    // 	assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
+	// Generate a genesis set of coins
+	let tx1 = generate_coinbase(root_kp, 1000);
 
-    // 	// Insert new vertices into the DAG.
-    // 	sleet.insert(tx1);
-    // 	sleet.insert(tx2);
-    // 	sleet.insert(tx3);
+	let stx1 = SleetTx::new(vec![], tx1.clone());
+	let stx2 = SleetTx::new(vec![], tx1.clone());
+	let stx3 = SleetTx::new(vec![], tx1.clone());
 
-    // 	// assert_eq!(sleet.select_parents(3).unwrap(), vec![tx1,tx2,tx3]);
-    // }
+	// Check that parent selection works with an empty DAG.
+	let v_empty: Vec<alpha::TxHash> = vec![];
+	assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
+
+	// Insert new vertices into the DAG.
+	sleet.insert(stx1.clone());
+	sleet.insert(stx2.clone());
+	sleet.insert(stx3.clone());
+
+	// Coinbase transactions will all conflict, since `tx1` was inserted first it will
+	// be the only preferred parent.
+	assert_eq!(sleet.select_parents(3).unwrap(), vec![
+	    tx1.clone().hash(),
+	]);
+    }
 }
