@@ -83,3 +83,8 @@ VRFs are used in `hail` in order to provide five crucial attributes:
 4. Adaptive security. The next set of block producers cannot be known ahead of time.
 5. Verifiably random blocks. Using `hail`, every block can be used as a pseudo random seed. There is no further need to use complicated on-chain randomness generation algorithms.
 
+# Conflicts
+
+In the original `Snow*` whitepaper, the definition of conflicts is error prone. Particulary because they are defined as being transitive, which can only apply as per the pseudocode when either single-input transactions are used, or blocks. Please see the multi-input conflict map defined for `sleet` for how the multi-input case is solved.
+
+In the case of `hail`, conflicts are defined in terms of a conflict map specialised on `height`, which can be used to create transitive and equivalent conflict sets without ambiguity.
