@@ -5,8 +5,7 @@ use crate::client;
 use crate::{ice, ice::Ice};
 use crate::protocol::{Request, Response};
 
-use super::{state, state::State, state::Weight};
-use super::{block, block::BlockHash, block::VrfOutput};
+use super::block::{self, State, Weight, BlockHash, VrfOutput};
 
 use tracing::info;
 
@@ -36,9 +35,9 @@ impl Actor for Alpha {
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
 	// Check for the existence of `genesis` and write to the db if it is not present.
-	if !state::exists_first(&self.tree) {
+	if !block::exists_first(&self.tree) {
 	    let genesis = block::genesis();
-	    let hash = state::accept_genesis(&self.tree, genesis.clone());
+	    let hash = block::accept_genesis(&self.tree, genesis.clone());
 	    info!("accepted genesis => {:?}", hex::encode(hash));
 	    self.state.apply(genesis);
 	    info!("{}", self.state.format());
@@ -122,7 +121,7 @@ impl Handler<LiveNetwork> for Alpha {
 	}
 
 	// Read the last accepted final block (or genesis)
-	let (last_hash, last_block) = state::get_last_accepted(&self.tree).unwrap();
+	let (last_hash, last_block) = block::get_last_accepted(&self.tree).unwrap();
 
 	let ice_addr = self.ice.clone();
 	let state = self.state.clone();
@@ -201,7 +200,7 @@ impl Handler<GetLastAccepted> for Alpha {
     type Result = LastAccepted;
 
     fn handle(&mut self, _msg: GetLastAccepted, _ctx: &mut Context<Self>) -> Self::Result {
-	let last_accepted_hash = state::get_last_accepted_hash(&self.tree).unwrap();
+	let last_accepted_hash = block::get_last_accepted_hash(&self.tree).unwrap();
 	LastAccepted { hash: last_accepted_hash }
     }
 }
