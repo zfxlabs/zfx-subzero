@@ -3,6 +3,7 @@ use zfx_subzero::view::{self, View};
 use zfx_subzero::server::{Router, Server};
 use zfx_subzero::ice::{self, Reservoir, Ice};
 use zfx_subzero::chain::alpha::Alpha;
+use zfx_subzero::sleet::Sleet;
 use zfx_subzero::util;
 
 use tracing_subscriber;
@@ -71,6 +72,10 @@ fn main() -> Result<()> {
 	let alpha = Alpha::create(Path::new(&db_path), ice_addr.clone()).unwrap();
 	let alpha_addr = alpha.start();
 
+	// Create the `sleet` actor
+	let sleet = Sleet::new();
+	let sleet_addr = sleet.start();
+
 	// Bootstrap the view
 	let view_addr_clone = view_addr.clone();
 	let ice_addr_clone = ice_addr.clone();
@@ -90,7 +95,7 @@ fn main() -> Result<()> {
 
 	let listener_execution = async move {
 	    // Setup the router
-	    let router = Router::new(view_addr, ice_addr, alpha_addr);
+	    let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr);
 	    let router_addr = router.start();
 	    // Setup the server
 	    let server = Server::new(listener_ip, router_addr);
