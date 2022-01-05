@@ -125,7 +125,7 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	    let elt = queue.pop_front().unwrap();
 	    let chit = self.get_chit(elt.clone())?;
 	    sum += chit;
-	    
+
 	    let adj = self.inverse().get(&elt).unwrap();
 	    for edge in adj.iter().cloned() {
 		match visited.entry(edge.clone()) {
@@ -158,7 +158,7 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	    }
 	    let elt = queue.pop_front().unwrap();
 	    result.push(elt.clone());
-	    
+
 	    let adj = self.get(&elt).unwrap();
 	    for edge in adj.iter().cloned() {
 		match visited.entry(edge.clone()) {
@@ -171,6 +171,11 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	    }
 	}
 	result
+    }
+
+    /// Creates an iterator for depth-first traversal of vertices reachable from `vx`
+    pub fn df_iter(&self, vx: V) -> DfIter<'_, V> {
+        DfIter::new(self, &vx)
     }
 
     /// Performs a depth-first-search from a starting vertex `vx`. This is here mainly as
@@ -232,6 +237,53 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 }
 
+pub struct DfIter<'a ,V> {
+     dag: &'a DAG<V>,
+     stack: Vec<V>,
+     visited: HashMap<V, bool>,
+}
+
+impl<'a, V> DfIter<'a, V> where
+    V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
+{
+    fn new(dag: &'a DAG<V>, vx: &V) -> Self {
+        let mut it = Self {
+            dag,
+            visited: HashMap::default(),
+            stack: vec![]
+        };
+        it.stack.push(vx.clone());
+        it
+    }
+}
+
+impl<'a, V> Iterator for DfIter<'a, V> where
+    V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
+{
+    type Item = V;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.stack.is_empty() {
+            return None;
+        }
+
+        let next = self.stack.pop().unwrap();
+        match self.visited.entry(next.clone()) {
+            Entry::Occupied(_) => (),
+		    Entry::Vacant(mut v) => {
+		        v.insert(true);
+		    },
+	    }
+	    let adj = self.dag.get(&next).unwrap();
+	    for edge in adj.iter().cloned() {
+		    match self.visited.entry(edge.clone()) {
+		        Entry::Occupied(_) => (),
+		        Entry::Vacant(_) => self.stack.push(edge),
+		    }
+		}
+	    Some(next)
+	}
+}
+
 #[cfg(test)]
 mod test {
     use super::DAG;
@@ -257,7 +309,7 @@ mod test {
 	if r2 != vec![3,4,5] && r2 != vec![3,5,4] {
 	    assert!(false);
 	}
-	
+
 	let l = dag.leaves();
 	if l != vec![4,5] && l != vec![5,4] {
 	    assert!(false);
@@ -290,6 +342,31 @@ mod test {
 	}
     }
 
+    #[actix_rt::test]
+    async fn test_df_iter() {
+        let mut dag: DAG<u8> = DAG::new();
+
+	// Insert the genesis vertex
+	dag.insert_vx(0, vec![]);
+	dag.insert_vx(1, vec![0]);
+	dag.insert_vx(2, vec![0]);
+	dag.insert_vx(3, vec![1, 2]);
+	// Ensure only reachable vertices are taken into account
+	dag.insert_vx(4, vec![1, 2]);
+	dag.insert_vx(5, vec![3, 2]);
+
+	let r1: Vec<_> = dag.df_iter(4).collect();
+	assert_eq!(r1, vec![4,2,0,1]);
+
+	let g2 = dag.invert();
+	let r2: Vec<_> = g2.df_iter(3).collect();
+        assert_eq!(r2, vec![3,5]);
+
+	let l = dag.leaves();
+	if l != vec![4,5] && l != vec![5,4] {
+	    assert!(false);
+	}
+    }
     #[actix_rt::test]
     async fn test_conviction() {
         let mut dag: DAG<u8> = DAG::new();
