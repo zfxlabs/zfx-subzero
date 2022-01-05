@@ -236,21 +236,21 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	DAG { g: self.inv.clone(), inv: self.g.clone(), chits: self.chits.clone() }
     }
 }
-
-pub struct DfIter<'a ,V> {
-     dag: &'a DAG<V>,
-     stack: Vec<V>,
-     visited: HashMap<V, bool>,
+pub struct DfIter<'a, V> {
+    dag: &'a DAG<V>,
+    stack: Vec<V>,
+    visited: HashMap<V, bool>,
 }
 
-impl<'a, V> DfIter<'a, V> where
+impl<'a, V> DfIter<'a, V>
+where
     V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
 {
     fn new(dag: &'a DAG<V>, vx: &V) -> Self {
         let mut it = Self {
             dag,
             visited: HashMap::default(),
-            stack: vec![]
+            stack: vec![],
         };
         it.stack.push(vx.clone());
         it
@@ -367,6 +367,40 @@ mod test {
 	    assert!(false);
 	}
     }
+
+    fn make_dag(data: &[(u8, &[u8])]) -> DAG<u8> {
+        let mut dag = DAG::<u8>::new();
+        for (v, ps) in data {
+            dag.insert(*v, ps.to_vec());
+        }
+        dag
+    }
+
+    #[actix_rt::test]
+    #[rustfmt::skip]
+    async fn test_df_iter2() {
+        let dag = make_dag(&[
+             (0, &[]),
+             (1, &[0]), (2, &[0]),
+             (3, &[1]), (4, &[1]), (5, &[2]), (6, &[2]),
+             (7, &[4,5]), (8, &[3,4]),
+             (9, &[8,7,6]),
+            ]);
+
+        let r1: Vec<_> = dag.df_iter(8).collect();
+        assert_eq!(r1, [8,4,1,0,3]);
+
+        let r2: Vec<_> = dag.df_iter(7).collect();
+        assert_eq!(r2, [7,5,2,0,4,1]);
+
+        let r2: Vec<_> = dag.df_iter(9).collect();
+        assert_eq!(r2, [
+            9,6,2,0,
+            7,5,
+            4,1,
+            8,3]);
+    }
+
     #[actix_rt::test]
     async fn test_conviction() {
         let mut dag: DAG<u8> = DAG::new();
