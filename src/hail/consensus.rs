@@ -54,72 +54,23 @@ impl Actor for Consensus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
-pub struct ReceiveBlock {
-    block: Block,
-}
-
-impl Handler<ReceiveBlock> for Consensus {
-    type Result = ();
-
-    fn handle(&mut self, msg: ReceiveBlock, _ctx: &mut Context<Self>) -> Self::Result {
-	let block = msg.block.clone();
-
-	// Check that the block does not already exist
-	// state::exists_block(block_hash) -> bool
-
-	// Insert the block into the conflict map or create a new entry
-	match self.conflict_map.entry(block.height.clone()) {
-	    Entry::Occupied(mut o) => {
-		let cs = o.get_mut();
-		let () = cs.insert(block.clone());
-		let h = block.clone().hash();
-		if cs.cnt == 0 && h == cs.lowest_hash() {
-		    cs.pref = block.clone();
-		    cs.last = block.clone();
-		}
-	    },
-	    Entry::Vacant(v) => {
-		let _old = v.insert(ConflictSet::new(block.clone()));
-		()
-	    },
-	}
-
-	// Persist the block with a chit of 0
-	// state::put_block(block.clone(), 0)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
-pub struct GenerateBlock {
-    height: Height,
-    vrf_out: VrfOutput,
-    txs: Vec<StakeTx>,
-}
-
-impl Handler<GenerateBlock> for Consensus {
-    type Result = ();
-
-    fn handle(&mut self, msg: GenerateBlock, _ctx: &mut Context<Self>) -> Self::Result {
-	let parent = self.select_parent(msg.height - 1);
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "QueryResult")]
-pub struct Query;
+#[rtype(result = "QueryBlockAck")]
+pub struct QueryBlock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct QueryResult;
+pub struct QueryBlockAck;
 
-impl Handler<Query> for Consensus {
-    type Result = QueryResult;
+impl Handler<QueryBlock> for Consensus {
+    type Result = QueryBlockAck;
 
-    fn handle(&mut self, msg: Query, _ctx: &mut Context<Self>) -> Self::Result {
-	QueryResult {}
+    fn handle(&mut self, msg: QueryBlock, _ctx: &mut Context<Self>) -> Self::Result {
+	QueryBlockAck {}
     }
 }
 
-pub async fn run() { }
+// Generate a block whenever we are a block producer and have pending transactions in
+// `sleet`.
+// pub async fn generate_block() {}
+
+// pub async fn run() { }
     
