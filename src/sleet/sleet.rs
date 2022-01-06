@@ -1,5 +1,10 @@
+use zfx_id::Id;
+
 use crate::graph::DAG;
 use crate::chain::alpha::{self, Transaction, TxHash};
+use crate::chain::alpha::tx::UTXOId;
+use crate::chain::alpha::state::Weight;
+use crate::util;
 
 use super::Result;
 use super::conflict_map::ConflictMap;
@@ -9,7 +14,7 @@ use tracing::{debug, info, error};
 
 use actix::{Actor, Context, Handler, Addr};
 
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashSet, HashMap, hash_map::Entry};
 use std::hash::Hash;
 
 // Parent selection
@@ -23,12 +28,16 @@ const BETA2: usize = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
+    /// The weighted validator set.
+    validators: Vec<(Id, Weight)>,
     /// The set of all known transactions.
     known_txs: sled::Db,
     /// The set of all queried transactions.
     queried_txs: sled::Db,
     /// The map of conflicting transactions (potentially multi-input).
     conflict_map: ConflictMap,
+    /// A hashset containing the currently spendable UTXO ids.
+    utxo_ids: HashSet<UTXOId>,
     /// The consensus graph.
     dag: DAG<TxHash>,
 }
@@ -38,9 +47,11 @@ impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new() -> Self {
 	Sleet {
+	    validators: vec![],
 	    known_txs: sled::Config::new().temporary(true).open().unwrap(),
 	    queried_txs: sled::Config::new().temporary(true).open().unwrap(),
 	    conflict_map: ConflictMap::new(),
+	    utxo_ids: HashSet::new(),
 	    dag: DAG::new(),
 	}
     }
@@ -199,11 +210,32 @@ impl Actor for Sleet {
     }
 }
 
-impl Handler<alpha::LiveCommittee> for Sleet {
+// When the committee is initialised in `alpha` or when it comes back online due to a
+// `FaultyNetwork` message received in `alpha`, `sleet` is updated with the latest relevant
+// chain state.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct LiveCommittee {
+    pub validators: Vec<(Id, u64)>,
+    pub initial_supply: u64,
+    pub utxo_ids: HashSet<UTXOId>,
+}
+
+impl Handler<LiveCommittee> for Sleet {
     type Result = ();
 
-    fn handle(&mut self, msg: alpha::LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	()
+    fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
+	let n_spendable = msg.utxo_ids.clone();
+	info!("Sleet received {:?} spendable outputs", n_spendable);
+	let mut weighted_validators = vec![];
+	for (id, amount) in msg.validators {
+	    let v_w = util::percent_of(amount, msg.initial_supply);
+	    weighted_validators.push((id.clone(), v_w));
+	}
+	// Update the list of UTXO Ids / weighted validator set
+	self.utxo_ids = msg.utxo_ids.clone();
+	self.validators = weighted_validators.clone();
     }
 }
 
@@ -228,15 +260,22 @@ impl Handler<ReceiveTx> for Sleet {
 
     fn handle(&mut self, msg: ReceiveTx, _ctx: &mut Context<Self>) -> Self::Result {
 	let tx = msg.tx.clone();
-	if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-	    info!("sleet: received new transaction {:?}", tx.clone());
-	    // if spends_valid_utxo(msg.tx.clone()) {
-	    let parents = self.select_parents(NPARENTS).unwrap();
-	    self.insert(SleetTx::new(parents, tx.clone()));
-	    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
-	    // }
+	// Skip adding coinbase transactions (block rewards / initial allocations) to the
+	// mempool.
+	if tx.is_coinbase() {
+	    // FIXME: receiving a coinbase transaction should result in an error
+	    ReceiveTxAck{}
+	} else {
+	    if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+		info!("sleet: received new transaction {:?}", tx.clone());
+		// if spends_valid_utxo(msg.tx.clone()) {
+		let parents = self.select_parents(NPARENTS).unwrap();
+		self.insert(SleetTx::new(parents, tx.clone()));
+		alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
+		// }
+	    }
+	    ReceiveTxAck{}
 	}
-	ReceiveTxAck{}
     }
 }
 
@@ -256,13 +295,21 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, _ctx: &mut Context<Self>) -> Self::Result {
-	if !alpha::is_known_tx(&self.known_txs, msg.tx.hash()).unwrap() {
-	    info!("sleet: received new transaction {:?}", msg.tx.clone());
-	    let parents = self.select_parents(NPARENTS).unwrap();
-	    self.insert(SleetTx::new(parents, msg.tx.clone()));
+	let tx = msg.tx.clone();
+	// Skip adding coinbase transactions (block rewards / initial allocations) to the
+	// mempool.
+	if tx.is_coinbase() {
+	    // FIXME: querying about a coinbase should result in an error
+	    QueryTxAck { tx_hash: tx.hash(), outcome: false }
+	} else {
+	    if !alpha::is_known_tx(&self.known_txs, msg.tx.hash()).unwrap() {
+		info!("sleet: received new transaction {:?}", msg.tx.clone());
+		let parents = self.select_parents(NPARENTS).unwrap();
+		self.insert(SleetTx::new(parents, msg.tx.clone()));
+	    }
+	    let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
+	    QueryTxAck { tx_hash: msg.tx.hash(), outcome }
 	}
-	let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
-	QueryTxAck { tx_hash: msg.tx.hash(), outcome }
     }
 }
 
