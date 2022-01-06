@@ -3,6 +3,7 @@ mod functions;
 mod input;
 mod output;
 mod tx;
+mod coinbase_tx;
 mod stake_tx;
 mod transaction;
 
@@ -10,6 +11,7 @@ pub use functions::*;
 pub use input::*;
 pub use output::*;
 pub use tx::*;
+pub use coinbase_tx::*;
 pub use stake_tx::*;
 pub use transaction::*;
 
