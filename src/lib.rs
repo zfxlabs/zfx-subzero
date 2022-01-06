@@ -22,6 +22,7 @@ use protocol::{Request, Response};
 #[derive(Debug)]
 pub enum Error {
     IO(std::io::Error),
+    Dalek(ed25519_dalek::ed25519::Error),
     Sled(sled::Error),
 
     // channel errors
@@ -36,6 +37,7 @@ pub enum Error {
     GenesisUndefined,
     InvalidHeight,
     InvalidPredecessor,
+    InvalidGenesis,
     InvalidLast,
 }
 
@@ -44,6 +46,12 @@ impl std::error::Error for Error {}
 impl std::convert::From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Error::IO(error)
+    }
+}
+
+impl std::convert::From<ed25519_dalek::ed25519::Error> for Error {
+    fn from(error: ed25519_dalek::ed25519::Error) -> Self {
+        Error::Dalek(error)
     }
 }
 
