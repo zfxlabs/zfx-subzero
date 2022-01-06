@@ -14,8 +14,9 @@ name = "client_test"
 path = "./bin/client_test.rs"
 
 [dependencies]
-zfx-id = { path = "../zfx/zfx-id" }
-zfx-sortition = { path = "../zfx-sortition" }
+# FIXME use git tags here
+zfx-id = { git = "https://github.com/zfxlabs/zfx", rev = "6ce7475" }
+zfx-sortition = { git = "https://github.com/zfxlabs/zfx-sortition", branch = "master" }
 sled = "0.34.6"
 actix = "0.12.0"
 actix-rt = "*"
