@@ -2,8 +2,11 @@ use zfx_id::Id;
 
 use crate::Result;
 use crate::client;
+use crate::util;
 use crate::{ice, ice::Ice};
+use crate::chain::alpha::InitialStaker;
 use crate::protocol::{Request, Response};
+use crate::sleet::{self, Sleet};
 
 use super::block::{self, BlockHash, VrfOutput};
 use super::state::{State, Weight};
@@ -21,13 +24,14 @@ use std::collections::HashMap;
 pub struct Alpha {
     tree: sled::Db,
     ice: Addr<Ice>,
+    sleet: Addr<Sleet>,
     state: State,
 }
 
 impl Alpha {
-    pub fn create(path: &Path, ice: Addr<Ice>) -> Result<Self> {
+    pub fn create(path: &Path, ice: Addr<Ice>, sleet: Addr<Sleet>) -> Result<Self> {
 	let tree = sled::open(path)?;
-	Ok(Alpha { tree, ice, state: State::new() })
+	Ok(Alpha { tree, ice, sleet, state: State::new() })
     }
 }
 
@@ -35,18 +39,34 @@ impl Actor for Alpha {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
+	let stakers = vec![
+	    InitialStaker::from_hex(
+		"ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned(),
+		util::id_from_ip(&"127.0.0.1:1234".parse().unwrap()),
+		1000,
+	    ),
+	    InitialStaker::from_hex(
+		"5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned(),
+		util::id_from_ip(&"127.0.0.1:1235".parse().unwrap()),
+		1000,
+	    ),
+	    InitialStaker::from_hex(
+		"6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b".to_owned(),
+		util::id_from_ip(&"127.0.0.1:1236".parse().unwrap()),
+		1000,
+	    ),
+	];
 	// Check for the existence of `genesis` and write to the db if it is not present.
 	if !block::exists_first(&self.tree) {
-	    let genesis = block::genesis(vec![]);
+	    let genesis = block::genesis(stakers);
 	    let hash = block::accept_genesis(&self.tree, genesis.clone());
 	    info!("accepted genesis => {:?}", hex::encode(hash));
-	    self.state.apply(genesis);
+	    self.state.apply(genesis).unwrap();
 	    info!("{}", self.state.format());
 	} else {
-	    info!("existing genesis");
-	    // FIXME
-	    let genesis = block::genesis(vec![]);
-	    self.state.apply(genesis);
+	    let (hash, genesis) = block::get_genesis(&self.tree).unwrap();
+	    info!("existing genesis => {:?}", hex::encode(hash));
+	    self.state.apply(genesis).unwrap();
 	    info!("{}", self.state.format());
 	}
     }
@@ -125,6 +145,7 @@ impl Handler<LiveNetwork> for Alpha {
 	let (last_hash, last_block) = block::get_last_accepted(&self.tree).unwrap();
 
 	let ice_addr = self.ice.clone();
+	let sleet_addr = self.sleet.clone();
 	let state = self.state.clone();
 	Box::pin(async move {
 	    let last_accepted_hash = query_last_accepted(peers).await;
@@ -154,9 +175,18 @@ impl Handler<LiveNetwork> for Alpha {
 		}).await.unwrap();
 
 		// Send `sleet` the live committee information for querying transactions.
+		let () = sleet_addr.send(sleet::LiveCommittee {
+		    validators: state.validators.clone(),
+		    initial_supply: state.token_supply,
+		    utxo_ids: state.utxo_ids.clone(),
+		}).await.unwrap();
 
 		// Send `hail` the live committee information for querying blocks.
-
+		// let () = hail_addr.send(hail::LiveCommittee {
+		//     height: state.height,
+		//     validators: state.validators.clone(),
+		//     vrf_out,
+		// }).await.unwrap();
 	    } else {
 		info!("chain requires bootstrapping ...");
 		// Apply state transitions until the last accepted hash
