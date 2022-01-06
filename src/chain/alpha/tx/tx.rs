@@ -1,70 +1,12 @@
 use super::{Result, Error};
+use super::input::Input;
+use super::output::{Output, PublicKeyHash, Amount};
 
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
 
 pub type TxHash = [u8; 32];
-pub type PublicKeyHash = [u8; 32];
-pub type Amount = u64;
 
 pub const fee: u64 = 100;
-
-pub type OutputId = [u8; 32];
-
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Input {
-    /// The hash of the source transaction.
-    pub source: TxHash,
-    /// The index of the output in the referenced transaction.
-    pub i: u8,
-    /// The public key of the owner.
-    pub owner: PublicKey,
-    /// The signature of the owner matching an output.
-    pub signature: Signature,
-}
-
-impl std::fmt::Debug for Input {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-	let source = format!("{}", hex::encode(self.source));
-        write!(f, "{{source={},i={:?}}}", source, self.i)
-    }
-}
-
-impl Input {
-    pub fn output_id(&self) -> OutputId {
-	let bytes = vec![
-	    self.source.clone().to_vec(),
-	    vec![self.i.clone()],
-	].concat();
-	let encoded = bincode::serialize(&bytes).unwrap();
-	blake3::hash(&encoded).as_bytes().clone()
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Output {
-    /// The public key hash of the owner.
-    pub owner_hash: PublicKeyHash,
-    /// The amount of tokens in the output.
-    pub value: Amount,
-}
-
-impl std::fmt::Debug for Output {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-	let owner = format!("{}", hex::encode(self.owner_hash));
-        write!(f, "{{owner={},value={:?}}}", owner, self.value)
-    }
-}
-
-impl Output {
-    pub fn new(owner_hash: PublicKeyHash, value: Amount) -> Output {
-	Output { owner_hash, value }
-    }
-
-    pub fn hash(&self) -> [u8; 32] {
-	let encoded = bincode::serialize(self).unwrap();
-	blake3::hash(&encoded).as_bytes().clone()
-    }
-}
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
@@ -79,14 +21,6 @@ impl Tx {
 
     pub fn coinbase(owner: PublicKeyHash, value: Amount) -> Tx {
 	Tx::new(vec![], vec![Output::new(owner, value)])
-    }
-
-    pub fn sum(&self) -> u64 {
-	let mut total = 0;
-	for output in self.outputs.iter() {
-	    total += output.value;
-	}
-	total
     }
 
     pub fn spend(&self, keypair: &Keypair, destination: PublicKeyHash, change: PublicKeyHash, value: Amount) -> Result<Tx> {
@@ -154,6 +88,14 @@ impl Tx {
 	};
 
 	Ok(Tx::new(inputs, outputs))
+    }
+
+    pub fn sum(&self) -> u64 {
+	let mut total = 0;
+	for output in self.outputs.iter() {
+	    total += output.value;
+	}
+	total
     }
 
     pub fn hash(&self) -> [u8; 32] {

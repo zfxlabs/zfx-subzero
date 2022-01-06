@@ -5,7 +5,8 @@ use crate::client;
 use crate::{ice, ice::Ice};
 use crate::protocol::{Request, Response};
 
-use super::block::{self, State, Weight, BlockHash, VrfOutput};
+use super::block::{self, BlockHash, VrfOutput};
+use super::state::{State, Weight};
 
 use tracing::info;
 
@@ -36,7 +37,7 @@ impl Actor for Alpha {
     fn started(&mut self, _ctx: &mut Context<Self>) {
 	// Check for the existence of `genesis` and write to the db if it is not present.
 	if !block::exists_first(&self.tree) {
-	    let genesis = block::genesis();
+	    let genesis = block::genesis(vec![]);
 	    let hash = block::accept_genesis(&self.tree, genesis.clone());
 	    info!("accepted genesis => {:?}", hex::encode(hash));
 	    self.state.apply(genesis);
@@ -44,7 +45,7 @@ impl Actor for Alpha {
 	} else {
 	    info!("existing genesis");
 	    // FIXME
-	    let genesis = block::genesis();
+	    let genesis = block::genesis(vec![]);
 	    self.state.apply(genesis);
 	    info!("{}", self.state.format());
 	}
@@ -103,7 +104,7 @@ async fn query_last_accepted(peers: Vec<SocketAddr>) -> BlockHash {
 #[rtype(result = "()")]
 pub struct LiveCommittee {
     pub height: u64,
-    pub total_tokens: u64,
+    pub initial_supply: u64,
     pub validators: Vec<(Id, u64)>,
     pub vrf_out: VrfOutput,
 }
@@ -130,7 +131,7 @@ impl Handler<LiveNetwork> for Alpha {
 	    if last_hash == last_accepted_hash {
 		// Fetch the latest state snapshot up to the last hash, or apply the state
 		// and persist the missing transitions to the db.
-		// let (total_tokens, validators) = sync_state().await.unwrap();
+		// let (initial_supply, validators) = sync_state().await.unwrap();
 
 		let vrf_out = last_block.vrf_out.clone();
 
@@ -138,16 +139,24 @@ impl Handler<LiveNetwork> for Alpha {
 
 		info!("{}", state.format());
 
-		// If we are at the same level as the quorum then we are bootstrapped,
-		// send `ice` the most up to date information concerning the peers
+		//-------------------------------------------------------------------------
+		// If we are at the same level as the quorum then we are bootstrapped.
+		//-------------------------------------------------------------------------
+
+		// Send `ice` the most up to date information concerning the peers
 		// which are validating the network, such that we may determine the peers
-		// `uptime` and initiate consensus.
+		// `uptime`.
 		let () = ice_addr.send(LiveCommittee {
 		    height: state.height,
-		    total_tokens: state.total_tokens,
+		    initial_supply: state.token_supply,
 		    validators: state.validators.clone(),
 		    vrf_out,
 		}).await.unwrap();
+
+		// Send `sleet` the live committee information for querying transactions.
+
+		// Send `hail` the live committee information for querying blocks.
+
 	    } else {
 		info!("chain requires bootstrapping ...");
 		// Apply state transitions until the last accepted hash

@@ -1,8 +1,17 @@
-mod stake_tx;
+mod types;
+mod functions;
+mod input;
+mod output;
 mod tx;
+mod stake_tx;
+mod transaction;
 
+pub use functions::*;
+pub use input::*;
+pub use output::*;
 pub use tx::*;
 pub use stake_tx::*;
+pub use transaction::*;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {

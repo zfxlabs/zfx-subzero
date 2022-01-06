@@ -1,4 +1,4 @@
-use crate::chain::alpha::tx::StakeTx;
+use crate::chain::alpha::tx::Transaction;
 
 use tai64::Tai64;
 
@@ -15,7 +15,7 @@ pub struct Block {
     pub predecessor: Option<BlockHash>,
     pub height: Height,
     pub vrf_out: VrfOutput,
-    pub txs: Vec<StakeTx>,
+    pub txs: Vec<Transaction>,
 }
 
 pub fn genesis_vrf_out() -> [u8; 32] {
@@ -27,36 +27,17 @@ pub fn genesis_vrf_out() -> [u8; 32] {
     vrf_out
 }
 
-pub fn genesis() -> Block {
+pub fn genesis(txs: Vec<Transaction>) -> Block {
     Block {
 	predecessor: None,
 	height: 0u64,
 	vrf_out: genesis_vrf_out(),
-	txs: vec![
-	    StakeTx::new(
-		util::id_from_ip(&"127.0.0.1:1234".parse().unwrap()),
-		// start_time.clone(),
-		// start_time.clone() + 3 * 60,
-		1000u64,
-	    ),
-	    StakeTx::new(
-		util::id_from_ip(&"127.0.0.1:1235".parse().unwrap()),
-		// start_time.clone(),
-		// start_time.clone() + 6 * 60,
-		1000u64,
-	    ),
-	    StakeTx::new(
-		util::id_from_ip(&"127.0.0.1:1236".parse().unwrap()),
-		// start_time.clone(),
-		// start_time.clone() + 9 * 60,
-		1000u64,
-	    ),
-	],
+	txs,
     }
 }
 
 impl Block {
-    pub fn new(predecessor: BlockHash, height: u64, vrf_out: VrfOutput, txs: Vec<StakeTx>) -> Block {
+    pub fn new(predecessor: BlockHash, height: u64, vrf_out: VrfOutput, txs: Vec<Transaction>) -> Block {
 	Block {
 	    predecessor: Some(predecessor),
 	    height,

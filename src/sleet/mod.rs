@@ -1,18 +1,21 @@
-mod tx;
 mod spend_map;
 mod conflict_set;
 mod conflict_map;
+mod sleet_tx;
 mod sleet;
 
 pub use sleet::*;
 
+use crate::graph;
+use crate::chain::alpha::tx::{TxHash, Transaction};
+
 #[derive(Debug)]
 pub enum Error {
-    // UndefinedNode(tx::TxHash),
-    InvalidTransaction(crate::chain::alpha::tx::Tx),
-    InvalidTransactionHash(crate::chain::alpha::tx::TxHash),
-    InvalidConflictSet,
     Sled(sled::Error),
+    InvalidTransaction(Transaction),
+    InvalidTransactionHash(TxHash),
+    InvalidConflictSet,
+    Graph(graph::Error),
 }
 
 impl std::error::Error for Error {}
@@ -20,6 +23,12 @@ impl std::error::Error for Error {}
 impl std::convert::From<sled::Error> for Error {
     fn from(error: sled::Error) -> Self {
 	Error::Sled(error)
+    }
+}
+
+impl std::convert::From<graph::Error> for Error {
+    fn from(error: graph::Error) -> Self {
+	Error::Graph(error)
     }
 }
 

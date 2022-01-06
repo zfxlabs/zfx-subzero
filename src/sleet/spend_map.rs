@@ -1,9 +1,9 @@
-use crate::chain::alpha::{Tx, OutputId, TxHash};
+use crate::chain::alpha::{Transaction, UTXOId, TxHash};
 
 use std::collections::{HashSet, HashMap, hash_map::Entry};
 
 pub struct SpendMap {
-    inner: HashMap<OutputId, HashSet<TxHash>>,
+    inner: HashMap<UTXOId, HashSet<TxHash>>,
 }
 
 impl SpendMap {
@@ -14,9 +14,9 @@ impl SpendMap {
     }
 
     /// Inserts the output ids of all the inputs referenced in the supplied `Tx`.
-    pub fn insert_tx(&mut self, tx: Tx) {
-	for input in tx.inputs.iter() {
-	    match self.inner.entry(input.output_id()) {
+    pub fn insert_tx(&mut self, tx: Transaction) {
+	for input in tx.inputs().iter() {
+	    match self.inner.entry(input.utxo_id()) {
 		Entry::Occupied(mut o) => {
 		    // The output id already exists, thus insert the tx id of the supplied
 		    // conflicting transaction.
@@ -35,10 +35,10 @@ impl SpendMap {
 
     /// Returns the hashes of all transactions which conflict with the spent outputs of the
     /// supplied `Tx`.
-    pub fn conflicting_txs(&self, tx: Tx) -> HashSet<TxHash> {
+    pub fn conflicting_txs(&self, tx: Transaction) -> HashSet<TxHash> {
 	let mut hs: HashSet<TxHash> = HashSet::new();
-	for input in tx.inputs.iter() {
-	    match self.inner.get(&input.output_id()) {
+	for input in tx.inputs().iter() {
+	    match self.inner.get(&input.utxo_id()) {
 		Some(tx_hashes) => {
 		    for tx_hash in tx_hashes.iter().cloned() {
 			hs.insert(tx_hash);

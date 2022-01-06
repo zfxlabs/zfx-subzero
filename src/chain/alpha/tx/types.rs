@@ -14,16 +14,3 @@ impl Key {
 	Key { hash: h }
     }
 }
-
-#[derive(Clone, FromBytes, AsBytes, Unaligned)]
-#[repr(C)]
-pub struct InputsKey {
-    inputs: Vec<()>,
-}
-
-impl InputsKey {
-    pub fn new(inputs: Vec<Input>) {
-	// Ensure the inputs are sorted by the hash of the referenced transaction and the
-	// index of the UTXO to spend.
-    }
-}

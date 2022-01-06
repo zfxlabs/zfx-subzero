@@ -54,15 +54,20 @@ impl Handler<Request> for Router {
 		    let ack = ice.send(ping).await.unwrap();
 		    Response::Ack(ack)
 		},
-		Request::ReceiveTx(receive_tx) => {
-		    info!("routing ReceiveTx -> Sleet");
-		    let () = sleet.send(receive_tx).await.unwrap();
-		    Response::Unknown
-		},
 		Request::GetLastAccepted => {
 		    info!("routing GetLastAccepted -> Alpha");
 		    let last_accepted = alpha.send(alpha::GetLastAccepted).await.unwrap();
 		    Response::LastAccepted(last_accepted)
+		},
+		Request::ReceiveTx(receive_tx) => {
+		    info!("routing ReceiveTx -> Sleet");
+		    let receive_tx_ack = sleet.send(receive_tx).await.unwrap();
+		    Response::ReceiveTxAck(receive_tx_ack)
+		},
+		Request::QueryTx(query_tx) => {
+		    info!("routing QueryTx -> Sleet");
+		    let query_tx_ack = sleet.send(query_tx).await.unwrap();
+		    Response::QueryTxAck(query_tx_ack)
 		},
 		_ => {
 		    info!("received unknown request");

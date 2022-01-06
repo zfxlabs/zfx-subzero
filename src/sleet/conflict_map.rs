@@ -3,7 +3,7 @@ use super::{Result, Error};
 use super::conflict_set::ConflictSet;
 use super::spend_map::SpendMap;
 
-use crate::chain::alpha::{Tx, TxHash};
+use crate::chain::alpha::{Transaction, TxHash};
 
 use std::collections::{HashSet, HashMap, hash_map::Entry};
 
@@ -30,7 +30,17 @@ impl ConflictMap {
 	}
     }
 
-    pub fn insert_tx(&mut self, tx: Tx) -> Result<ConflictSet<TxHash>> {
+    /// Fetch the preferred transaction.
+    pub fn get_preferred(&self, tx_hash: TxHash) -> Result<TxHash> {
+	match self.inner.get(&tx_hash) {
+	    Some(cs) =>
+		Ok(cs.pref),
+	    None =>
+		Err(Error::InvalidTransactionHash(tx_hash)),
+	}
+    }
+
+    pub fn insert_tx(&mut self, tx: Transaction) -> Result<ConflictSet<TxHash>> {
 	// Insert the transaction input output ids into the spend map.
 	self.spend_map.insert_tx(tx.clone());
 
@@ -96,7 +106,7 @@ impl ConflictMap {
 	}
     }
 
-    pub fn update_conflict_set(&mut self, tx: Tx, d1: u8, d2: u8) -> Result<()> {
+    pub fn update_conflict_set(&mut self, tx: Transaction, d1: u8, d2: u8) -> Result<()> {
 	match self.inner.entry(tx.hash()) {
 	    Entry::Occupied(mut o) => {
 		let cs = o.get_mut();

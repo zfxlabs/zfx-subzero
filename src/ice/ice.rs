@@ -266,7 +266,7 @@ impl Handler<alpha::LiveCommittee> for Ice {
 	let mut block_production_slot = None;
 	for (id, qty) in msg.validators {
 	    let vrf_h = compute_vrf_h(id.clone(), &msg.vrf_out);
-	    let s_w = sortition::select(qty, msg.total_tokens, expected_size, &vrf_h);
+	    let s_w = sortition::select(qty, msg.initial_supply, expected_size, &vrf_h);
 	    // If the sortition weight > 0 then this `id` is a block producer.
 	    if s_w > 0 {
 		block_producers.insert(id.clone());
@@ -276,7 +276,7 @@ impl Handler<alpha::LiveCommittee> for Ice {
 	    if s_w > 0 && id.clone() == self.id {
 		block_production_slot = Some(vrf_h.clone());
 	    }
-	    let v_w = util::percent_of(qty, msg.total_tokens);
+	    let v_w = util::percent_of(qty, msg.initial_supply);
 	    validators.push((id.clone(), v_w));
 	}
 

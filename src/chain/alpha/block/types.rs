@@ -46,7 +46,7 @@ mod tests {
 	let vout = [0u8; 32];
 
 	// Construct test blocks
-	let block0 = genesis();
+	let block0 = genesis(vec![]);
 	let hash0 = block0.hash();
 	let encoded0 = bincode::serialize(&block0).unwrap();
 
@@ -86,7 +86,7 @@ mod tests {
 	let vout = [0u8; 32];
 
 	// Construct and insert test blocks
-	let block0 = genesis();
+	let block0 = genesis(vec![]);
 	let hash0 = block0.hash();
 	let encoded0 = bincode::serialize(&block0).unwrap();
 	let block1 = Block::new(hash0.clone(), 1u64, vout, vec![]);
