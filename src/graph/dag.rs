@@ -174,43 +174,13 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Creates an iterator for depth-first traversal of vertices reachable from `vx`
-    pub fn df_iter(&self, vx: V) -> DfIter<'_, V> {
-        DfIter::new(self, &vx)
+    pub fn df_iter(&self, vx: V) -> DFS<'_, V> {
+        DFS::new(self, &vx)
     }
 
-    /// Performs a depth-first-search from a starting vertex `vx`. This is here mainly as
-    /// a reference for later implementing an `Iterator`.
+    /// Performs a depth-first-search from a starting vertex `vx`.
     pub fn dfs(&self, vx: V) -> Vec<V> {
-	// Mark all vertices as not visited (empty)
-	let mut visited: HashMap<V, bool> = HashMap::default();
-	// A stack for the depth first search
-	let mut stack = vec![];
-	stack.push(vx.clone());
-
-	let mut result = vec![];
-	loop {
-	    if stack.len() == 0 {
-		break;
-	    }
-	    let elt = stack.pop().unwrap();
-	    match visited.entry(elt.clone()) {
-		Entry::Occupied(_) => (),
-		Entry::Vacant(mut v) => {
-		    v.insert(true);
-		    result.push(elt.clone());
-		},
-	    }
-	    let adj = self.get(&elt).unwrap();
-	    for edge in adj.iter().cloned() {
-		match visited.entry(edge.clone()) {
-		    Entry::Occupied(_) =>
-			(),
-		    Entry::Vacant(_) =>
-			stack.push(edge),
-		}
-	    }
-	}
-	result
+	    self.df_iter(vx).collect()
     }
 
     /// The leaves of the DAG are all the vertices of the inverse of `g` containing no
@@ -236,31 +206,39 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	DAG { g: self.inv.clone(), inv: self.g.clone(), chits: self.chits.clone() }
     }
 }
-pub struct DfIter<'a, V> {
+
+/// Iterator for depth-first traversal of the ancestors of a vertex
+pub struct DFS<'a, V> {
+    /// The underlying DAG
     dag: &'a DAG<V>,
+    /// A stack for the depth first search
     stack: Vec<V>,
+    /// Nodes visited so far by the iterator
     visited: HashMap<V, bool>,
 }
 
-impl<'a, V> DfIter<'a, V>
+impl<'a, V> DFS<'a, V>
 where
     V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
 {
     fn new(dag: &'a DAG<V>, vx: &V) -> Self {
         let mut it = Self {
             dag,
+            // Mark all vertices as not visited (empty)
             visited: HashMap::default(),
             stack: vec![],
         };
+        // Start at `vx`
         it.stack.push(vx.clone());
         it
     }
 }
 
-impl<'a, V> Iterator for DfIter<'a, V> where
+impl<'a, V> Iterator for DFS<'a, V> where
     V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
 {
     type Item = V;
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.stack.is_empty() {
             return None;
