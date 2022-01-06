@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
 
     // client::oneshot(peer_ip, Request::ReceiveTx(sleet::ReceiveTx {
     // 	tx: transaction,
-    // })).await;
+    // })).await?;
 
     Ok(())
 }

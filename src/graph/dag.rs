@@ -271,13 +271,13 @@ mod test {
         let mut dag: DAG<u8> = DAG::new();
 
 	// Insert the genesis vertex
-	dag.insert_vx(0, vec![]);
-	dag.insert_vx(1, vec![0]);
-	dag.insert_vx(2, vec![0]);
-	dag.insert_vx(3, vec![1, 2]);
-	dag.insert_vx(4, vec![3, 1]);
+	dag.insert_vx(0, vec![]).unwrap();
+	dag.insert_vx(1, vec![0]).unwrap();
+	dag.insert_vx(2, vec![0]).unwrap();
+	dag.insert_vx(3, vec![1, 2]).unwrap();
+	dag.insert_vx(4, vec![3, 1]).unwrap();
 	// Ensure only reachable vertices are taken into account
-	dag.insert_vx(5, vec![3, 2]);
+	dag.insert_vx(5, vec![3, 2]).unwrap();
 
 	let r1 = dag.bfs(4);
         assert_eq!(r1, vec![4,3,1,2,0]);
@@ -299,13 +299,13 @@ mod test {
         let mut dag: DAG<u8> = DAG::new();
 
 	// Insert the genesis vertex
-	dag.insert_vx(0, vec![]);
-	dag.insert_vx(1, vec![0]);
-	dag.insert_vx(2, vec![0]);
-	dag.insert_vx(3, vec![1, 2]);
+	dag.insert_vx(0, vec![]).unwrap();
+	dag.insert_vx(1, vec![0]).unwrap();
+	dag.insert_vx(2, vec![0]).unwrap();
+	dag.insert_vx(3, vec![1, 2]).unwrap();
 	// Ensure only reachable vertices are taken into account
-	dag.insert_vx(4, vec![1, 2]);
-	dag.insert_vx(5, vec![3, 2]);
+	dag.insert_vx(4, vec![1, 2]).unwrap();
+	dag.insert_vx(5, vec![3, 2]).unwrap();
 
 	let r1 = dag.dfs(4);
 	assert_eq!(r1, vec![4,2,0,1]);
@@ -325,13 +325,13 @@ mod test {
         let mut dag: DAG<u8> = DAG::new();
 
 	// Insert the genesis vertex
-	dag.insert_vx(0, vec![]);
-	dag.insert_vx(1, vec![0]);
-	dag.insert_vx(2, vec![0]);
-	dag.insert_vx(3, vec![1, 2]);
+	dag.insert_vx(0, vec![]).unwrap();
+	dag.insert_vx(1, vec![0]).unwrap();
+	dag.insert_vx(2, vec![0]).unwrap();
+	dag.insert_vx(3, vec![1, 2]).unwrap();
 	// Ensure only reachable vertices are taken into account
-	dag.insert_vx(4, vec![1, 2]);
-	dag.insert_vx(5, vec![3, 2]);
+	dag.insert_vx(4, vec![1, 2]).unwrap();
+	dag.insert_vx(5, vec![3, 2]).unwrap();
 
 	let r1: Vec<_> = dag.df_iter(4).collect();
 	assert_eq!(r1, vec![4,2,0,1]);
@@ -384,17 +384,17 @@ mod test {
         let mut dag: DAG<u8> = DAG::new();
 
 	// Insert the genesis vertex
-	dag.insert_vx(0, vec![]);
-	dag.insert_vx(1, vec![0]);
-	dag.insert_vx(2, vec![0]);
-	dag.insert_vx(3, vec![1, 2]);
+	dag.insert_vx(0, vec![]).unwrap();
+	dag.insert_vx(1, vec![0]).unwrap();
+	dag.insert_vx(2, vec![0]).unwrap();
+	dag.insert_vx(3, vec![1, 2]).unwrap();
 	// Ensure only reachable vertices are taken into account
-	dag.insert_vx(4, vec![1, 2]);
-	dag.insert_vx(5, vec![3, 2]);
+	dag.insert_vx(4, vec![1, 2]).unwrap();
+	dag.insert_vx(5, vec![3, 2]).unwrap();
 
-	dag.set_chit(0, 1);
-	dag.set_chit(1, 1);
-	dag.set_chit(4, 1);
+	dag.set_chit(0, 1).unwrap();
+	dag.set_chit(1, 1).unwrap();
+	dag.set_chit(4, 1).unwrap();
 
 	assert_eq!(dag.conviction(0).unwrap(), 3);
 	assert_eq!(dag.conviction(1).unwrap(), 2);
