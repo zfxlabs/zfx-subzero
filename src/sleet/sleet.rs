@@ -63,46 +63,20 @@ impl Sleet {
 	self.conflict_map.insert_tx(inner_tx.clone());
 	self.dag.insert_vx(inner_tx.hash(), tx.parents.clone());
     }
-    
+
     // Branch preference
 
     /// Starts at some vertex and does a depth first search in order to compute whether
     /// the vertex is strongly preferred (by checking whether all its ancestry is
     /// preferred).
     pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
-	let mut visited: HashMap<TxHash, bool> = HashMap::default();
-	let mut stack = vec![];
-	stack.push(tx.clone());
-	    
-	loop {
-	    if stack.len() == 0 {
-		break;
-	    }
-	    let elt = stack.pop().unwrap();
-	    match visited.entry(elt.clone()) {
-		Entry::Occupied(_) => (),
-		Entry::Vacant(mut v) => {
-		    let _ = v.insert(true);
-		    // Instead of saving the node here we check if it is strongly preferred
-		    // along the dfs and return false if not.
-		    if !self.conflict_map.is_preferred(elt.clone())? {
-			return Ok(false);
-		    }
-		},
-	    }
-	    let adj = self.dag.get(&elt).unwrap();
-	    for edge in adj.iter().cloned() {
-		match visited.entry(edge.clone()) {
-		    Entry::Occupied(_) =>
-			(),
-		    Entry::Vacant(_) =>
-			stack.push(edge),
-		}
-	    }
+            for ancestor in self.dag.dfs(tx) {
+                if !self.conflict_map.is_preferred(ancestor.clone())? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
 	}
-	// All nodes have been visited along the DFS - the node is strongly preferred.
-	Ok(true)
-    }
 
     // Adaptive Parent Selection
 
@@ -110,90 +84,43 @@ impl Sleet {
     /// search until `p` preferrential parents are accumulated (or none if there are
     /// none).
     pub fn select_parents(&self, p: usize) -> Result<Vec<TxHash>> {
-	if self.dag.len() == 0 {
-	    Ok(vec![])
-	} else {
-	    let mut parents = vec![];
-	    let leaves = self.dag.leaves();
-	    for leaf in leaves.iter() {
-		let mut visited: HashMap<TxHash, bool> = HashMap::default();
-		let mut stack = vec![];
-		stack.push(leaf.clone());
-
-		loop {
-		    if stack.len() == 0 {
-			break;
-		    }
-		    let elt = stack.pop().unwrap();
-		    match visited.entry(elt.clone()) {
-			Entry::Occupied(_) => (),
-			Entry::Vacant(mut v) => {
-			    if self.is_strongly_preferred(elt.clone())? {
-				parents.push(elt.clone());
-				v.insert(true);
-				if parents.len() >= p {
-				    // Found `p` preferred parents.
-				    break;
-				} else {
-				    // Found a preferred parent for this leaf so skip.
-				    continue;
-				}
-			    }
-			},
-		    }
-		    let adj = self.dag.get(&elt).unwrap();
-		    for edge in adj.iter().cloned() {
-			match visited.entry(edge.clone()) {
-			    Entry::Occupied(_) =>
-				(),
-			    Entry::Vacant(_) =>
-				stack.push(edge),
-			}
-		    }
-		}
-	    }
-	    Ok(parents)
-	}
+    if self.dag.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut parents = vec![];
+    let leaves = self.dag.leaves();
+    for leaf in leaves {
+        for elt in self.dag.dfs(leaf) {
+            if self.is_strongly_preferred(elt.clone())? {
+                parents.push(elt.clone());
+                if parents.len() >= p {
+                    // Found `p` preferred parents.
+                    break;
+                } else {
+                    // Found a preferred parent for this leaf so skip.
+                    continue;
+                }
+            }
+        }
+    }
+    Ok(parents)
     }
 
     // Ancestral Preference
 
     // The ancestral update updates the preferred path through the DAG every time a new
-    // vertex is added. 
+    // vertex is added.
     pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
-	let mut visited: HashMap<alpha::TxHash, bool> = HashMap::default();
-	let mut stack = vec![];
-	stack.push(tx.hash());
-
-	loop {
-	    if stack.len() == 0 {
-		break;
-	    }
-	    let elt = stack.pop().unwrap();
-	    match visited.entry(elt.clone()) {
-		Entry::Occupied(_) => (),
-		Entry::Vacant(mut v) => {
-		    v.insert(true);
-		    // conviction of T vs Pt.pref
-		    let pref = self.conflict_map.get_preferred(tx.hash())?;
-		    let d1 = self.dag.conviction(tx.hash())?;
-		    let d2 = self.dag.conviction(pref)?;
-		    // update the conflict set at this tx
-		    self.conflict_map.update_conflict_set(tx.clone(), d1, d2);
-		},
-	    }
-	    let adj = self.dag.get(&elt).unwrap();
-	    for edge in adj.iter().cloned() {
-		match visited.entry(edge.clone()) {
-		    Entry::Occupied(_) =>
-			(),
-		    Entry::Vacant(_) =>
-			stack.push(edge),
-		}
-	    }
-	}
-
-	Ok(())
+        let ancestors: Vec<_> = self.dag.dfs(tx.hash()).collect();
+        for elt in ancestors {
+            // conviction of T vs Pt.pref
+            let pref = self.conflict_map.get_preferred(tx.hash())?;
+            let d1 = self.dag.conviction(tx.hash())?;
+            let d2 = self.dag.conviction(pref)?;
+            // update the conflict set at this tx
+            self.conflict_map.update_conflict_set(tx.clone(), d1, d2);
+        }
+        Ok(())
     }
 
     // Accepted Frontier
