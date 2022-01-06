@@ -174,13 +174,8 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Creates an iterator for depth-first traversal of vertices reachable from `vx`
-    pub fn df_iter(&self, vx: V) -> DFS<'_, V> {
+    pub fn dfs(&self, vx: V) -> DFS<'_, V> {
         DFS::new(self, &vx)
-    }
-
-    /// Performs a depth-first-search from a starting vertex `vx`.
-    pub fn dfs(&self, vx: V) -> Vec<V> {
-	    self.df_iter(vx).collect()
     }
 
     /// The leaves of the DAG are all the vertices of the inverse of `g` containing no
@@ -307,37 +302,11 @@ mod test {
 	dag.insert_vx(4, vec![1, 2]).unwrap();
 	dag.insert_vx(5, vec![3, 2]).unwrap();
 
-	let r1 = dag.dfs(4);
+	let r1: Vec<_> = dag.dfs(4).collect();
 	assert_eq!(r1, vec![4,2,0,1]);
 
 	let g2 = dag.invert();
-	let r2 = g2.dfs(3);
-        assert_eq!(r2, vec![3,5]);
-
-	let l = dag.leaves();
-	if l != vec![4,5] && l != vec![5,4] {
-	    assert!(false);
-	}
-    }
-
-    #[actix_rt::test]
-    async fn test_df_iter() {
-        let mut dag: DAG<u8> = DAG::new();
-
-	// Insert the genesis vertex
-	dag.insert_vx(0, vec![]).unwrap();
-	dag.insert_vx(1, vec![0]).unwrap();
-	dag.insert_vx(2, vec![0]).unwrap();
-	dag.insert_vx(3, vec![1, 2]).unwrap();
-	// Ensure only reachable vertices are taken into account
-	dag.insert_vx(4, vec![1, 2]).unwrap();
-	dag.insert_vx(5, vec![3, 2]).unwrap();
-
-	let r1: Vec<_> = dag.df_iter(4).collect();
-	assert_eq!(r1, vec![4,2,0,1]);
-
-	let g2 = dag.invert();
-	let r2: Vec<_> = g2.df_iter(3).collect();
+	let r2: Vec<_> = g2.dfs(3).collect();
         assert_eq!(r2, vec![3,5]);
 
 	let l = dag.leaves();
@@ -356,7 +325,7 @@ mod test {
 
     #[actix_rt::test]
     #[rustfmt::skip]
-    async fn test_df_iter2() {
+    async fn test_dfs2() {
         let dag = make_dag(&[
              (0, &[]),
              (1, &[0]), (2, &[0]),
@@ -365,13 +334,13 @@ mod test {
              (9, &[8,7,6]),
             ]);
 
-        let r1: Vec<_> = dag.df_iter(8).collect();
+        let r1: Vec<_> = dag.dfs(8).collect();
         assert_eq!(r1, [8,4,1,0,3]);
 
-        let r2: Vec<_> = dag.df_iter(7).collect();
+        let r2: Vec<_> = dag.dfs(7).collect();
         assert_eq!(r2, [7,5,2,0,4,1]);
 
-        let r2: Vec<_> = dag.df_iter(9).collect();
+        let r2: Vec<_> = dag.dfs(9).collect();
         assert_eq!(r2, [
             9,6,2,0,
             7,5,
