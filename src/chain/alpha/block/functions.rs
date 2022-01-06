@@ -15,6 +15,19 @@ pub fn exists_first(db: &sled::Db) -> bool {
     }
 }
 
+pub fn get_genesis(db: &sled::Db) -> Result<(BlockHash, Block)> {
+    match db.first() {
+	Ok(Some((k, v))) => {
+	    let key: Key = Key::read_from(k.as_bytes()).unwrap();
+	    Ok((key.hash.clone(), bincode::deserialize(v.as_bytes()).unwrap()))
+	},
+	Ok(None) =>
+	    Err(Error::InvalidGenesis),
+	Err(err) =>
+	    Err(Error::Sled(err)),
+    }
+}
+
 pub fn accept_genesis(db: &sled::Db, genesis: Block) -> BlockHash {
     let encoded = bincode::serialize(&genesis).unwrap();
     let key = Key::new(genesis.height, genesis.hash());
