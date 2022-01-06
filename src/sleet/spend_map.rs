@@ -1,4 +1,5 @@
-use crate::chain::alpha::{Transaction, UTXOId, TxHash};
+use crate::chain::alpha::{Transaction, TxHash};
+use crate::chain::alpha::tx::UTXOId;
 
 use std::collections::{HashSet, HashMap, hash_map::Entry};
 
