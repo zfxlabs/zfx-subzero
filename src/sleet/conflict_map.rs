@@ -106,22 +106,22 @@ impl ConflictMap {
 	}
     }
 
-    pub fn update_conflict_set(&mut self, tx: Transaction, d1: u8, d2: u8) -> Result<()> {
-	match self.inner.entry(tx.hash()) {
+    pub fn update_conflict_set(&mut self, tx: TxHash, d1: u8, d2: u8) -> Result<()> {
+	match self.inner.entry(tx.clone()) {
 	    Entry::Occupied(mut o) => {
 		let cs = o.get_mut();
 		if d1 > d2 {
-		    cs.pref = tx.hash();
+		    cs.pref = tx.clone();
 		}
-		if tx.hash() != cs.last {
-		    cs.last = tx.hash();
+		if tx != cs.last {
+		    cs.last = tx.clone();
 		} else {
 		    cs.cnt += 1;
 		}
 		Ok(())
 	    },
 	    Entry::Vacant(_) =>
-		Err(Error::InvalidTransaction(tx.clone())),
+		Err(Error::InvalidTransactionHash(tx.clone())),
 	}
     }
 }

@@ -114,11 +114,11 @@ impl Sleet {
         let ancestors: Vec<_> = self.dag.dfs(tx.hash()).collect();
         for elt in ancestors {
             // conviction of T vs Pt.pref
-            let pref = self.conflict_map.get_preferred(tx.hash())?;
-            let d1 = self.dag.conviction(tx.hash())?;
+            let pref = self.conflict_map.get_preferred(elt.clone())?;
+            let d1 = self.dag.conviction(elt.clone())?;
             let d2 = self.dag.conviction(pref)?;
             // update the conflict set at this tx
-            self.conflict_map.update_conflict_set(tx.clone(), d1, d2);
+            self.conflict_map.update_conflict_set(elt.clone(), d1, d2);
         }
         Ok(())
     }
