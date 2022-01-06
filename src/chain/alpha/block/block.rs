@@ -1,8 +1,9 @@
+use crate::chain::alpha::InitialStaker;
 use crate::chain::alpha::tx::Transaction;
+use crate::chain::alpha::tx::{CoinbaseTx, StakeTx};
+use crate::util;
 
 use tai64::Tai64;
-
-use crate::util;
 
 use std::net::SocketAddr;
 
@@ -27,7 +28,21 @@ pub fn genesis_vrf_out() -> [u8; 32] {
     vrf_out
 }
 
-pub fn genesis(txs: Vec<Transaction>) -> Block {
+pub fn genesis(initial_stakers: Vec<InitialStaker>) -> Block {
+    let mut txs = vec![];
+    for staker in initial_stakers.iter() {
+	let pkh = staker.public_key_hash();
+	let alloc_tx = CoinbaseTx::new(pkh, staker.amount.clone());
+	let stake_tx = StakeTx::new(
+	    &staker.keypair,
+	    staker.node_id.clone(),
+	    alloc_tx.hash(),
+	    0,
+	    staker.amount.clone(),
+	);
+	txs.push(Transaction::CoinbaseTx(alloc_tx.clone()));
+	txs.push(Transaction::StakeTx(stake_tx.clone()));
+    }
     Block {
 	predecessor: None,
 	height: 0u64,
