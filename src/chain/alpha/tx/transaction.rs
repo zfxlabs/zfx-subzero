@@ -84,7 +84,7 @@ impl Transaction {
 mod tests {
     use super::*;
 
-    use zfx_id::Id;
+    use crate::zfx_id::Id;
     use rand::{CryptoRng, rngs::OsRng};
     use ed25519_dalek::Keypair;
 
