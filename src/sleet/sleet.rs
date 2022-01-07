@@ -10,6 +10,8 @@ use super::{Result, Error};
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
 
+use rand::seq::SliceRandom;
+
 use tracing::{debug, info, error};
 
 use actix::{Actor, Context, Handler, Addr};
@@ -185,6 +187,32 @@ impl Sleet {
 	}
 	Ok(accepted_frontier)
     }
+
+    // Weighted sampling
+
+    pub fn sample(&self, weight: Weight) -> Result<Vec<Id>> {
+        weighted_sample(weight, self.validators.clone())
+    }
+}
+
+#[inline]
+fn weighted_sample(weight: Weight, mut validators: Vec<(Id, Weight)>) -> Result<Vec<Id>> {
+    let mut rng = rand::thread_rng();
+    validators.shuffle(&mut rng);
+    let mut sample = vec![];
+    let mut w = 0.0;
+    for (id, w_v) in validators {
+        if w >= weight {
+            break;
+        }
+        sample.push(id);
+        w += w_v;
+    }
+    if w < weight {
+        Err(Error::InsufficientWeight)
+    } else {
+        Ok(sample)
+    }
 }
 
 impl Actor for Sleet {
@@ -359,4 +387,38 @@ mod test {
     // 	    tx1.clone().hash(),
     // 	]);
     // }
+
+    #[actix_rt::test]
+    async fn test_sampling_insufficient_stake() {
+        let empty = vec![];
+       match weighted_sample(0.66, empty) {
+            Err(Error::InsufficientWeight) => (),
+            x => panic!("unexpected: {:?}", x)
+        }
+        let not_enough = vec![(Id::one(), 0.1), (Id::two(), 0.1)];
+        match weighted_sample(0.66, not_enough) {
+            Err(Error::InsufficientWeight) => (),
+            x => panic!("unexpected: {:?}", x)
+        }
+    }
+    #[actix_rt::test]
+    async fn test_sampling() {
+        let v = vec![(Id::one(), 0.7)];
+        match weighted_sample(0.66, v) {
+            Ok(v) => assert!(v == vec![Id::one()]),
+            x => panic!("unexpected: {:?}", x),
+        }
+
+        let v = vec![(Id::one(), 0.6), (Id::two(), 0.1)];
+        match weighted_sample(0.66, v) {
+            Ok(v) => assert!(v.len() == 2),
+            x => panic!("unexpected: {:?}", x),
+        }
+
+        let v = vec![(Id::one(), 0.6), (Id::two(), 0.1), (Id::zero(), 0.1)];
+        match weighted_sample(0.66, v) {
+            Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
+            x => panic!("unexpected: {:?}", x),
+        }
+    }
 }
