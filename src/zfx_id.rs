@@ -1,7 +1,9 @@
 use std::convert::TryInto;
 use std::fmt;
 use std::ops::Index;
+use std::net::SocketAddr;
 // use std::str::FromStr;
+
 use blake2::Blake2bVar;
 use blake2::digest::{Update, VariableOutput};
 use rand::{self, Rng};
@@ -50,6 +52,11 @@ impl Id {
         let boxed_slice = byte_vec.into_boxed_slice();
         let boxed_array: Box<[u8; 32]> = boxed_slice.try_into().unwrap();
         Id(*boxed_array)
+    }
+
+    /// Converts a `SocketAddr` into an *untrusted* identity.
+    pub fn from_ip(ip: &SocketAddr) -> Id {
+        Id::new(format!("{:?}", ip.clone()).as_bytes())
     }
 
     pub fn generate() -> Id {
