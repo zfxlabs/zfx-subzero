@@ -89,6 +89,12 @@ fn main() -> Result<()> {
 
     let keypair = match matches.value_of("keypair") {
 	Some(keypair_hex) => {
+	    let dir_path = vec!["/tmp/", &node_id_str].concat();
+	    let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
+	    std::fs::create_dir_all(dir_path).unwrap();
+	    let mut file = std::fs::File::create(file_path)
+		.unwrap();
+	    file.write_all(keypair_hex.as_bytes()).unwrap();
 	    let keypair_bytes = hex::decode(keypair_hex).unwrap();
 	    Keypair::from_bytes(&keypair_bytes).unwrap()
 	},
