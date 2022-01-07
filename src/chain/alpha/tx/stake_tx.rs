@@ -3,7 +3,6 @@ use crate::zfx_id::Id;
 
 use super::{Tx, TxHash, Input, Output, Transaction};
 
-use zfx_id::Id;
 use ed25519_dalek::Keypair;
 use tai64::Tai64;
 
