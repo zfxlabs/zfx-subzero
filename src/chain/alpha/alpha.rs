@@ -5,8 +5,9 @@ use crate::client;
 use crate::util;
 use crate::{ice, ice::Ice};
 use crate::chain::alpha::InitialStaker;
-use crate::protocol::{Request, Response};
 use crate::sleet::{self, Sleet};
+use crate::hail::{self, Hail};
+use crate::protocol::{Request, Response};
 
 use super::block::{self, BlockHash, VrfOutput};
 use super::state::{State, Weight};
@@ -25,13 +26,14 @@ pub struct Alpha {
     tree: sled::Db,
     ice: Addr<Ice>,
     sleet: Addr<Sleet>,
+    hail: Addr<Hail>,
     state: State,
 }
 
 impl Alpha {
-    pub fn create(path: &Path, ice: Addr<Ice>, sleet: Addr<Sleet>) -> Result<Self> {
+    pub fn create(path: &Path, ice: Addr<Ice>, sleet: Addr<Sleet>, hail: Addr<Hail>) -> Result<Self> {
 	let tree = sled::open(path)?;
-	Ok(Alpha { tree, ice, sleet, state: State::new() })
+	Ok(Alpha { tree, ice, sleet, hail, state: State::new() })
     }
 }
 
@@ -120,15 +122,6 @@ async fn query_last_accepted(peers: Vec<SocketAddr>) -> BlockHash {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
-pub struct LiveCommittee {
-    pub height: u64,
-    pub initial_supply: u64,
-    pub validators: Vec<(Id, u64)>,
-    pub vrf_out: VrfOutput,
-}
-
 impl Handler<LiveNetwork> for Alpha {
     type Result = ResponseFuture<()>;
 
@@ -167,11 +160,8 @@ impl Handler<LiveNetwork> for Alpha {
 		// Send `ice` the most up to date information concerning the peers
 		// which are validating the network, such that we may determine the peers
 		// `uptime`.
-		let () = ice_addr.send(LiveCommittee {
-		    height: state.height,
-		    initial_supply: state.token_supply,
+		let () = ice_addr.send(ice::LiveCommittee {
 		    validators: state.validators.clone(),
-		    vrf_out,
 		}).await.unwrap();
 
 		// Send `sleet` the live committee information for querying transactions.
@@ -183,7 +173,9 @@ impl Handler<LiveNetwork> for Alpha {
 
 		// Send `hail` the live committee information for querying blocks.
 		// let () = hail_addr.send(hail::LiveCommittee {
+                //     self_id: Id,
 		//     height: state.height,
+		//     initial_supply: state.token_supply,
 		//     validators: state.validators.clone(),
 		//     vrf_out,
 		// }).await.unwrap();

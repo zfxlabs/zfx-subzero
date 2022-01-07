@@ -1,5 +1,4 @@
 use zfx_id::Id;
-use zfx_sortition::sortition;
 
 use crate::{Result, Error};
 use crate::client;
@@ -246,44 +245,18 @@ impl Handler<GetLivePeers> for Ice {
 // via the `alpha::LiveCommittee` message, which provides the validator set for the current
 // height.
 
-fn compute_vrf_h(id: Id, vrf_out: &VrfOutput) -> [u8; 32] {
-    let vrf_h = vec![id.as_bytes(), vrf_out].concat();
-    blake3::hash(&vrf_h).as_bytes().clone()
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct LiveCommittee {
+    pub validators: Vec<(Id, u64)>,
 }
 
-impl Handler<alpha::LiveCommittee> for Ice {
+impl Handler<LiveCommittee> for Ice {
     type Result = ();
 
     // The peer did not respond or responded erroneously
-    fn handle(&mut self, msg: alpha::LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	info!("received live committee at height = {:?}", msg.height);
-	let self_id = self.id.clone();
-	let expected_size = (msg.validators.len() as f64).sqrt().ceil();
-	info!("expected_size = {:?}", expected_size);
-
-	let mut validators = vec![];
-	let mut block_producers = HashSet::new();
-	let mut block_production_slot = None;
-	for (id, qty) in msg.validators {
-	    let vrf_h = compute_vrf_h(id.clone(), &msg.vrf_out);
-	    let s_w = sortition::select(qty, msg.initial_supply, expected_size, &vrf_h);
-	    // If the sortition weight > 0 then this `id` is a block producer.
-	    if s_w > 0 {
-		block_producers.insert(id.clone());
-	    }
-	    // If the sortition weight > 0 and this is our `id`, we have a slot to produce
-	    // the next block.
-	    if s_w > 0 && id.clone() == self.id {
-		block_production_slot = Some(vrf_h.clone());
-	    }
-	    let v_w = util::percent_of(qty, msg.initial_supply);
-	    validators.push((id.clone(), v_w));
-	}
-
-	// If we are the next block producer, ...
-	info!("is_block_producer: {:?}", block_production_slot.is_some());
-
-	// Otherwise wait for the next block to be received
+    fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
+	info!("ice received live committee");
     }
 }
 

@@ -1,5 +1,5 @@
 mod height_map;
 mod conflict_set;
-mod consensus;
+mod hail;
 
-pub use consensus::*;
+pub use hail::*;

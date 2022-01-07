@@ -4,6 +4,7 @@ use zfx_subzero::server::{Router, Server};
 use zfx_subzero::ice::{self, Reservoir, Ice};
 use zfx_subzero::chain::alpha::Alpha;
 use zfx_subzero::sleet::Sleet;
+use zfx_subzero::hail::Hail;
 use zfx_subzero::util;
 
 use tracing_subscriber;
@@ -122,12 +123,17 @@ fn main() -> Result<()> {
 	let sleet = Sleet::new();
 	let sleet_addr = sleet.start();
 
+	// Create the `hail` actor
+	let hail = Hail::new(vec![]);
+	let hail_addr = hail.start();
+
 	// Create the `alpha` actor
 	let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
 	let alpha = Alpha::create(
 	    Path::new(&db_path),
 	    ice_addr.clone(),
 	    sleet_addr.clone(),
+	    hail_addr.clone(),
 	).unwrap();
 	let alpha_addr = alpha.start();
 
