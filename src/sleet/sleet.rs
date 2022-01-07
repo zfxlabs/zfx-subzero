@@ -72,7 +72,7 @@ impl Sleet {
     /// the vertex is strongly preferred (by checking whether all its ancestry is
     /// preferred).
     pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
-        for ancestor in self.dag.dfs(tx) {
+        for ancestor in self.dag.dfs(&tx) {
             if !self.conflict_map.is_preferred(ancestor.clone())? {
                 return Ok(false);
             }
@@ -92,7 +92,7 @@ impl Sleet {
 	let mut parents = vec![];
 	let leaves = self.dag.leaves();
 	for leaf in leaves {
-            for elt in self.dag.dfs(leaf) {
+            for elt in self.dag.dfs(&leaf) {
 		if self.is_strongly_preferred(elt.clone())? {
                     parents.push(elt.clone());
                     if parents.len() >= p {
@@ -113,7 +113,7 @@ impl Sleet {
     // The ancestral update updates the preferred path through the DAG every time a new
     // vertex is added.
     pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
-        for tx_hash in self.dag.dfs(tx.hash()) {
+        for tx_hash in self.dag.dfs(&tx.hash()) {
             // conviction of T vs Pt.pref
             let pref = self.conflict_map.get_preferred(&tx_hash)?;
             let d1 = self.dag.conviction(tx_hash.clone())?;
@@ -175,8 +175,8 @@ impl Sleet {
 	let mut accepted_frontier = vec![];
 	let leaves = self.dag.leaves();
 	for leaf in leaves {
-	    for tx_hash in self.dag.dfs(leaf) {
-		if self.is_accepted(tx_hash)? {
+	    for tx_hash in self.dag.dfs(&leaf) {
+		if self.is_accepted(tx_hash.clone())? {
 		    accepted_frontier.push(tx_hash.clone());
 		    break;
 		} else {

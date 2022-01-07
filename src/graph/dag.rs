@@ -174,8 +174,8 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Creates an iterator for depth-first traversal of vertices reachable from `vx`
-    pub fn dfs(&self, vx: V) -> DFS<'_, V> {
-        DFS::new(self, &vx)
+    pub fn dfs<'a>(&'a self, vx: &'a V) -> DFS<'a, V> {
+        DFS::new(self, vx)
     }
 
     /// The leaves of the DAG are all the vertices of the inverse of `g` containing no
@@ -207,16 +207,16 @@ pub struct DFS<'a, V> {
     /// The underlying DAG
     dag: &'a DAG<V>,
     /// A stack for the depth first search
-    stack: Vec<V>,
+    stack: Vec<&'a V>,
     /// Nodes visited so far by the iterator
-    visited: HashMap<V, bool>,
+    visited: HashMap<&'a V, bool>,
 }
 
 impl<'a, V> DFS<'a, V>
 where
     V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
 {
-    fn new(dag: &'a DAG<V>, vx: &V) -> Self {
+    fn new(dag: &'a DAG<V>, vx: &'a V) -> Self {
         let mut it = Self {
             dag,
             // Mark all vertices as not visited (empty)
@@ -224,7 +224,7 @@ where
             stack: vec![],
         };
         // Start at `vx`
-        it.stack.push(vx.clone());
+        it.stack.push(vx);
         it
     }
 }
@@ -232,7 +232,7 @@ where
 impl<'a, V> Iterator for DFS<'a, V> where
     V: Clone + Eq + std::hash::Hash + std::fmt::Debug + 'a,
 {
-    type Item = V;
+    type Item = &'a V;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.stack.is_empty() {
@@ -240,15 +240,15 @@ impl<'a, V> Iterator for DFS<'a, V> where
         }
 
         let next = self.stack.pop().unwrap();
-        match self.visited.entry(next.clone()) {
+        match self.visited.entry(&next) {
             Entry::Occupied(_) => (),
 		    Entry::Vacant(mut v) => {
 		        v.insert(true);
 		    },
 	    }
 	    let adj = self.dag.get(&next).unwrap();
-	    for edge in adj.iter().cloned() {
-		    match self.visited.entry(edge.clone()) {
+	    for edge in adj.iter() {
+		    match self.visited.entry(edge) {
 		        Entry::Occupied(_) => (),
 		        Entry::Vacant(_) => self.stack.push(edge),
 		    }
@@ -302,11 +302,11 @@ mod test {
 	dag.insert_vx(4, vec![1, 2]).unwrap();
 	dag.insert_vx(5, vec![3, 2]).unwrap();
 
-	let r1: Vec<_> = dag.dfs(4).collect();
+	let r1: Vec<_> = dag.dfs(&4).cloned().collect();
 	assert_eq!(r1, vec![4,2,0,1]);
 
 	let g2 = dag.invert();
-	let r2: Vec<_> = g2.dfs(3).collect();
+	let r2: Vec<_> = g2.dfs(&3).cloned().collect();
         assert_eq!(r2, vec![3,5]);
 
 	let l = dag.leaves();
@@ -334,14 +334,14 @@ mod test {
              (9, &[8,7,6]),
             ]);
 
-        let r1: Vec<_> = dag.dfs(8).collect();
+        let r1: Vec<_> = dag.dfs(&8).cloned().collect();
         assert_eq!(r1, [8,4,1,0,3]);
 
-        let r2: Vec<_> = dag.dfs(7).collect();
+        let r2: Vec<_> = dag.dfs(&7).cloned().collect();
         assert_eq!(r2, [7,5,2,0,4,1]);
 
-        let r2: Vec<_> = dag.dfs(9).collect();
-        assert_eq!(r2, [
+        let r3: Vec<_> = dag.dfs(&9).cloned().collect();
+        assert_eq!(r3, [
             9,6,2,0,
             7,5,
             4,1,
