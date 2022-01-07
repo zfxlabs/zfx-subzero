@@ -10,6 +10,8 @@ use super::{Result, Error};
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
 
+use rand::seq::SliceRandom;
+
 use tracing::{debug, info, error};
 
 use actix::{Actor, Context, Handler, Addr};
@@ -70,7 +72,7 @@ impl Sleet {
     /// the vertex is strongly preferred (by checking whether all its ancestry is
     /// preferred).
     pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
-        for ancestor in self.dag.dfs(tx) {
+        for ancestor in self.dag.dfs(&tx) {
             if !self.conflict_map.is_preferred(ancestor.clone())? {
                 return Ok(false);
             }
@@ -90,7 +92,7 @@ impl Sleet {
 	let mut parents = vec![];
 	let leaves = self.dag.leaves();
 	for leaf in leaves {
-            for elt in self.dag.dfs(leaf) {
+            for elt in self.dag.dfs(&leaf) {
 		if self.is_strongly_preferred(elt.clone())? {
                     parents.push(elt.clone());
                     if parents.len() >= p {
@@ -111,8 +113,7 @@ impl Sleet {
     // The ancestral update updates the preferred path through the DAG every time a new
     // vertex is added.
     pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
-        let ancestors: Vec<_> = self.dag.dfs(tx.hash()).collect();
-        for tx_hash in ancestors {
+        for tx_hash in self.dag.dfs(&tx.hash()) {
             // conviction of T vs Pt.pref
             let pref = self.conflict_map.get_preferred(&tx_hash)?;
             let d1 = self.dag.conviction(tx_hash.clone())?;
@@ -174,8 +175,8 @@ impl Sleet {
 	let mut accepted_frontier = vec![];
 	let leaves = self.dag.leaves();
 	for leaf in leaves {
-	    for tx_hash in self.dag.dfs(leaf) {
-		if self.is_accepted(tx_hash)? {
+	    for tx_hash in self.dag.dfs(&leaf) {
+		if self.is_accepted(tx_hash.clone())? {
 		    accepted_frontier.push(tx_hash.clone());
 		    break;
 		} else {
@@ -184,6 +185,32 @@ impl Sleet {
 	    }
 	}
 	Ok(accepted_frontier)
+    }
+
+    // Weighted sampling
+
+    pub fn sample(&self, weight: Weight) -> Result<Vec<Id>> {
+        weighted_sample(weight, self.validators.clone())
+    }
+}
+
+#[inline]
+fn weighted_sample(weight: Weight, mut validators: Vec<(Id, Weight)>) -> Result<Vec<Id>> {
+    let mut rng = rand::thread_rng();
+    validators.shuffle(&mut rng);
+    let mut sample = vec![];
+    let mut w = 0.0;
+    for (id, w_v) in validators {
+        if w >= weight {
+            break;
+        }
+        sample.push(id);
+        w += w_v;
+    }
+    if w < weight {
+        Err(Error::InsufficientWeight)
+    } else {
+        Ok(sample)
     }
 }
 
@@ -359,4 +386,38 @@ mod test {
     // 	    tx1.clone().hash(),
     // 	]);
     // }
+
+    #[actix_rt::test]
+    async fn test_sampling_insufficient_stake() {
+        let empty = vec![];
+       match weighted_sample(0.66, empty) {
+            Err(Error::InsufficientWeight) => (),
+            x => panic!("unexpected: {:?}", x)
+        }
+        let not_enough = vec![(Id::one(), 0.1), (Id::two(), 0.1)];
+        match weighted_sample(0.66, not_enough) {
+            Err(Error::InsufficientWeight) => (),
+            x => panic!("unexpected: {:?}", x)
+        }
+    }
+    #[actix_rt::test]
+    async fn test_sampling() {
+        let v = vec![(Id::one(), 0.7)];
+        match weighted_sample(0.66, v) {
+            Ok(v) => assert!(v == vec![Id::one()]),
+            x => panic!("unexpected: {:?}", x),
+        }
+
+        let v = vec![(Id::one(), 0.6), (Id::two(), 0.1)];
+        match weighted_sample(0.66, v) {
+            Ok(v) => assert!(v.len() == 2),
+            x => panic!("unexpected: {:?}", x),
+        }
+
+        let v = vec![(Id::one(), 0.6), (Id::two(), 0.1), (Id::zero(), 0.1)];
+        match weighted_sample(0.66, v) {
+            Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
+            x => panic!("unexpected: {:?}", x),
+        }
+    }
 }

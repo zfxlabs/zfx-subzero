@@ -16,6 +16,7 @@ pub enum Error {
     InvalidTransactionHash(TxHash),
     InvalidConflictSet,
     Graph(graph::Error),
+    InsufficientWeight,
 }
 
 impl std::error::Error for Error {}
