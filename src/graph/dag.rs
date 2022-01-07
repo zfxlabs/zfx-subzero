@@ -107,7 +107,7 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 
     /// Finds the conviction of a particular node which is the breadth-first-search of
     /// the progeny of a node, summing the chits.
-    pub fn conviction(&mut self, vx: V) -> Result<u8> {
+    pub fn conviction(&self, vx: V) -> Result<u8> {
 	// Mark all vertices as not visited (empty)
 	let mut visited: HashMap<V, bool> = HashMap::default();
 	// A queue for the breadth first search
@@ -126,7 +126,7 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	    let chit = self.get_chit(elt.clone())?;
 	    sum += chit;
 
-	    let adj = self.inverse().get(&elt).unwrap();
+	    let adj = self.inv.get(&elt).unwrap();
 	    for edge in adj.iter().cloned() {
 		match visited.entry(edge.clone()) {
 		    Entry::Occupied(_) => (),

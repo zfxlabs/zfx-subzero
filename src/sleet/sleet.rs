@@ -113,8 +113,7 @@ impl Sleet {
     // The ancestral update updates the preferred path through the DAG every time a new
     // vertex is added.
     pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
-        let ancestors: Vec<_> = self.dag.dfs(tx.hash()).collect();
-        for tx_hash in ancestors {
+        for tx_hash in self.dag.dfs(tx.hash()) {
             // conviction of T vs Pt.pref
             let pref = self.conflict_map.get_preferred(&tx_hash)?;
             let d1 = self.dag.conviction(tx_hash.clone())?;
