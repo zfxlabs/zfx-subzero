@@ -1,4 +1,4 @@
-use zfx_id::Id;
+use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 use zfx_subzero::client;
 use zfx_subzero::version;
