@@ -312,8 +312,8 @@ mod tests {
     async fn test_insert() {
 	let ip1 = "127.0.0.1:1234".parse().unwrap();
 	let ip2 = "127.0.0.1:1235".parse().unwrap();
-	let id1 = util::id_from_ip(&ip1);
-	let id2 = util::id_from_ip(&ip2);
+	let id1 = Id::from_ip(&ip1);
+	let id2 = Id::from_ip(&ip2);
 
 	let mut reservoir = Reservoir::new();
 	assert_eq!(reservoir.len(), 0);
@@ -338,8 +338,8 @@ mod tests {
     async fn test_reset_faulty() {
 	let ip1 = "127.0.0.1:1234".parse().unwrap();
 	let ip2 = "127.0.0.1:1235".parse().unwrap();
-	let id1 = util::id_from_ip(&ip1);
-	let id2 = util::id_from_ip(&ip2);
+	let id1 = Id::from_ip(&ip1);
+	let id2 = Id::from_ip(&ip2);
 
 	let mut reservoir = Reservoir::new();
 	assert_eq!(reservoir.len(), 0);
@@ -360,8 +360,8 @@ mod tests {
     async fn test_reset_conviction() {
 	let ip1 = "127.0.0.1:1234".parse().unwrap();
 	let ip2 = "127.0.0.1:1235".parse().unwrap();
-	let id1 = util::id_from_ip(&ip1);
-	let id2 = util::id_from_ip(&ip2);
+	let id1 = Id::from_ip(&ip1);
+	let id2 = Id::from_ip(&ip2);
 
 	let mut reservoir = Reservoir::new();
 	assert_eq!(reservoir.len(), 0);
@@ -382,8 +382,8 @@ mod tests {
     async fn test_decide() {
 	let ip1 = "127.0.0.1:1234".parse().unwrap();
 	let ip2 = "127.0.0.1:1235".parse().unwrap();
-	let id1 = util::id_from_ip(&ip1);
-	let id2 = util::id_from_ip(&ip2);
+	let id1 = Id::from_ip(&ip1);
+	let id2 = Id::from_ip(&ip2);
 
 	let mut reservoir = Reservoir::new();
 	assert_eq!(reservoir.len(), 0);
@@ -421,9 +421,9 @@ mod tests {
 	let ip1 = "127.0.0.1:1234".parse().unwrap();
 	let ip2 = "127.0.0.1:1235".parse().unwrap();
 	let ip3 = "127.0.0.1:1236".parse().unwrap();
-	let id1 = util::id_from_ip(&ip1);
-	let id2 = util::id_from_ip(&ip2);
-	let id3 = util::id_from_ip(&ip3);
+	let id1 = Id::from_ip(&ip1);
+	let id2 = Id::from_ip(&ip2);
+	let id3 = Id::from_ip(&ip3);
 
 	let mut reservoir = Reservoir::new();
 	assert_eq!(reservoir.len(), 0);

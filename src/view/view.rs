@@ -44,7 +44,7 @@ impl View {
 
     pub fn init(&mut self, ips: Vec<SocketAddr>) {
 	for ip in ips.iter() {
-	    let id = util::id_from_ip(ip);
+	    let id = Id::from_ip(ip);
     	    if let None = self.insert(id, ip.clone()) {
 		debug!("inserted <id: {:?}, ip: {:?}>", id, ip.clone());
 	    }
@@ -59,7 +59,7 @@ impl View {
 
     // Returns whether the element was updated or not (if the element was missing)
     pub fn insert_update(&mut self, id: Id, ip: SocketAddr) -> bool {
-	if id == util::id_from_ip(&self.ip) {
+	if id == Id::from_ip(&self.ip) {
 	    return false;
 	}
 	match self.insert(id, ip.clone()) {
@@ -102,7 +102,7 @@ impl Handler<Version> for View {
     fn handle(&mut self, msg: Version, _ctx: &mut Context<Self>) -> Self::Result {
 	// TODO: verify / extend `Version`
 	let ip = msg.ip.clone();
-	let id = util::id_from_ip(&ip);
+	let id = Id::from_ip(&ip);
 	let _ = self.insert_update(id, ip);
 
 	// Fetch the peer list
@@ -149,7 +149,7 @@ impl Handler<Bootstrap> for View {
 
     fn handle(&mut self, _msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
 	let ip = self.ip.clone();
-	let id = util::id_from_ip(&ip);
+	let id = Id::from_ip(&ip);
 	// Use all seeded ips as bootstrap ips (besides self_ip)
 	let mut bootstrap_ips = vec![];
 	for (_id, ip) in self.iter() {
@@ -189,7 +189,7 @@ impl Handler<UpdatePeers> for View {
 	for response in msg.responses.iter() {
 	    match response {
 		Response::VersionAck(VersionAck { ip, peer_list }) => {
-		    let peer_id = util::id_from_ip(&ip);
+		    let peer_id = Id::from_ip(&ip);
 		    if self.insert_update(peer_id.clone(), ip.clone()) {
 			updates.push((peer_id.clone(), ip.clone()));
 		    }

@@ -50,13 +50,13 @@ impl Actor for Alpha {
 	    ),
 	    InitialStaker::from_hex(
 		"5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned(),
-		util::id_from_ip(&"127.0.0.1:1235".parse().unwrap()),
+		Id::from_ip(&"127.0.0.1:1235".parse().unwrap()),
 		2000,
 		1000,
 	    ),
 	    InitialStaker::from_hex(
 		"6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b".to_owned(),
-		util::id_from_ip(&"127.0.0.1:1236".parse().unwrap()),
+		Id::from_ip(&"127.0.0.1:1236".parse().unwrap()),
 		2000,
 		1000,
 	    ),

@@ -5,7 +5,7 @@ use zfx_subzero::ice::{self, Reservoir, Ice};
 use zfx_subzero::chain::alpha::Alpha;
 use zfx_subzero::sleet::Sleet;
 use zfx_subzero::hail::Hail;
-use zfx_subzero::util;
+use zfx_subzero::zfx_id::Id;
 
 use tracing_subscriber;
 use tracing::info;
@@ -85,7 +85,7 @@ fn main() -> Result<()> {
 
     let listener_ip = value_t!(matches.value_of("listener-ip"), SocketAddr)
 	.unwrap_or_else(|e| e.exit());
-    let node_id = util::id_from_ip(&listener_ip);
+    let node_id = Id::from_ip(&listener_ip);
     let node_id_str = hex::encode(node_id.as_bytes());
 
     let keypair = match matches.value_of("keypair") {
