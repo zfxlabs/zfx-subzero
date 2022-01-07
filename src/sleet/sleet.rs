@@ -6,7 +6,7 @@ use crate::chain::alpha::tx::UTXOId;
 use crate::chain::alpha::state::Weight;
 use crate::util;
 
-use super::Result;
+use super::{Result, Error};
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
 
@@ -144,14 +144,17 @@ impl Sleet {
     /// cannot be final if its parent is not also final.
     pub fn is_accepted(&self, initial_tx_hash: TxHash) -> Result<bool> {
 	let mut parent_accepted = false;
-	for tx_hash in self.dag.dfs(initial_tx_hash) {
-	    if self.is_accepted_tx(&tx_hash)? {
-		parent_accepted = true;
-		break;
-	    } else {
-		parent_accepted = false;
-		break;
-	    }
+	match self.dag.get(&initial_tx_hash) {
+	    Some(parents) => {
+		for parent in parents.iter() {
+		    if self.is_accepted_tx(&parent)? {
+			parent_accepted = true;
+			break;
+		    }
+		}
+	    },
+	    None =>
+		return Err(Error::InvalidTransactionHash(initial_tx_hash.clone())),
 	}
 	if parent_accepted {
 	    self.is_accepted_tx(&initial_tx_hash)
