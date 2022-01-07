@@ -1,6 +1,6 @@
 use super::tx::{PublicKeyHash, Amount};
 
-use zfx_id::Id;
+use crate::zfx_id::Id;
 
 use ed25519_dalek::Keypair;
 

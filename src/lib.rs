@@ -16,6 +16,7 @@ pub mod ice;
 pub mod chain;
 pub mod sleet;
 pub mod hail;
+pub mod zfx_id;
 
 use protocol::{Request, Response};
 

@@ -1,4 +1,4 @@
-use zfx_id::Id;
+use crate::zfx_id::Id;
 use crate::util;
 use crate::client;
 use crate::version::{Version, VersionAck};
