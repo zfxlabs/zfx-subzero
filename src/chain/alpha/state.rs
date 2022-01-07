@@ -70,10 +70,19 @@ impl State {
 			}
 		    }
 
-		    // TODO: Staking transactions may spend less than the total within an
+		    // Staking transactions may spend less than the total within an
 		    // output, supplying the difference back to the staker (and producing
 		    // a spendable output).
-		    //
+		    let mut i = 0;
+		    for output in tx.outputs().iter() {
+			let source = tx.hash().to_vec();
+			let utxo_id_bytes = vec![source, vec![i.clone()]].concat();
+			let utxo_id_encoded = bincode::serialize(&utxo_id_bytes).unwrap();
+			let utxo_id = blake3::hash(&utxo_id_encoded).as_bytes().clone();
+			self.utxo_ids.insert(utxo_id);
+			i += 1;
+		    }
+
 		    // NOTE: Since we assume 'forever' staking here, we ignore lock time /
 		    // other concerns.
 		    self.validators.push((tx.node_id.clone(), tx.tx.sum()));

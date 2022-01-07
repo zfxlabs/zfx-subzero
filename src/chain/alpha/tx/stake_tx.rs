@@ -1,7 +1,8 @@
-use zfx_id::Id;
+use crate::chain::alpha::Amount;
 
 use super::{Tx, TxHash, Input, Output, Transaction};
 
+use zfx_id::Id;
 use ed25519_dalek::Keypair;
 use tai64::Tai64;
 
@@ -14,17 +15,19 @@ pub struct StakeTx {
     // pub end_time: Tai64,
     /// The inputs / outputs of this transaction.
     pub tx: Tx,
+    /// The amount that the staker wishes to lock for staking.
+    pub value: Amount,
 }
 
 impl StakeTx {
 
     /// Creates a new signed staking transaction.
-    pub fn new(keypair: &Keypair, node_id: Id, source: TxHash, i: u8, value: u64) -> Self {
+    pub fn new(keypair: &Keypair, node_id: Id, tx: Tx, value: Amount) -> Self {
 	let encoded = bincode::serialize(&keypair.public).unwrap();
 	let pkh = blake3::hash(&encoded).as_bytes().clone();
-	let input = Input::new(keypair, source, i);
-	let output = Output::new(pkh, value.clone());
-	StakeTx { node_id, tx: Tx::new(vec![input], vec![output]) }
+	// Spend the supplied transaction (to self)
+	let tx = tx.stake(keypair, pkh.clone(), pkh.clone(), value.clone()).unwrap();
+	StakeTx { node_id, tx, value }
     }
 
     pub fn inputs(&self) -> Vec<Input> {

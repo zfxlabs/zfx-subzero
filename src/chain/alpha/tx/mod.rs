@@ -21,6 +21,7 @@ pub use transaction::*;
 pub enum Error {
     ExceedsAvailableFunds,
     ZeroSpend,
+    ZeroStake,
 }
 
 impl std::error::Error for Error {}
