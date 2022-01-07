@@ -30,13 +30,32 @@ impl ConflictMap {
 	}
     }
 
+    /// Whether the `Tx` has no other conflicts.
+    pub fn is_singleton(&self, tx_hash: &TxHash) -> Result<bool> {
+	match self.inner.get(tx_hash) {
+	    Some(cs) =>
+		Ok(cs.is_singleton()),
+	    None =>
+		Err(Error::InvalidTransactionHash(tx_hash.clone())),
+	}
+    }
+
     /// Fetch the preferred transaction.
-    pub fn get_preferred(&self, tx_hash: TxHash) -> Result<TxHash> {
-	match self.inner.get(&tx_hash) {
+    pub fn get_preferred(&self, tx_hash: &TxHash) -> Result<TxHash> {
+	match self.inner.get(tx_hash) {
 	    Some(cs) =>
 		Ok(cs.pref),
 	    None =>
-		Err(Error::InvalidTransactionHash(tx_hash)),
+		Err(Error::InvalidTransactionHash(tx_hash.clone())),
+	}
+    }
+
+    pub fn get_confidence(&self, tx_hash: &TxHash) -> Result<u8> {
+	match self.inner.get(tx_hash) {
+	    Some(cs) =>
+		Ok(cs.cnt),
+	    None =>
+		Err(Error::InvalidTransactionHash(tx_hash.clone())),
 	}
     }
 

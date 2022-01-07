@@ -23,8 +23,8 @@ const NPARENTS: usize = 3;
 
 // Security parameters
 
-const BETA1: usize = 11;
-const BETA2: usize = 20;
+const BETA1: u8 = 11;
+const BETA2: u8 = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
@@ -112,21 +112,76 @@ impl Sleet {
     // vertex is added.
     pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
         let ancestors: Vec<_> = self.dag.dfs(tx.hash()).collect();
-        for elt in ancestors {
+        for tx_hash in ancestors {
             // conviction of T vs Pt.pref
-            let pref = self.conflict_map.get_preferred(elt.clone())?;
-            let d1 = self.dag.conviction(elt.clone())?;
+            let pref = self.conflict_map.get_preferred(&tx_hash)?;
+            let d1 = self.dag.conviction(tx_hash.clone())?;
             let d2 = self.dag.conviction(pref)?;
             // update the conflict set at this tx
-            self.conflict_map.update_conflict_set(elt.clone(), d1, d2);
+            self.conflict_map.update_conflict_set(tx_hash.clone(), d1, d2);
         }
         Ok(())
     }
 
+    // Finality
+
+    /// Checks whether the transaction `TxHash` is accepted as final.
+    pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> Result<bool> {
+	if self.conflict_map.is_singleton(tx_hash)? &&
+	    self.conflict_map.get_confidence(tx_hash)? >= BETA1 {
+		Ok(true)
+	    } else {
+		if self.conflict_map.get_confidence(tx_hash)? >= BETA2 {
+		    Ok(true)
+		} else {
+		    Ok(false)
+		}
+	    }
+    }
+
+    /// Checks whether the parent of the provided `TxHash` is final - note that we do not
+    /// traverse all of the parents of the accepted parent, since a child transaction
+    /// cannot be final if its parent is not also final.
+    pub fn is_accepted(&self, initial_tx_hash: TxHash) -> Result<bool> {
+	let mut parent_accepted = false;
+	for tx_hash in self.dag.dfs(initial_tx_hash) {
+	    if self.is_accepted_tx(&tx_hash)? {
+		parent_accepted = true;
+		break;
+	    } else {
+		parent_accepted = false;
+		break;
+	    }
+	}
+	if parent_accepted {
+	    self.is_accepted_tx(&initial_tx_hash)
+	} else {
+	    Ok(false)
+	}
+    }
+
     // Accepted Frontier
 
-    // The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
-    // up to a vertices considered final, collecting all the final nodes.
+    /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
+    /// up to a vertices considered final, collecting all the final nodes.
+    pub fn get_accepted_frontier(&self) -> Result<Vec<TxHash>> {
+	if self.dag.is_empty() {
+	    return Ok(vec![]);
+	}
+	let mut accepted_frontier = vec![];
+	let leaves = self.dag.leaves();
+	for leaf in leaves {
+	    for tx_hash in self.dag.dfs(leaf) {
+		if self.is_accepted(tx_hash)? {
+		    accepted_frontier.push(tx_hash.clone());
+		    break;
+		} else {
+		    break;
+		}
+	    }
+	}
+	Ok(accepted_frontier)
+    }
 }
 
 impl Actor for Sleet {
@@ -244,7 +299,7 @@ impl Handler<QueryTx> for Sleet {
 // Runs the main consensus loop
 // pub async fn run() {
 //     loop {
-// 	// Receive an unqueried transaction.
+// 	// Find an unqueried transaction.
 //
 // 	// Sample `k` random peers from the live committee.
 //

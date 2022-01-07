@@ -51,6 +51,10 @@ where
 	self.pref == t
     }
 
+    pub fn is_singleton(&self) -> bool {
+	self.conflicts.len() == 1
+    }
+
     pub fn set_conflicts(&mut self, conflicts: HashSet<T>) {
 	self.conflicts = conflicts;
     }
