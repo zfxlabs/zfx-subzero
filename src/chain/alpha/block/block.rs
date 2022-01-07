@@ -32,13 +32,12 @@ pub fn genesis(initial_stakers: Vec<InitialStaker>) -> Block {
     let mut txs = vec![];
     for staker in initial_stakers.iter() {
 	let pkh = staker.public_key_hash();
-	let alloc_tx = CoinbaseTx::new(pkh, staker.amount.clone());
+	let alloc_tx = CoinbaseTx::new(pkh, staker.allocation.clone());
 	let stake_tx = StakeTx::new(
 	    &staker.keypair,
 	    staker.node_id.clone(),
-	    alloc_tx.hash(),
-	    0,
-	    staker.amount.clone(),
+	    alloc_tx.tx.clone(),
+	    staker.staked.clone(),
 	);
 	txs.push(Transaction::CoinbaseTx(alloc_tx.clone()));
 	txs.push(Transaction::StakeTx(stake_tx.clone()));
