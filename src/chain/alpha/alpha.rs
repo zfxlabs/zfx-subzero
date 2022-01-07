@@ -77,6 +77,7 @@ impl Actor for Alpha {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveNetwork {
+    pub self_id: Id,
     pub live_peers: Vec<(Id, SocketAddr)>,
 }
 
@@ -128,6 +129,8 @@ impl Handler<LiveNetwork> for Alpha {
     fn handle(&mut self, msg: LiveNetwork, _ctx: &mut Context<Self>) -> Self::Result {
 	info!("handling LiveNetwork");
 
+	let self_id = msg.self_id.clone();
+
 	// Process the live peers in `msg`
 	let mut peers = vec![];
 	for (_, ip) in msg.clone().live_peers {
@@ -139,6 +142,7 @@ impl Handler<LiveNetwork> for Alpha {
 
 	let ice_addr = self.ice.clone();
 	let sleet_addr = self.sleet.clone();
+	let hail_addr = self.hail.clone();
 	let state = self.state.clone();
 	Box::pin(async move {
 	    let last_accepted_hash = query_last_accepted(peers).await;
@@ -172,13 +176,13 @@ impl Handler<LiveNetwork> for Alpha {
 		}).await.unwrap();
 
 		// Send `hail` the live committee information for querying blocks.
-		// let () = hail_addr.send(hail::LiveCommittee {
-                //     self_id: Id,
-		//     height: state.height,
-		//     initial_supply: state.token_supply,
-		//     validators: state.validators.clone(),
-		//     vrf_out,
-		// }).await.unwrap();
+		let () = hail_addr.send(hail::LiveCommittee {
+                    self_id: self_id.clone(),
+		    height: state.height,
+		    initial_supply: state.token_supply,
+		    validators: state.validators.clone(),
+		    vrf_out,
+		}).await.unwrap();
 	    } else {
 		info!("chain requires bootstrapping ...");
 		// Apply state transitions until the last accepted hash

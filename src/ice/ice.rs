@@ -290,7 +290,7 @@ pub async fn ping(self_id: Id, ip: SocketAddr, queries: Vec<Query>) -> Result<Ac
     }
 }
 
-pub async fn send_ping_success(ice: Addr<Ice>, alpha: Addr<Alpha>, ack: Ack) {
+pub async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, ack: Ack) {
     let switch = ice.send(PingSuccess { ack: ack.clone() }).await.unwrap();
     if switch.flipped {
 	// If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
@@ -299,7 +299,7 @@ pub async fn send_ping_success(ice: Addr<Ice>, alpha: Addr<Alpha>, ack: Ack) {
 	} else {
 	    // Otherwise alert the `Alpha` chain of a `LiveNetwork`.
 	    let LivePeers { live_peers } = ice.send(GetLivePeers{}).await.unwrap();
-	    alpha.send(alpha::LiveNetwork { live_peers }).await.unwrap();
+	    alpha.send(alpha::LiveNetwork { self_id, live_peers }).await.unwrap();
 	}
     }
 }
@@ -330,7 +330,7 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
 	    // Ping the designated peer
 	    match ping(self_id, ip.clone(), queries).await {
 		Ok(ack) =>
-		    send_ping_success(ice.clone(), alpha.clone(), ack.clone())
+		    send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
 		    .await,
 		Err(_) =>
 		    send_ping_failure(ice.clone(), alpha.clone(), id.clone(), ip.clone())
