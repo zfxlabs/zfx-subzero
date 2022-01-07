@@ -1,4 +1,4 @@
-use zfx_id::Id;
+use crate::zfx_id::Id;
 
 use crate::graph::DAG;
 use crate::chain::alpha::{self, Transaction, TxHash};

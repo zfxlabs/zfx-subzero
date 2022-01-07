@@ -1,4 +1,4 @@
-use zfx_id::Id;
+use crate::zfx_id::Id;
 use std::net::SocketAddr;
 
 /// Converts a `SocketAddr` into an *untrusted* identity.

@@ -1,4 +1,5 @@
 use crate::chain::alpha::Amount;
+use crate::zfx_id::Id;
 
 use super::{Tx, TxHash, Input, Output, Transaction};
 

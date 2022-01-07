@@ -4,7 +4,7 @@ use super::tx::{Transaction, UTXOId};
 
 use crate::colored::Colorize;
 
-use zfx_id::Id;
+use crate::zfx_id::Id;
 
 use tai64::Tai64;
 

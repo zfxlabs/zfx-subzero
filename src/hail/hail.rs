@@ -1,4 +1,4 @@
-use zfx_id::Id;
+use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
 use crate::chain::alpha::block::{Block, Height, VrfOutput};
