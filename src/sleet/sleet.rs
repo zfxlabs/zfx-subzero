@@ -70,13 +70,13 @@ impl Sleet {
     /// the vertex is strongly preferred (by checking whether all its ancestry is
     /// preferred).
     pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
-            for ancestor in self.dag.dfs(tx) {
-                if !self.conflict_map.is_preferred(ancestor.clone())? {
-                    return Ok(false);
-                }
+        for ancestor in self.dag.dfs(tx) {
+            if !self.conflict_map.is_preferred(ancestor.clone())? {
+                return Ok(false);
             }
-            Ok(true)
-	}
+        }
+        Ok(true)
+    }
 
     // Adaptive Parent Selection
 
@@ -84,26 +84,26 @@ impl Sleet {
     /// search until `p` preferrential parents are accumulated (or none if there are
     /// none).
     pub fn select_parents(&self, p: usize) -> Result<Vec<TxHash>> {
-    if self.dag.is_empty() {
-        return Ok(vec![]);
-    }
-    let mut parents = vec![];
-    let leaves = self.dag.leaves();
-    for leaf in leaves {
-        for elt in self.dag.dfs(leaf) {
-            if self.is_strongly_preferred(elt.clone())? {
-                parents.push(elt.clone());
-                if parents.len() >= p {
-                    // Found `p` preferred parents.
-                    break;
-                } else {
-                    // Found a preferred parent for this leaf so skip.
-                    continue;
-                }
+	if self.dag.is_empty() {
+            return Ok(vec![]);
+	}
+	let mut parents = vec![];
+	let leaves = self.dag.leaves();
+	for leaf in leaves {
+            for elt in self.dag.dfs(leaf) {
+		if self.is_strongly_preferred(elt.clone())? {
+                    parents.push(elt.clone());
+                    if parents.len() >= p {
+			// Found `p` preferred parents.
+			break;
+                    } else {
+			// Found a preferred parent for this leaf so skip.
+			continue;
+                    }
+		}
             }
-        }
-    }
-    Ok(parents)
+	}
+	Ok(parents)
     }
 
     // Ancestral Preference
