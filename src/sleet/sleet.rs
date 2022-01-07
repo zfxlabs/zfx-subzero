@@ -226,13 +226,14 @@ impl Handler<LiveCommittee> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	let n_spendable = msg.utxo_ids.clone();
-	info!("Sleet received {:?} spendable outputs", n_spendable);
+	let spendable = msg.utxo_ids.clone();
+	info!("sleet received {:?} spendable outputs", spendable);
 	let mut weighted_validators = vec![];
 	for (id, amount) in msg.validators {
 	    let v_w = util::percent_of(amount, msg.initial_supply);
 	    weighted_validators.push((id.clone(), v_w));
 	}
+
 	// Update the list of UTXO Ids / weighted validator set
 	self.utxo_ids = msg.utxo_ids.clone();
 	self.validators = weighted_validators.clone();

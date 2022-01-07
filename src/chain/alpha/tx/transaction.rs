@@ -2,11 +2,13 @@ use super::{Input, Output};
 
 use super::coinbase_tx::CoinbaseTx;
 use super::stake_tx::StakeTx;
+use super::transfer_tx::TransferTx;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Transaction {
     CoinbaseTx(CoinbaseTx),
     StakeTx(StakeTx),
+    TransferTx(TransferTx),
 }
 
 impl Transaction {
@@ -26,6 +28,8 @@ impl Transaction {
 		vec![],
 	    Transaction::StakeTx(tx) =>
 		tx.inputs(),
+	    Transaction::TransferTx(tx) =>
+		tx.inputs(),
 	}
     }
 
@@ -35,6 +39,8 @@ impl Transaction {
 		tx.outputs(),
 	    Transaction::StakeTx(tx) =>
 		tx.outputs(),
+	    Transaction::TransferTx(tx) =>
+		tx.outputs(),
 	}
     }
 
@@ -43,6 +49,8 @@ impl Transaction {
 	    Transaction::CoinbaseTx(tx) =>
 		tx.hash(),
 	    Transaction::StakeTx(tx) =>
+		tx.hash(),
+	    Transaction::TransferTx(tx) =>
 		tx.hash(),
 	}
     }

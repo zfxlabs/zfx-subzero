@@ -5,6 +5,7 @@ mod output;
 mod tx;
 mod coinbase_tx;
 mod stake_tx;
+mod transfer_tx;
 mod transaction;
 
 pub use functions::*;
@@ -13,6 +14,7 @@ pub use output::*;
 pub use tx::*;
 pub use coinbase_tx::*;
 pub use stake_tx::*;
+pub use transfer_tx::*;
 pub use transaction::*;
 
 #[derive(Debug, Eq, PartialEq)]

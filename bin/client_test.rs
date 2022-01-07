@@ -40,23 +40,19 @@ async fn main() -> Result<()> {
     // Use a key provided by genesis
     // let keypair = hex::decode(..);
 
-    // Select a spendable UTXO
+    // Select a spendable transaction (ask mempool about known transactions)
+    
+    // let tx = select_spendable();
 
     // Construct a transaction, spending some random low amount
 
-    // let signature = keypair.sign(txhash);
-    // let input = Input {
-    // 	source: txhash,
-    // 	i: output_index,
-    // 	owner: keypair.public.clone(),
-    // 	signature,
-    // };
-    // let output = Output::new(destination, 1);
+    // let transfer_tx = TransferTx::new(&keypair, tx_hash, destination, change, value);
+    // let transaction = Transaction::TransferTx(transfer_tx);
 
     // Send to `sleet`
 
     // client::oneshot(peer_ip, Request::ReceiveTx(sleet::ReceiveTx {
-    // 	tx: Tx::new(vec![input], vec![output]),
+    // 	tx: transaction,
     // })).await;
 
     Ok(())

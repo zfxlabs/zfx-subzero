@@ -78,6 +78,26 @@ impl State {
 		    // other concerns.
 		    self.validators.push((tx.node_id.clone(), tx.tx.sum()));
 		},
+		Transaction::TransferTx(tx) => {
+		    // Transfer transactions spend outputs and consume inputs.
+		    for input in tx.inputs().iter() {
+			let utxo_id = input.utxo_id();
+			if !self.utxo_ids.remove(&utxo_id.clone()) {
+			    return Err(Error::InvalidUTXO(utxo_id));
+			}
+		    }
+
+		    // Transfer transactions produce new spendable outputs.
+		    let mut i: u8 = 0;
+		    for output in tx.outputs().iter() {
+			let source = tx.hash().to_vec();
+			let utxo_id_bytes = vec![source, vec![i.clone()]].concat();
+			let utxo_id_encoded = bincode::serialize(&utxo_id_bytes).unwrap();
+			let utxo_id = blake3::hash(&utxo_id_encoded).as_bytes().clone();
+			self.utxo_ids.insert(utxo_id);
+			i += 1;
+		    }
+		},
 	    }
 	}
 
