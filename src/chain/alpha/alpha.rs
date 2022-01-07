@@ -4,7 +4,6 @@ use crate::colored::Colorize;
 
 use crate::Result;
 use crate::client;
-use crate::util;
 use crate::{ice, ice::Ice};
 use crate::chain::alpha::InitialStaker;
 use crate::sleet::{self, Sleet};
@@ -46,7 +45,7 @@ impl Actor for Alpha {
 	let stakers = vec![
 	    InitialStaker::from_hex(
 		"ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned(),
-		util::id_from_ip(&"127.0.0.1:1234".parse().unwrap()),
+		Id::from_ip(&"127.0.0.1:1234".parse().unwrap()),
 		2000, // 2000 allocated
 		1000, // half of it staked so that we can transfer funds later
 	    ),
