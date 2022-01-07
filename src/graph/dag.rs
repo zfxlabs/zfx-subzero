@@ -24,15 +24,6 @@ where
     }
 }
 
-impl<V> std::ops::DerefMut for DAG<V>
-where
-    V: Eq + std::hash::Hash + Clone,
-{
-    fn deref_mut(&mut self) -> &'_ mut Self::Target {
-        &mut self.g
-    }
-}
-
 impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     pub fn new() -> Self {
 	DAG {
@@ -65,7 +56,7 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 	    }
 	}
 	// Insert DAG with all inbound edges
-	match self.entry(vx.clone()) {
+	match self.g.entry(vx.clone()) {
 	    Entry::Occupied(_) =>
 		return Err(Error::VertexExists),
 	    Entry::Vacant(mut v1) => {
@@ -191,8 +182,8 @@ impl <V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Fetches the inverted adjacency list.
-    pub fn inverse(&mut self) -> &mut HashMap<V, Vec<V>> {
-	&mut self.inv
+    pub fn inverse(&self) -> &HashMap<V, Vec<V>> {
+	&self.inv
     }
 
     /// Turns all inbound edges into outbound edges and returns the new graph.
@@ -318,7 +309,7 @@ mod test {
     fn make_dag(data: &[(u8, &[u8])]) -> DAG<u8> {
         let mut dag = DAG::<u8>::new();
         for (v, ps) in data {
-            dag.insert(*v, ps.to_vec());
+            dag.insert_vx(*v, ps.to_vec());
         }
         dag
     }
