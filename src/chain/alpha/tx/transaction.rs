@@ -55,3 +55,34 @@ impl Transaction {
 	}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use zfx_id::Id;
+    use rand::{CryptoRng, rngs::OsRng};
+    use ed25519_dalek::Keypair;
+
+    fn hash_public(keypair: &Keypair) -> [u8; 32] {
+	let enc = bincode::serialize(&keypair.public).unwrap();
+	blake3::hash(&enc).as_bytes().clone()
+    }
+
+    #[actix_rt::test]
+    async fn test_staking_allocation() {
+	let mut csprng = OsRng{};
+	let kp = Keypair::generate(&mut csprng);
+	let pkh = hash_public(&kp);
+	let node_id = Id::generate();
+	let fee = 100;
+	let allocation = 2000;
+	let staked = 1000;
+	let alloc_tx = CoinbaseTx::new(pkh, allocation.clone());
+	let stake_tx = StakeTx::new(&kp, node_id, alloc_tx.tx, staked);
+	assert_eq!(stake_tx.inputs().len(), 1);
+	assert_eq!(stake_tx.outputs().len(), 1);
+	assert_eq!(stake_tx.tx.sum(), staked - fee);
+    }
+
+}
