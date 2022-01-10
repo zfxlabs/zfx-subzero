@@ -86,24 +86,5 @@ async fn main() -> Result<()> {
 	    .await?;
     }
 
-
-    // Create the initial transaction to spend
-    // let input = Input::new(txhash, output_i);
-
-    // Select a spendable transaction (ask mempool about known transactions)
-    
-    // let tx = select_spendable();
-
-    // Construct a transaction, spending some random low amount
-
-    // let transfer_tx = TransferTx::new(&keypair, tx_hash, destination, change, value);
-    // let transaction = Transaction::TransferTx(transfer_tx);
-
-    // Send to `sleet`
-
-    // client::oneshot(peer_ip, Request::ReceiveTx(sleet::ReceiveTx {
-    // 	tx: transaction,
-    // })).await?;
-
     Ok(())
 }
