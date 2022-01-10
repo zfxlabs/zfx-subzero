@@ -38,7 +38,7 @@ impl StakeTx {
 	let encoded = bincode::serialize(&keypair.public).unwrap();
 	let pkh = blake3::hash(&encoded).as_bytes().clone();
 	// Spend the supplied transaction (to self)
-	let tx = tx.stake(keypair, pkh.clone(), pkh.clone(), value.clone()).unwrap();
+	let tx = tx.stake(keypair, pkh.clone(), value.clone()).unwrap();
 	StakeTx { node_id, tx, value }
     }
 
