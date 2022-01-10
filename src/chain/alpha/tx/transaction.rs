@@ -1,4 +1,4 @@
-use super::{Input, Output};
+use super::{Tx, Input, Output};
 
 use super::coinbase_tx::CoinbaseTx;
 use super::stake_tx::StakeTx;
@@ -11,6 +11,19 @@ pub enum Transaction {
     TransferTx(TransferTx),
 }
 
+impl std::fmt::Display for Transaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+	match self {
+	    Transaction::CoinbaseTx(tx) =>
+		write!(f, "{:?}", tx),
+	    Transaction::StakeTx(tx) =>
+		write!(f, "{:?}", tx),
+	    Transaction::TransferTx(tx) =>
+		write!(f, "{:?}", tx),
+	}
+    }
+}
+
 impl Transaction {
     pub fn is_coinbase(&self) -> bool {
 	match self {
@@ -18,6 +31,17 @@ impl Transaction {
 		true,
 	    _ =>
 		false,
+	}
+    }
+
+    pub fn inner(&self) -> Tx {
+	match self {
+	    Transaction::CoinbaseTx(tx) =>
+		tx.tx.clone(),
+	    Transaction::StakeTx(tx) =>
+		tx.tx.clone(),
+	    Transaction::TransferTx(tx) =>
+		tx.tx.clone(),
 	}
     }
 

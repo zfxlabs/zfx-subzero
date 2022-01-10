@@ -1,6 +1,7 @@
 use zfx_id::Id;
 use zfx_sortition::sortition;
 
+use crate::colored::Colorize;
 use crate::chain::alpha::block::{Block, Height, VrfOutput};
 use crate::chain::alpha::tx::StakeTx;
 use crate::util;
@@ -76,7 +77,7 @@ impl Handler<LiveCommittee> for Hail {
     type Result = ();
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	info!("hail received live committee at height = {:?}", msg.height);
+	info!("{} received live committee at height = {:?}", "[hail]".blue(), msg.height);
 	let self_id = msg.self_id.clone();
 	let expected_size = (msg.validators.len() as f64).sqrt().ceil();
 	info!("expected_size = {:?}", expected_size);
@@ -101,7 +102,7 @@ impl Handler<LiveCommittee> for Hail {
 	}
 
 	// If we are the next block producer, ...
-	info!("is_block_producer: {:?}", block_production_slot.is_some());
+	info!("is_block_producer = {:?}", block_production_slot.is_some());
 
 	// Otherwise wait for the next block to be received
     }

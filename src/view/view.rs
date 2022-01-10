@@ -159,7 +159,6 @@ impl Handler<Bootstrap> for View {
 	}
 	Box::pin(async move {
 	    // Fanout requests to the bootstrap ips for version information
-	    debug!("fanning requests to bootstrap ips");
 	    let v = client::fanout(bootstrap_ips, Request::Version(Version { id, ip })).await;
 	    BootstrapResult { responses: v }
 	})
@@ -228,7 +227,7 @@ impl Handler<SampleOne> for View {
 
     fn handle(&mut self, _msg: SampleOne, _ctx: &mut Context<Self>) -> Self::Result {
 	let sample = self.sample_k(1);
-	info!("sample = {:?}", sample.clone());
+	debug!("sample = {:?}", sample.clone());
 	SampleResult { sample }
     }
 }
@@ -247,7 +246,7 @@ pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
 	    if bootstrapped {
 		// Once a quorum has been established the `ice`
 		// reservoir is bootstrapped with the peers in `view`.
-		info!("obtained bootstrap quorum");
+		info!("bootstrap quorum ");
 		let PeersResult { peers } = view.send(GetPeers).await.unwrap();
 		if let Bootstrapped = ice.send(ice::Bootstrap { peers }).await.unwrap() {
 		    break;

@@ -1,11 +1,13 @@
 use zfx_id::Id;
 
+use crate::colored::Colorize;
 use crate::{Result, Error};
 use crate::client;
 use crate::util;
 use crate::view::{self, View};
 use crate::chain::alpha::{self, Alpha, block::VrfOutput};
 use crate::protocol::{Request, Response};
+
 use super::constants::*;
 use super::query::{Query, Outcome};
 use super::choice::Choice;
@@ -96,7 +98,7 @@ impl Handler<Ping> for Ice {
 	// Processes incoming queries from the server
 	let mut outcomes = vec![];
 	for query in msg.queries.iter().cloned() {
-	    info!("received {:?}", query.clone());
+	    info!("<- {:?}", query.clone());
 	    let outcome = process_query(&mut self.reservoir, self.id.clone(), query);
 	    outcomes.push(outcome);
 	}
@@ -118,7 +120,7 @@ impl Handler<Bootstrap> for Ice {
     type Result = Bootstrapped;
 
     fn handle(&mut self, msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
-	info!("received bootstrap peers {:?}", msg.peers);
+	debug!("received bootstrap peers {:?}", msg.peers);
 	for (id, ip) in msg.peers.iter() {
 	    self.reservoir.insert(id.clone(), ip.clone(), Choice::Live, 0);
 	}
@@ -256,7 +258,7 @@ impl Handler<LiveCommittee> for Ice {
 
     // The peer did not respond or responded erroneously
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	info!("ice received live committee");
+	info!("[{}] received live committee", "ice".to_owned().magenta());
     }
 }
 

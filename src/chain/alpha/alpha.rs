@@ -1,5 +1,7 @@
 use zfx_id::Id;
 
+use crate::colored::Colorize;
+
 use crate::Result;
 use crate::client;
 use crate::util;
@@ -12,7 +14,7 @@ use crate::protocol::{Request, Response};
 use super::block::{self, BlockHash, VrfOutput};
 use super::state::{State, Weight};
 
-use tracing::info;
+use tracing::{info, debug};
 
 use actix::{Actor, Handler, Context, Addr, ResponseFuture};
 
@@ -88,7 +90,7 @@ pub struct LiveNetwork {
 async fn query_last_accepted(peers: Vec<SocketAddr>) -> BlockHash {
     let mut i = 3;
     loop {
-	info!("querying for the last accepted block");
+	debug!("querying for the last accepted block");
 
 	// TODO: Sample `k` peers if `peers.len() > k`
 
@@ -130,7 +132,7 @@ impl Handler<LiveNetwork> for Alpha {
     type Result = ResponseFuture<()>;
 
     fn handle(&mut self, msg: LiveNetwork, _ctx: &mut Context<Self>) -> Self::Result {
-	info!("handling LiveNetwork");
+	debug!("handling LiveNetwork");
 
 	let self_id = msg.self_id.clone();
 
@@ -156,16 +158,15 @@ impl Handler<LiveNetwork> for Alpha {
 
 		let vrf_out = last_block.vrf_out.clone();
 
-		info!("bootstrapped => {:?}", hex::encode(last_accepted_hash));
-
-		info!("{}", state.format());
+		info!("{} last_accepted = {}", "[alpha]".yellow(), hex::encode(last_accepted_hash));
+		// info!("{}", state.format());
 
 		//-------------------------------------------------------------------------
 		// If we are at the same level as the quorum then we are bootstrapped.
 		//-------------------------------------------------------------------------
 
-		// Send `ice` the most up to date information concerning the peers
-		// which are validating the network, such that we may determine the peers
+		// Send `ice` the most up to date information concerning the peers which
+		// are validating the network, such that we may determine the peers
 		// `uptime`.
 		let () = ice_addr.send(ice::LiveCommittee {
 		    validators: state.validators.clone(),
@@ -175,7 +176,7 @@ impl Handler<LiveNetwork> for Alpha {
 		let () = sleet_addr.send(sleet::LiveCommittee {
 		    validators: state.validators.clone(),
 		    initial_supply: state.token_supply,
-		    utxo_ids: state.utxo_ids.clone(),
+		    txs: state.txs.clone(),
 		}).await.unwrap();
 
 		// Send `hail` the live committee information for querying blocks.
