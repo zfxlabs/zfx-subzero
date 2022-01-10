@@ -1,4 +1,4 @@
-use super::tx::{PublicKeyHash, Amount};
+use super::tx::{Amount, PublicKeyHash};
 
 use crate::zfx_id::Id;
 
@@ -13,17 +13,17 @@ pub struct InitialStaker {
 
 impl InitialStaker {
     pub fn new(keypair: Keypair, node_id: Id, allocation: Amount, staked: Amount) -> Self {
-	InitialStaker { keypair, node_id, allocation, staked }
+        InitialStaker { keypair, node_id, allocation, staked }
     }
 
     pub fn from_hex(kps: String, node_id: Id, allocation: Amount, staked: Amount) -> Self {
-	let bytes = hex::decode(kps).unwrap();
-	let keypair = Keypair::from_bytes(&bytes).unwrap();
-	InitialStaker { keypair, node_id, allocation, staked }
+        let bytes = hex::decode(kps).unwrap();
+        let keypair = Keypair::from_bytes(&bytes).unwrap();
+        InitialStaker { keypair, node_id, allocation, staked }
     }
 
     pub fn public_key_hash(&self) -> PublicKeyHash {
-	let encoded = bincode::serialize(&self.keypair.public).unwrap();
-	blake3::hash(&encoded).as_bytes().clone()
+        let encoded = bincode::serialize(&self.keypair.public).unwrap();
+        blake3::hash(&encoded).as_bytes().clone()
     }
 }

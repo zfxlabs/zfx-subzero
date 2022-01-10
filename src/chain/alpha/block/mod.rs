@@ -1,6 +1,6 @@
-mod types;
 mod block;
 mod functions;
+mod types;
 
-pub use functions::*;
 pub use block::*;
+pub use functions::*;

@@ -1,10 +1,10 @@
-use crate::{Result, Error};
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
-use tracing::{error, debug};
+use crate::{Error, Result};
+use tracing::{debug, error};
 
-use std::net::SocketAddr;
 use futures::FutureExt;
+use std::net::SocketAddr;
 
 /// Sends a single request and waits for a response.
 pub async fn oneshot(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
@@ -26,46 +26,40 @@ pub async fn fanout(ips: Vec<SocketAddr>, request: Request) -> Vec<Response> {
     // fanout oneshot requests to the ips designated in `ips` and collect the client
     // futures.
     for ip in ips.iter().cloned() {
-	let request = request.clone();
-	let client_fut = tokio::spawn(async move {
-	    match oneshot(ip, request.clone()).await {
-		Ok(result) =>
-		    result,
-		// NOTE: The error here is logged and `None` is returned
-		Err(err) => {
-		    match err {
-			Error::ChannelError(s) => {
-			    debug!("{}", s);
-			    None
-			},
-			err => {
-			    debug!("{:?}", err);
-			    None
-			},
-		    }
-		}
-	    }
-	});
-	client_futs.push(client_fut)
+        let request = request.clone();
+        let client_fut = tokio::spawn(async move {
+            match oneshot(ip, request.clone()).await {
+                Ok(result) => result,
+                // NOTE: The error here is logged and `None` is returned
+                Err(err) => match err {
+                    Error::ChannelError(s) => {
+                        debug!("{}", s);
+                        None
+                    }
+                    err => {
+                        debug!("{:?}", err);
+                        None
+                    }
+                },
+            }
+        });
+        client_futs.push(client_fut)
     }
     // join the futures and collect the responses
     futures::future::join_all(client_futs)
-	.map(|results| {
-	    let mut responses = vec![];
-	    for r in results.iter() {
-		match r {
-		    Ok(inner) =>
-			match inner {
-			    Some(response) =>
-				responses.push(response.clone()),
-			    None =>
-				(),
-			},
-		    // NOTE: The error here is logged and `None` is returned
-		    Err(_) =>
-			error!("error: joining client futures"),
-		}
-	    }
-	    responses
-	}).await
+        .map(|results| {
+            let mut responses = vec![];
+            for r in results.iter() {
+                match r {
+                    Ok(inner) => match inner {
+                        Some(response) => responses.push(response.clone()),
+                        None => (),
+                    },
+                    // NOTE: The error here is logged and `None` is returned
+                    Err(_) => error!("error: joining client futures"),
+                }
+            }
+            responses
+        })
+        .await
 }

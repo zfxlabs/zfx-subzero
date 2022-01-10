@@ -1,10 +1,10 @@
 use crate::zfx_id::Id;
 
-use crate::Result;
+use super::router::Router;
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
-use super::router::Router;
-use tracing::{info, error};
+use crate::Result;
+use tracing::{error, info};
 
 use actix::Addr;
 
@@ -25,33 +25,31 @@ pub struct Server {
 
 impl Server {
     pub fn new(ip: SocketAddr, router: Addr<Router>) -> Server {
-	Server { ip, router }
+        Server { ip, router }
     }
 
     pub async fn listen(self) -> Result<()> {
-	let listener = TcpListener::bind(self.ip.clone()).await?;
-	info!("listening on {:?}", self.ip.clone());
-	loop {
-	    let ip = self.ip.clone();
-	    let self_id = id_from_ip(&ip);
-	    let router = self.router.clone();
-	    let mut channel: Channel<Response, Request> =
-		Channel::accept(&listener).await?;
-	    tokio::spawn(async move {
-		let (mut sender, mut receiver) = channel.split();
-		// receive a request
-		let request = receiver.recv().await.unwrap();
-		// process the request
-		match request.clone() {
-		    Some(request) => {
-			let response = router.send(request).await.unwrap();
-			// debug!("sending response = {:?}", response);
-			sender.send(response).await.unwrap();
-		    },
-		    None =>
-			error!("received None"),
-		}
-	    });
-	}
+        let listener = TcpListener::bind(self.ip.clone()).await?;
+        info!("listening on {:?}", self.ip.clone());
+        loop {
+            let ip = self.ip.clone();
+            let self_id = id_from_ip(&ip);
+            let router = self.router.clone();
+            let mut channel: Channel<Response, Request> = Channel::accept(&listener).await?;
+            tokio::spawn(async move {
+                let (mut sender, mut receiver) = channel.split();
+                // receive a request
+                let request = receiver.recv().await.unwrap();
+                // process the request
+                match request.clone() {
+                    Some(request) => {
+                        let response = router.send(request).await.unwrap();
+                        // debug!("sending response = {:?}", response);
+                        sender.send(response).await.unwrap();
+                    }
+                    None => error!("received None"),
+                }
+            });
+        }
     }
 }

@@ -1,15 +1,15 @@
-pub mod tx;
 pub mod block;
 pub mod state;
+pub mod tx;
 
-mod initial_staker;
 mod alpha;
+mod initial_staker;
 
-pub use tx::*;
-pub use initial_staker::*;
 pub use alpha::*;
+pub use initial_staker::*;
+pub use tx::*;
 
-use tx::{UTXOId, CoinbaseTx};
+use tx::{CoinbaseTx, UTXOId};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
@@ -27,4 +27,3 @@ impl std::fmt::Display for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
