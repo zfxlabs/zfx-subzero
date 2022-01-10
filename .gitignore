@@ -1,0 +1,16 @@
+.envrc
+/target
+/*/target
+**/target/*
+*.lock
+*.pub
+.DS_Store
+.vscode
+*.code-workspace
+
+# demo configs
+config-zfx-testnet
+
+# test artifacts
+zfx-test-contracts/res/*
+zfx-test-contracts/*/target
