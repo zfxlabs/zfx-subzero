@@ -26,7 +26,7 @@ rand = "0.7.0"
 bytes = "*"
 byteorder = "*"
 zerocopy = "*"
-blake2 = "*"
+blake2 = "0.10.2"
 blake3 = "*"
 ed25519-dalek = { version = "1", features = ["serde"] }
 bincode = "*"
