@@ -2,6 +2,8 @@ use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
 
+use crate::client;
+use crate::protocol::Request;
 use crate::graph::DAG;
 use crate::chain::alpha::{self, Transaction, TxHash};
 use crate::chain::alpha::tx::UTXOId;
@@ -259,7 +261,6 @@ impl Actor for Sleet {
 #[rtype(result = "()")]
 pub struct LiveCommittee {
     pub validators: HashMap<Id, (SocketAddr, f64)>,
-    pub initial_supply: u64,
     pub txs: HashMap<TxHash, Transaction>,
 }
 
@@ -306,11 +307,15 @@ impl Handler<FreshTx> for Sleet {
     fn handle(&mut self, msg: FreshTx, ctx: &mut Context<Self>) -> Self::Result {
 	let validators = self.sample(ALPHA).unwrap();
 	info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
+	let mut validator_ips = vec![];
+	for (_, ip) in validators.iter() {
+	    validator_ips.push(ip.clone());
+	}
 	Box::pin(async move {
 	    // Fanout queries to sampled validators
-	    // let v = client::fanout(validator_ips, Request::QueryTx(QueryTx {
-	    //   tx: msg.tx.clone(),
-	    // }).await;
+	    let v = client::fanout(validator_ips, Request::QueryTx(QueryTx {
+		tx: msg.tx.clone(),
+	    })).await;
 
 	    // FIXME: If `v` is smaller than the length of the sampled `validator_ips` then
 	    // it means this query must be re-attempted later (synchronous timebound
