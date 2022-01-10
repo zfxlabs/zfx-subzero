@@ -33,29 +33,24 @@ where
     T: Eq + std::hash::Hash + Clone,
 {
     pub fn new(t: T) -> Self {
-	let mut conflicts = HashSet::new();
-	conflicts.insert(t.clone());
-	ConflictSet {
-	    conflicts,
-	    pref: t.clone(),
-	    last: t,
-	    cnt: 0,
-	}
+        let mut conflicts = HashSet::new();
+        conflicts.insert(t.clone());
+        ConflictSet { conflicts, pref: t.clone(), last: t, cnt: 0 }
     }
 
     pub fn is_equivalent(&self, hs: HashSet<T>) -> bool {
-	self.conflicts == hs
+        self.conflicts == hs
     }
 
     pub fn is_preferred(&self, t: T) -> bool {
-	self.pref == t
+        self.pref == t
     }
 
     pub fn is_singleton(&self) -> bool {
-	self.conflicts.len() == 1
+        self.conflicts.len() == 1
     }
 
     pub fn set_conflicts(&mut self, conflicts: HashSet<T>) {
-	self.conflicts = conflicts;
+        self.conflicts = conflicts;
     }
 }

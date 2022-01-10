@@ -1,8 +1,8 @@
-use crate::version;
-use crate::ice;
 use crate::chain::alpha;
-use crate::sleet;
 use crate::hail;
+use crate::ice;
+use crate::sleet;
+use crate::version;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
@@ -40,4 +40,3 @@ pub enum Response {
     // Error
     Unknown,
 }
-

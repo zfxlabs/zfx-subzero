@@ -1,13 +1,13 @@
 use std::convert::TryInto;
 use std::fmt;
-use std::ops::Index;
 use std::net::SocketAddr;
+use std::ops::Index;
 // use std::str::FromStr;
 
-use blake2::Blake2bVar;
-use blake2::digest::{Update, VariableOutput};
-use rand::{self, Rng};
 use base58check::{FromBase58Check, ToBase58Check};
+use blake2::digest::{Update, VariableOutput};
+use blake2::Blake2bVar;
+use rand::{self, Rng};
 
 /// Generic hash-based ID for use throughout the system
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Serialize, Deserialize, Default)]
@@ -150,9 +150,8 @@ impl Index<std::ops::Range<usize>> for Id {
     }
 }
 
-
 // This function is the replacement for `zfx_crypto`s `hash!` macro
-pub fn hash(input: &[u8]) -> [u8;32] {
+pub fn hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Blake2bVar::new(32).unwrap();
     hasher.update(input);
     let mut buf = [0u8; 32];

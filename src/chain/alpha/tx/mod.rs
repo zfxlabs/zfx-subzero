@@ -1,21 +1,21 @@
-mod types;
+mod coinbase_tx;
 mod functions;
 mod input;
 mod output;
-mod tx;
-mod coinbase_tx;
 mod stake_tx;
-mod transfer_tx;
 mod transaction;
+mod transfer_tx;
+mod tx;
+mod types;
 
+pub use coinbase_tx::*;
 pub use functions::*;
 pub use input::*;
 pub use output::*;
-pub use tx::*;
-pub use coinbase_tx::*;
 pub use stake_tx::*;
-pub use transfer_tx::*;
 pub use transaction::*;
+pub use transfer_tx::*;
+pub use tx::*;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {

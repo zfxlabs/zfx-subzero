@@ -1,7 +1,7 @@
 use crate::zfx_id::Id;
 
-use super::constants::*;
 use super::choice::Choice;
+use super::constants::*;
 
 use std::collections::HashSet;
 
@@ -21,10 +21,7 @@ impl std::fmt::Display for Quorum {
 
 impl Quorum {
     pub fn new() -> Quorum {
-        Quorum {
-            ids: HashSet::new(),
-            choices: vec![],
-        }
+        Quorum { ids: HashSet::new(), choices: vec![] }
     }
 
     pub fn len(&self) -> usize {

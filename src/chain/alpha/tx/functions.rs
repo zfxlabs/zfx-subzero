@@ -1,4 +1,4 @@
-use crate::{Result, Error};
+use crate::{Error, Result};
 
 use super::types::*;
 use super::{Transaction, TxHash};
@@ -9,10 +9,8 @@ use zerocopy::{AsBytes, FromBytes};
 pub fn is_known_tx(db: &sled::Db, tx_hash: TxHash) -> Result<bool> {
     let key = Key::new(tx_hash);
     match db.contains_key(key.as_bytes()) {
-	Ok(r) =>
-	    Ok(r),
-	Err(err) =>
-	    Err(Error::Sled(err)),
+        Ok(r) => Ok(r),
+        Err(err) => Err(Error::Sled(err)),
     }
 }
 
@@ -22,9 +20,7 @@ pub fn insert_tx(db: &sled::Db, tx: Transaction) -> Result<Option<sled::IVec>> {
     let encoded = bincode::serialize(&tx).unwrap();
     let key = Key::new(h);
     match db.insert(key.as_bytes(), encoded) {
-	Ok(v) =>
-	    Ok(v),
-	Err(err) =>
-	    Err(Error::Sled(err)),
+        Ok(v) => Ok(v),
+        Err(err) => Err(Error::Sled(err)),
     }
 }

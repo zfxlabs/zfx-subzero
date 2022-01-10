@@ -1,7 +1,5 @@
 use byteorder::BigEndian;
-use zerocopy::{
-    byteorder::U64, AsBytes, FromBytes, Unaligned,
-};
+use zerocopy::{byteorder::U64, AsBytes, FromBytes, Unaligned};
 
 #[derive(Clone, FromBytes, AsBytes, Unaligned)]
 #[repr(C)]
@@ -11,6 +9,6 @@ pub struct Key {
 
 impl Key {
     pub fn new(h: [u8; 32]) -> Key {
-	Key { hash: h }
+        Key { hash: h }
     }
 }

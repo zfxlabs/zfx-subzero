@@ -32,16 +32,11 @@ where
 
 impl<K: Clone + Eq + std::hash::Hash, V: Clone> SampleableMap<K, V> {
     pub fn new() -> Self {
-        Self {
-            map: HashMap::default(),
-            queue: vec![],
-        }
+        Self { map: HashMap::default(), queue: vec![] }
     }
 
     fn next_queue(&self) -> Vec<(K, V)> {
-        self.iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect::<Vec<(K, V)>>()
+        self.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<(K, V)>>()
     }
 
     pub fn sample(&mut self, k: usize) -> Vec<(K, V)> {
