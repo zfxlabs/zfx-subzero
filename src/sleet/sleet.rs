@@ -245,6 +245,15 @@ fn sample_weighted(min_w: Weight, mut validators: Vec<(Id, SocketAddr, Weight)>)
     }
 }
 
+#[inline]
+pub fn sum_outcomes(outcomes: Vec<(Id, Weight, bool)>) -> f64 {
+    outcomes.iter().fold(
+        0.0,
+        |acc, (_id, weight, result)| if *result { acc + *weight } else { acc },
+    )
+}
+
+
 impl Actor for Sleet {
     type Context = Context<Self>;
 
@@ -519,5 +528,26 @@ mod test {
             Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
             x => panic!("unexpected: {:?}", x),
         }
+    }
+
+    #[actix_rt::test]
+    async fn test_sum_outcomes() {
+        let zid = Id::zero();
+        let empty = vec![];
+        assert_eq!(0.0, sum_outcomes(empty));
+
+        let one_true = vec![(zid, 0.66, true)];
+        assert_eq!(0.66, sum_outcomes(one_true));
+
+        let one_false = vec![(zid, 0.66, false)];
+        assert_eq!(0.0, sum_outcomes(one_false));
+
+        let true_false = vec![
+            (zid, 0.1, false),
+            (zid, 0.1, true),
+            (zid, 0.1, false),
+            (zid, 0.1, true),
+        ];
+        assert_eq!(0.2, sum_outcomes(true_false));
     }
 }
