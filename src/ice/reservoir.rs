@@ -53,6 +53,21 @@ impl Reservoir {
             .collect::<Vec<(SocketAddr, Choice, usize)>>()
     }
 
+    /// Fetches a live peers endpoint designated by `Id` or `None` if the peer is not
+    /// `Live`.
+    pub fn get_live_endpoint(&self, id: &Id) -> Option<SocketAddr> {
+	match self.decisions.get(id) {
+	    Some((ip, choice, conviction)) => {
+		if *choice == Choice::Live && *conviction >= BETA1 {
+		    Some(ip.clone())
+		} else {
+		    None
+		}
+	    },
+	    None => None,
+	}
+    }
+
     /// Fetches all live peers.
     pub fn get_live_peers(&self) -> Vec<(Id, SocketAddr)> {
 	self.decisions.iter()
@@ -221,10 +236,10 @@ impl Reservoir {
 		} else {
 		    *c += 1;
 		    if *d == Choice::Faulty && *c >= BETA1 {
-			info!("peer confirmed to be Faulty");
+			info!("[peer] {} confirmed: {}", id.clone(), "Faulty".red());
 			self.nbootstrapped -= 1;
 		    } else if *d == Choice::Live && *c >= BETA1 {
-			info!("peer confirmed to be Live");
+			info!("[peer] {} confirmed: {}", id.clone(), "Live".green());
 			self.nbootstrapped += 1;
 		    }
 		}
@@ -259,7 +274,7 @@ impl Reservoir {
 	// has been made.
 	if q.len() >= K {
 	    if self.process_decision(peer_id.clone(), q.clone()) {
-		info!("ice is bootstrapped");
+		info!("{} bootstrapped", "[ice]".magenta());
             }
 	}
     }
@@ -282,9 +297,9 @@ impl Reservoir {
     /// Prints the reservoir in a human readable manner.
     pub fn print(&self) -> String {
         let mut s: String = "\n".to_owned();
-        for (id, quorum) in self.quorums.iter() {
-            s = format!("{}{:?}{}\n", s, id, quorum);
-        }
+        // for (id, quorum) in self.quorums.iter() {
+        //     s = format!("{}{:?}{}\n", s, id, quorum);
+        // }
         for (_id, (ip, choice, conviction)) in self.decisions.iter() {
             s = format!(
                 "{}{} {} | {:?} | {:?} {}\n",

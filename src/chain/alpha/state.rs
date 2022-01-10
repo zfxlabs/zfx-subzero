@@ -1,6 +1,6 @@
 use super::{Result, Error};
 use super::block::Block;
-use super::tx::{Transaction, UTXOId};
+use super::tx::{TxHash, Transaction, UTXOId};
 
 use crate::colored::Colorize;
 
@@ -8,7 +8,7 @@ use crate::zfx_id::Id;
 
 use tai64::Tai64;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use tracing::error;
 
@@ -20,8 +20,9 @@ pub type Weight = f64;
 pub struct State {
     pub height: u64,
     pub token_supply: u64,
+    pub total_stake: u64,
     pub validators: Vec<(Id, u64)>,
-    pub utxo_ids: HashSet<UTXOId>,
+    pub txs: HashMap<TxHash, Transaction>,
 }
 
 //-- Apply transactions to the current state
@@ -31,8 +32,9 @@ impl State {
 	State {
 	    height: 0,
 	    token_supply: 0,
+	    total_stake: 0,
 	    validators: vec![],
-	    utxo_ids: HashSet::new(),
+	    txs: HashMap::default(),
 	}
     }
 
@@ -41,71 +43,51 @@ impl State {
 	
 	// Compute the total supply
 	for tx in block.txs.iter() {
-	    match tx {
-		Transaction::CoinbaseTx(tx) => {
-		    if tx.inputs().len() != 0 {
-			return Err(Error::InvalidCoinbaseInputs(tx.clone()));
+	    match tx.clone() {
+		Transaction::CoinbaseTx(inner_tx) => {
+		    // TODO: Verify tx
+		    if inner_tx.inputs().len() != 0 {
+			return Err(Error::InvalidCoinbaseInputs(inner_tx.clone()));
 		    }
-		    if tx.outputs().len() != 1 {
+		    if inner_tx.outputs().len() != 1 {
 			return Err(Error::InvalidCoinbaseOutputs);
 		    }
-		    // Coinbase transactions create new tokens.
-		    self.token_supply += tx.tx.sum();
+
 		    // Coinbase transactions create new spendable outputs.
-		    let source = tx.hash().to_vec();
-		    let utxo_id_bytes = vec![source, vec![0]].concat();
-		    let utxo_id_encoded = bincode::serialize(&utxo_id_bytes).unwrap();
-		    let utxo_id = blake3::hash(&utxo_id_encoded).as_bytes().clone();
-		    self.utxo_ids.insert(utxo_id);
+		    let tx_hash = tx.hash();
+		    self.txs.insert(tx_hash, tx.clone());
+
+	 	    // Coinbase transactions create new tokens.
+		    self.token_supply += inner_tx.tx.sum();
 		},
 		// Staking transactions spend coinbase transactions as inputs, thus they do
 		// not change the token supply.
-		Transaction::StakeTx(tx) => {
-		    // Staking transactions spend outputs (which therefore are no longer
-		    // spendable until the staking period ends). 
-		    for input in tx.inputs().iter() {
-			let utxo_id = input.utxo_id();
-			if !self.utxo_ids.remove(&utxo_id.clone()) {
-			    return Err(Error::InvalidUTXO(utxo_id));
-			}
-		    }
+		Transaction::StakeTx(inner_tx) => {
+		    // TODO: Verify tx
 
-		    // Staking transactions may spend less than the total within an
-		    // output, supplying the difference back to the staker (and producing
-		    // a spendable output).
-		    let mut i = 0;
-		    for output in tx.outputs().iter() {
-			let source = tx.hash().to_vec();
-			let utxo_id_bytes = vec![source, vec![i.clone()]].concat();
-			let utxo_id_encoded = bincode::serialize(&utxo_id_bytes).unwrap();
-			let utxo_id = blake3::hash(&utxo_id_encoded).as_bytes().clone();
-			self.utxo_ids.insert(utxo_id);
-			i += 1;
+		    // Staking transactions consume spendable outputs and create new ones.
+		    // TODO: We assume 'forever' staking here, ignoring lock time.
+		    for input in inner_tx.inputs().iter() {
+			let tx_hash = input.source.clone();
+			self.txs.remove(&tx_hash);
 		    }
+		    let tx_hash = tx.hash();
+		    self.txs.insert(tx_hash, tx.clone());
 
-		    // NOTE: Since we assume 'forever' staking here, we ignore lock time /
-		    // other concerns.
-		    self.validators.push((tx.node_id.clone(), tx.tx.sum()));
+		    self.validators.push((inner_tx.node_id.clone(), inner_tx.value));
+
+		    self.total_stake += inner_tx.value;
 		},
-		Transaction::TransferTx(tx) => {
-		    // Transfer transactions spend outputs and consume inputs.
-		    for input in tx.inputs().iter() {
-			let utxo_id = input.utxo_id();
-			if !self.utxo_ids.remove(&utxo_id.clone()) {
-			    return Err(Error::InvalidUTXO(utxo_id));
-			}
-		    }
+		Transaction::TransferTx(inner_tx) => {
+		    // TODO: Verify tx
 
-		    // Transfer transactions produce new spendable outputs.
-		    let mut i: u8 = 0;
-		    for output in tx.outputs().iter() {
-			let source = tx.hash().to_vec();
-			let utxo_id_bytes = vec![source, vec![i.clone()]].concat();
-			let utxo_id_encoded = bincode::serialize(&utxo_id_bytes).unwrap();
-			let utxo_id = blake3::hash(&utxo_id_encoded).as_bytes().clone();
-			self.utxo_ids.insert(utxo_id);
-			i += 1;
+		    // Transfer transactions consume spendable outputs and create new ones.
+		    for input in inner_tx.inputs().iter() {
+			let tx_hash = input.source.clone();
+			self.txs.remove(&tx_hash);
 		    }
+		    let tx_hash = tx.hash();
+		    self.txs.insert(tx_hash, tx.clone());
 		},
 	    }
 	}

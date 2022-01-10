@@ -11,8 +11,8 @@ pub struct TransferTx {
 impl TransferTx {
     /// Creates a new transfer transaction. Transfer transactions are used to send tokens
     /// from the owner of `keypair` to some destination public key hash.
-    pub fn new(keypair: &Keypair, tx: Tx, destination_address: PublicKeyHash, change_address: PublicKeyHash, value: u64) -> Self {
-	let tx = tx.spend(keypair, destination_address, change_address, value).unwrap();
+    pub fn new(keypair: &Keypair, tx_hash: TxHash, tx: Tx, destination_address: PublicKeyHash, change_address: PublicKeyHash, value: u64) -> Self {
+	let tx = tx.spend(keypair, tx_hash, destination_address, change_address, value).unwrap();
 	TransferTx { tx }
     }
 

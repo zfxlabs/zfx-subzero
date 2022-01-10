@@ -1,5 +1,6 @@
 use super::{Tx, TxHash, Input, Output, PublicKeyHash};
 
+/// Coinbase transactions are used for block rewards and initial staking allocations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoinbaseTx {
     /// The inputs / outputs of this transaction.
@@ -7,8 +8,7 @@ pub struct CoinbaseTx {
 }
 
 impl CoinbaseTx {
-    /// Creates a new coinbase transaction. Coinbase transactions are used for block rewards
-    /// and initial staking allocations.
+    /// Creates a new coinbase transaction. 
     pub fn new(owner: PublicKeyHash, value: u64) -> Self {
 	let output = Output::new(owner, value.clone());
 	CoinbaseTx { tx: Tx::new(vec![], vec![output]) }

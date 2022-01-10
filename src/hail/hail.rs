@@ -1,6 +1,7 @@
 use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
+use crate::colored::Colorize;
 use crate::chain::alpha::block::{Block, Height, VrfOutput};
 use crate::chain::alpha::tx::StakeTx;
 use crate::util;
@@ -11,6 +12,7 @@ use tracing::{info, debug};
 
 use actix::{Actor, Context, Handler, Addr};
 
+use std::net::SocketAddr;
 use std::collections::{HashSet, HashMap, hash_map::Entry};
 
 pub struct Hail {
@@ -62,8 +64,8 @@ impl Actor for Hail {
 pub struct LiveCommittee {
     pub self_id: Id,
     pub height: u64,
-    pub initial_supply: u64,
-    pub validators: Vec<(Id, u64)>,
+    pub total_stake: u64,
+    pub validators: HashMap<Id, (SocketAddr, u64)>,
     pub vrf_out: VrfOutput,
 }
 
@@ -76,17 +78,17 @@ impl Handler<LiveCommittee> for Hail {
     type Result = ();
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	info!("hail received live committee at height = {:?}", msg.height);
+	info!("[{}] received live committee at height = {:?}", "hail".blue(), msg.height);
 	let self_id = msg.self_id.clone();
 	let expected_size = (msg.validators.len() as f64).sqrt().ceil();
-	info!("expected_size = {:?}", expected_size);
+	info!("[{}] expected_size = {:?}", "hail".blue(), expected_size);
 
 	let mut validators = vec![];
 	let mut block_producers = HashSet::new();
 	let mut block_production_slot = None;
-	for (id, qty) in msg.validators {
+	for (id, (_, qty)) in msg.validators {
 	    let vrf_h = compute_vrf_h(id.clone(), &msg.vrf_out);
-	    let s_w = sortition::select(qty, msg.initial_supply, expected_size, &vrf_h);
+	    let s_w = sortition::select(qty, msg.total_stake, expected_size, &vrf_h);
 	    // If the sortition weight > 0 then this `id` is a block producer.
 	    if s_w > 0 {
 		block_producers.insert(id.clone());
@@ -96,12 +98,12 @@ impl Handler<LiveCommittee> for Hail {
 	    if s_w > 0 && id.clone() == self_id {
 		block_production_slot = Some(vrf_h.clone());
 	    }
-	    let v_w = util::percent_of(qty, msg.initial_supply);
+	    let v_w = util::percent_of(qty, msg.total_stake);
 	    validators.push((id.clone(), v_w));
 	}
 
 	// If we are the next block producer, ...
-	info!("is_block_producer: {:?}", block_production_slot.is_some());
+	info!("[{}] is_block_producer = {:?}", "hail".blue(), block_production_slot.is_some());
 
 	// Otherwise wait for the next block to be received
     }

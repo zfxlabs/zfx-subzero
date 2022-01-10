@@ -1,5 +1,9 @@
 use crate::zfx_id::Id;
 
+use crate::colored::Colorize;
+
+use crate::client;
+use crate::protocol::Request;
 use crate::graph::DAG;
 use crate::chain::alpha::{self, Transaction, TxHash};
 use crate::chain::alpha::tx::UTXOId;
@@ -10,10 +14,13 @@ use super::{Result, Error};
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
 
+use rand::seq::SliceRandom;
+
 use tracing::{debug, info, error};
 
-use actix::{Actor, Context, Handler, Addr};
+use actix::{Actor, Context, AsyncContext, Handler, Addr, ResponseFuture};
 
+use std::net::SocketAddr;
 use std::collections::{HashSet, HashMap, hash_map::Entry};
 use std::hash::Hash;
 
@@ -21,23 +28,24 @@ use std::hash::Hash;
 
 const NPARENTS: usize = 3;
 
-// Security parameters
+// Safety parameters
 
+const ALPHA: f64 = 0.5;
 const BETA1: u8 = 11;
 const BETA2: u8 = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The weighted validator set.
-    validators: Vec<(Id, Weight)>,
+    committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions.
     known_txs: sled::Db,
     /// The set of all queried transactions.
     queried_txs: sled::Db,
     /// The map of conflicting transactions (potentially multi-input).
     conflict_map: ConflictMap,
-    /// A hashset containing the currently spendable UTXO ids.
-    utxo_ids: HashSet<UTXOId>,
+    /// A vector containing the transactions of the last accepted block.
+    txs: HashMap<TxHash, Transaction>,
     /// The consensus graph.
     dag: DAG<TxHash>,
 }
@@ -47,11 +55,11 @@ impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new() -> Self {
 	Sleet {
-	    validators: vec![],
+	    committee: HashMap::default(),
 	    known_txs: sled::Config::new().temporary(true).open().unwrap(),
 	    queried_txs: sled::Config::new().temporary(true).open().unwrap(),
 	    conflict_map: ConflictMap::new(),
-	    utxo_ids: HashSet::new(),
+	    txs: HashMap::default(),
 	    dag: DAG::new(),
 	}
     }
@@ -70,7 +78,7 @@ impl Sleet {
     /// the vertex is strongly preferred (by checking whether all its ancestry is
     /// preferred).
     pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
-        for ancestor in self.dag.dfs(tx) {
+        for ancestor in self.dag.dfs(&tx) {
             if !self.conflict_map.is_preferred(ancestor.clone())? {
                 return Ok(false);
             }
@@ -90,7 +98,7 @@ impl Sleet {
 	let mut parents = vec![];
 	let leaves = self.dag.leaves();
 	for leaf in leaves {
-            for elt in self.dag.dfs(leaf) {
+            for elt in self.dag.dfs(&leaf) {
 		if self.is_strongly_preferred(elt.clone())? {
                     parents.push(elt.clone());
                     if parents.len() >= p {
@@ -111,8 +119,7 @@ impl Sleet {
     // The ancestral update updates the preferred path through the DAG every time a new
     // vertex is added.
     pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
-        let ancestors: Vec<_> = self.dag.dfs(tx.hash()).collect();
-        for tx_hash in ancestors {
+        for tx_hash in self.dag.dfs(&tx.hash()) {
             // conviction of T vs Pt.pref
             let pref = self.conflict_map.get_preferred(&tx_hash)?;
             let d1 = self.dag.conviction(tx_hash.clone())?;
@@ -143,12 +150,12 @@ impl Sleet {
     /// traverse all of the parents of the accepted parent, since a child transaction
     /// cannot be final if its parent is not also final.
     pub fn is_accepted(&self, initial_tx_hash: TxHash) -> Result<bool> {
-	let mut parent_accepted = false;
+	let mut parent_accepted = true;
 	match self.dag.get(&initial_tx_hash) {
 	    Some(parents) => {
 		for parent in parents.iter() {
-		    if self.is_accepted_tx(&parent)? {
-			parent_accepted = true;
+		    if !self.is_accepted_tx(&parent)? {
+			parent_accepted = false;
 			break;
 		    }
 		}
@@ -174,16 +181,67 @@ impl Sleet {
 	let mut accepted_frontier = vec![];
 	let leaves = self.dag.leaves();
 	for leaf in leaves {
-	    for tx_hash in self.dag.dfs(leaf) {
-		if self.is_accepted(tx_hash)? {
+	    for tx_hash in self.dag.dfs(&leaf) {
+		if self.is_accepted(tx_hash.clone())? {
 		    accepted_frontier.push(tx_hash.clone());
-		    break;
-		} else {
 		    break;
 		}
 	    }
 	}
 	Ok(accepted_frontier)
+    }
+
+    // Weighted sampling
+
+    pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
+	let mut validators = vec![];
+	for (id, (ip, w)) in self.committee.iter() {
+	    validators.push((id.clone(), ip.clone(), w.clone()));
+	}
+        sample_weighted(minimum_weight, validators)
+    }
+
+    /// Checks whether a transactions inputs spends valid outputs. If two transactions
+    /// spend the same outputs in the mempool, this is resolved via the conflict map -
+    /// it is not an error to receive two conflicting transactions.
+    pub fn spends_valid_utxos(&self, tx: Transaction) -> bool {
+	for input in tx.inputs().iter() {
+	    match self.txs.get(&input.source) {
+		Some(unspent_tx) => {
+		    // FIXME: Better verification.
+		    let utxos = unspent_tx.outputs();
+		    if input.i as usize >= utxos.len() {
+			error!("invalid transaction index");
+			return false;
+		    }
+		},
+		None => {
+		    error!("invalid input source");
+		    return false;
+		}
+	    }
+	}
+	true
+    }
+}
+
+#[inline]
+fn sample_weighted(min_w: Weight, mut validators: Vec<(Id, SocketAddr, Weight)>) -> Result<Vec<(Id, SocketAddr)>> {
+    let mut rng = rand::thread_rng();
+    validators.shuffle(&mut rng);
+    let mut sample = vec![];
+    let mut w = 0.0;
+    for (id, ip, w_v) in validators {
+        if w >= min_w {
+            break;
+        }
+        sample.push((id, ip));
+        w += w_v;
+    }
+    if w < min_w {
+        Err(Error::InsufficientWeight)
+    } else {
+        Ok(sample)
     }
 }
 
@@ -191,7 +249,7 @@ impl Actor for Sleet {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
-	debug!("started Sleet");
+	debug!("started sleet");
     }
 }
 
@@ -202,26 +260,96 @@ impl Actor for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
-    pub validators: Vec<(Id, u64)>,
-    pub initial_supply: u64,
-    pub utxo_ids: HashSet<UTXOId>,
+    pub validators: HashMap<Id, (SocketAddr, f64)>,
+    pub txs: HashMap<TxHash, Transaction>,
 }
 
 impl Handler<LiveCommittee> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
-	let spendable = msg.utxo_ids.clone();
-	info!("sleet received {:?} spendable outputs", spendable);
-	let mut weighted_validators = vec![];
-	for (id, amount) in msg.validators {
-	    let v_w = util::percent_of(amount, msg.initial_supply);
-	    weighted_validators.push((id.clone(), v_w));
+	// Build the list of available UTXOs
+	let txs_len = format!("{:?}", msg.txs.len());
+	info!("\n{} received {} transactions containing spendable outputs",
+	      "[sleet]".cyan(), txs_len.cyan());
+	for (_tx_hash, tx) in msg.txs.clone() {
+	    info!("{}", tx.clone());
 	}
+	info!("");
+	self.txs = msg.txs.clone();
 
-	// Update the list of UTXO Ids / weighted validator set
-	self.utxo_ids = msg.utxo_ids.clone();
-	self.validators = weighted_validators.clone();
+	let mut s: String = format!("<<{}>>\n", "sleet".cyan());
+	for (id, (_, w)) in msg.validators.clone() {
+	    let id_s = format!("{:?}", id).yellow();
+	    let w_s = format!("{:?}", w).cyan();
+	    s = format!("{} ν = {} {} | {} {}\n", s, "⦑".magenta(), id_s, w_s, "⦒".magenta());
+	}
+	info!("{}", s);
+
+	self.committee = msg.validators;
+    }
+}
+
+// Instead of having an infinite loop as per the paper which receives and processes
+// inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
+// a fresh transaction is received - either externally in `ReceiveTx` or as an internal
+// consensus message via `QueryTx`.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct FreshTx {
+    pub tx: Transaction,
+}
+
+impl Handler<FreshTx> for Sleet {
+    type Result = ResponseFuture<()>;
+
+    fn handle(&mut self, msg: FreshTx, ctx: &mut Context<Self>) -> Self::Result {
+	let validators = self.sample(ALPHA).unwrap();
+	info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
+	let mut validator_ips = vec![];
+	for (_, ip) in validators.iter() {
+	    validator_ips.push(ip.clone());
+	}
+	Box::pin(async move {
+	    // Fanout queries to sampled validators
+	    let v = client::fanout(validator_ips, Request::QueryTx(QueryTx {
+		tx: msg.tx.clone(),
+	    })).await;
+
+	    // FIXME: If `v` is smaller than the length of the sampled `validator_ips` then
+	    // it means this query must be re-attempted later (synchronous timebound
+	    // condition) -- the transaction cannot be marked as queried in this case since
+	    // it is this validators faulty connection which caused the error.
+
+	    // Otherwise check if `k` * `alpha` > `quiescent_point`
+	    //   if yes: set_chit(tx, 1), update ancestral preferences
+	    //   if no:  set_chit(tx, 0)
+
+	    // Add the transaction to the queried set
+	})
+    }
+}
+
+// Allow clients to fetch transactions for testing.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "TxAck")]
+pub struct GetTx {
+    pub tx_hash: TxHash,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct TxAck {
+    pub tx: Transaction,
+}
+
+impl Handler<GetTx> for Sleet {
+    type Result = TxAck;
+
+    fn handle(&mut self, msg: GetTx, _ctx: &mut Context<Self>) -> Self::Result {
+	let tx = self.txs.get(&msg.tx_hash).unwrap();
+	TxAck { tx: tx.clone() }
     }
 }
 
@@ -244,7 +372,7 @@ pub struct ReceiveTxAck;
 impl Handler<ReceiveTx> for Sleet {
     type Result = ReceiveTxAck;
 
-    fn handle(&mut self, msg: ReceiveTx, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: ReceiveTx, ctx: &mut Context<Self>) -> Self::Result {
 	let tx = msg.tx.clone();
 	// Skip adding coinbase transactions (block rewards / initial allocations) to the
 	// mempool.
@@ -253,12 +381,16 @@ impl Handler<ReceiveTx> for Sleet {
 	    ReceiveTxAck{}
 	} else {
 	    if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-		info!("sleet: received new transaction {:?}", tx.clone());
-		// if spends_valid_utxo(msg.tx.clone()) {
-		let parents = self.select_parents(NPARENTS).unwrap();
-		self.insert(SleetTx::new(parents, tx.clone()));
-		alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
-		// }
+		info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
+		if self.spends_valid_utxos(tx.clone()) {
+		    let parents = self.select_parents(NPARENTS).unwrap();
+		    self.insert(SleetTx::new(parents, tx.clone()));
+		    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
+		    ctx.notify(FreshTx { tx: tx.clone() });
+		} else {
+		    // FIXME: better error handling
+		    error!("invalid transaction");
+		}
 	    }
 	    ReceiveTxAck{}
 	}
@@ -280,7 +412,7 @@ pub struct QueryTxAck {
 impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
-    fn handle(&mut self, msg: QueryTx, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
 	let tx = msg.tx.clone();
 	// Skip adding coinbase transactions (block rewards / initial allocations) to the
 	// mempool.
@@ -288,35 +420,24 @@ impl Handler<QueryTx> for Sleet {
 	    // FIXME: querying about a coinbase should result in an error
 	    QueryTxAck { tx_hash: tx.hash(), outcome: false }
 	} else {
-	    if !alpha::is_known_tx(&self.known_txs, msg.tx.hash()).unwrap() {
-		info!("sleet: received new transaction {:?}", msg.tx.clone());
-		let parents = self.select_parents(NPARENTS).unwrap();
-		self.insert(SleetTx::new(parents, msg.tx.clone()));
+	    if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+		info!("sleet: received new transaction {:?}", tx.clone());
+		if self.spends_valid_utxos(tx.clone()) {
+		    let parents = self.select_parents(NPARENTS).unwrap();
+		    self.insert(SleetTx::new(parents, tx.clone()));
+		    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
+		    ctx.notify(FreshTx { tx: tx.clone() });
+		} else {
+		    error!("invalid transaction");
+		}
 	    }
+	    // FIXME: If we are in the middle of querying this transaction, wait until a
+	    // decision or a synchronous timebound is reached on attempts.
 	    let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
 	    QueryTxAck { tx_hash: msg.tx.hash(), outcome }
 	}
     }
 }
-
-// Runs the main consensus loop
-// pub async fn run() {
-//     loop {
-// 	// Find an unqueried transaction.
-//
-// 	// Sample `k` random peers from the live committee.
-//
-// 	// Query the peers.
-//
-// 	// If `k` * `alpha` > `quiescent_point`:
-// 	//   -> chit = 1, update ancestors
-// 	// Otherwise:
-// 	//   -> chit = 0
-//
-// 	// Add the transaction to the queried set.
-//     }
-// }
-
 
 #[cfg(test)]
 mod test {
@@ -359,4 +480,44 @@ mod test {
     // 	    tx1.clone().hash(),
     // 	]);
     // }
+
+    #[actix_rt::test]
+    async fn test_sampling_insufficient_stake() {
+        let dummy_ip: SocketAddr = "0.0.0.0:1111".parse().unwrap();
+
+        let empty = vec![];
+        match sample_weighted(0.66, empty) {
+            Err(Error::InsufficientWeight) => (),
+            x => panic!("unexpected: {:?}", x)
+        }
+
+        let not_enough = vec![(Id::one(), dummy_ip, 0.1), (Id::two(), dummy_ip, 0.1)];
+        match sample_weighted(0.66, not_enough) {
+            Err(Error::InsufficientWeight) => (),
+            x => panic!("unexpected: {:?}", x)
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_sampling() {
+        let dummy_ip: SocketAddr = "0.0.0.0:1111".parse().unwrap();
+
+        let v = vec![(Id::one(), dummy_ip, 0.7)];
+        match sample_weighted(0.66, v) {
+            Ok(v) => assert!(v == vec![(Id::one(), dummy_ip)]),
+            x => panic!("unexpected: {:?}", x),
+        }
+
+        let v = vec![(Id::one(), dummy_ip, 0.6), (Id::two(), dummy_ip, 0.1)];
+        match sample_weighted(0.66, v) {
+            Ok(v) => assert!(v.len() == 2),
+            x => panic!("unexpected: {:?}", x),
+        }
+
+        let v = vec![(Id::one(), dummy_ip, 0.6), (Id::two(), dummy_ip, 0.1), (Id::zero(), dummy_ip, 0.1)];
+        match sample_weighted(0.66, v) {
+            Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
+            x => panic!("unexpected: {:?}", x),
+        }
+    }
 }
