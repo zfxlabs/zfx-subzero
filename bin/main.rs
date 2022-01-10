@@ -37,10 +37,12 @@ fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
 	    Ok(keypair)
 	},
 	Err(_) => {
+		let dir_path = vec!["/tmp/", &node_id].concat();
 	    let mut csprng = OsRng{};
 	    let keypair = Keypair::generate(&mut csprng);
 	    let keypair_string = hex::encode(keypair.to_bytes());
 	    info!("keypair => {:?}", keypair_string.clone());
+		std::fs::create_dir_all(dir_path).unwrap();
 	    let mut file = std::fs::File::create(keypair_path)?;
 	    file.write_all(keypair_string.as_bytes())?;
 	    Ok(keypair)
