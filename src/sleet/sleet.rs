@@ -288,7 +288,7 @@ impl Handler<LiveCommittee> for Sleet {
 	self.committee = msg.validators;
     }
 }
-	
+
 // Instead of having an infinite loop as per the paper which receives and processes
 // inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
 // a fresh transaction is received - either externally in `ReceiveTx` or as an internal
@@ -478,12 +478,15 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sampling_insufficient_stake() {
+        let dummy_ip: SocketAddr = "0.0.0.0:1111".parse().unwrap();
+
         let empty = vec![];
-	match sample_weighted(0.66, empty) {
+        match sample_weighted(0.66, empty) {
             Err(Error::InsufficientWeight) => (),
             x => panic!("unexpected: {:?}", x)
         }
-        let not_enough = vec![(Id::one(), 0.1), (Id::two(), 0.1)];
+
+        let not_enough = vec![(Id::one(), dummy_ip, 0.1), (Id::two(), dummy_ip, 0.1)];
         match sample_weighted(0.66, not_enough) {
             Err(Error::InsufficientWeight) => (),
             x => panic!("unexpected: {:?}", x)
@@ -492,19 +495,21 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sampling() {
-        let v = vec![(Id::one(), 0.7)];
+        let dummy_ip: SocketAddr = "0.0.0.0:1111".parse().unwrap();
+
+        let v = vec![(Id::one(), dummy_ip, 0.7)];
         match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v == vec![Id::one()]),
+            Ok(v) => assert!(v == vec![(Id::one(), dummy_ip)]),
             x => panic!("unexpected: {:?}", x),
         }
 
-        let v = vec![(Id::one(), 0.6), (Id::two(), 0.1)];
+        let v = vec![(Id::one(), dummy_ip, 0.6), (Id::two(), dummy_ip, 0.1)];
         match sample_weighted(0.66, v) {
             Ok(v) => assert!(v.len() == 2),
             x => panic!("unexpected: {:?}", x),
         }
 
-        let v = vec![(Id::one(), 0.6), (Id::two(), 0.1), (Id::zero(), 0.1)];
+        let v = vec![(Id::one(), dummy_ip, 0.6), (Id::two(), dummy_ip, 0.1), (Id::zero(), dummy_ip, 0.1)];
         match sample_weighted(0.66, v) {
             Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
             x => panic!("unexpected: {:?}", x),
