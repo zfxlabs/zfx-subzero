@@ -15,6 +15,7 @@ pub enum Request {
     GetLastAccepted,
     GetAncestors,
     // Sleet
+    GetTx(sleet::GetTx),
     ReceiveTx(sleet::ReceiveTx),
     QueryTx(sleet::QueryTx),
     // Hail
@@ -31,6 +32,7 @@ pub enum Response {
     LastAccepted(alpha::LastAccepted),
     Ancestors,
     // Sleet
+    TxAck(sleet::TxAck),
     ReceiveTxAck(sleet::ReceiveTxAck),
     QueryTxAck(sleet::QueryTxAck),
     // Hail
