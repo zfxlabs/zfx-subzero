@@ -18,7 +18,7 @@ use tracing::{debug, info, error};
 use actix::{Actor, Context, Handler, Addr};
 
 use std::net::SocketAddr;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use rand::Rng;
 
@@ -248,17 +248,38 @@ impl Handler<GetLivePeers> for Ice {
 // height.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
+#[rtype(result = "Committee")]
 pub struct LiveCommittee {
+    pub initial_supply: u64,
     pub validators: Vec<(Id, u64)>,
 }
 
-impl Handler<LiveCommittee> for Ice {
-    type Result = ();
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct Committee {
+    pub sleet_validators: HashMap<Id, (SocketAddr, f64)>,
+    pub hail_validators: HashMap<Id, (SocketAddr, u64)>,
+}
 
-    // The peer did not respond or responded erroneously
+impl Handler<LiveCommittee> for Ice {
+    type Result = Committee;
+
+    // We augment the list of validators from the `LiveCommittee` with the validator
+    // endpoints, such that subsequent consensus algorithms can probe the peers.
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
 	info!("[{}] received live committee", "ice".to_owned().magenta());
+	let mut sleet_validators = HashMap::default();
+	let mut hail_validators = HashMap::default();
+	for (id, amount) in msg.validators.iter() {
+	    match self.reservoir.get_live_endpoint(id) {
+		Some(ip) => {
+		    let w = util::percent_of(*amount, msg.initial_supply);
+		    let _ = sleet_validators.insert(id.clone(), (ip.clone(), w));
+		    let _ = hail_validators.insert(id.clone(), (ip.clone(), *amount));
+		},
+		None => (),
+	    }
+	}
+	Committee { sleet_validators, hail_validators }
     }
 }
 

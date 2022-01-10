@@ -53,6 +53,21 @@ impl Reservoir {
             .collect::<Vec<(SocketAddr, Choice, usize)>>()
     }
 
+    /// Fetches a live peers endpoint designated by `Id` or `None` if the peer is not
+    /// `Live`.
+    pub fn get_live_endpoint(&self, id: &Id) -> Option<SocketAddr> {
+	match self.decisions.get(id) {
+	    Some((ip, choice, conviction)) => {
+		if *choice == Choice::Live && *conviction >= BETA1 {
+		    Some(ip.clone())
+		} else {
+		    None
+		}
+	    },
+	    None => None,
+	}
+    }
+
     /// Fetches all live peers.
     pub fn get_live_peers(&self) -> Vec<(Id, SocketAddr)> {
 	self.decisions.iter()

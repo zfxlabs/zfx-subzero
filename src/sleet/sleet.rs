@@ -18,6 +18,7 @@ use tracing::{debug, info, error};
 
 use actix::{Actor, Context, AsyncContext, Handler, Addr, ResponseFuture};
 
+use std::net::SocketAddr;
 use std::collections::{HashSet, HashMap, hash_map::Entry};
 use std::hash::Hash;
 
@@ -27,15 +28,14 @@ const NPARENTS: usize = 3;
 
 // Safety parameters
 
-const MIN_WEIGHT: f64 = 0.1;
-
+const ALPHA: f64 = 0.5;
 const BETA1: u8 = 11;
 const BETA2: u8 = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The weighted validator set.
-    validators: Vec<(Id, Weight)>,
+    committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions.
     known_txs: sled::Db,
     /// The set of all queried transactions.
@@ -53,7 +53,7 @@ impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new() -> Self {
 	Sleet {
-	    validators: vec![],
+	    committee: HashMap::default(),
 	    known_txs: sled::Config::new().temporary(true).open().unwrap(),
 	    queried_txs: sled::Config::new().temporary(true).open().unwrap(),
 	    conflict_map: ConflictMap::new(),
@@ -191,8 +191,12 @@ impl Sleet {
 
     // Weighted sampling
 
-    pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<Id>> {
-        sample_weighted(minimum_weight, self.validators.clone())
+    pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
+	let mut validators = vec![];
+	for (id, (ip, w)) in self.committee.iter() {
+	    validators.push((id.clone(), ip.clone(), w.clone()));
+	}
+        sample_weighted(minimum_weight, validators)
     }
 
     /// Checks whether a transactions inputs spends valid outputs. If two transactions
@@ -220,16 +224,16 @@ impl Sleet {
 }
 
 #[inline]
-fn sample_weighted(min_w: Weight, mut validators: Vec<(Id, Weight)>) -> Result<Vec<Id>> {
+fn sample_weighted(min_w: Weight, mut validators: Vec<(Id, SocketAddr, Weight)>) -> Result<Vec<(Id, SocketAddr)>> {
     let mut rng = rand::thread_rng();
     validators.shuffle(&mut rng);
     let mut sample = vec![];
     let mut w = 0.0;
-    for (id, w_v) in validators {
+    for (id, ip, w_v) in validators {
         if w >= min_w {
             break;
         }
-        sample.push(id);
+        sample.push((id, ip));
         w += w_v;
     }
     if w < min_w {
@@ -254,7 +258,7 @@ impl Actor for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
-    pub validators: Vec<(Id, u64)>,
+    pub validators: HashMap<Id, (SocketAddr, f64)>,
     pub initial_supply: u64,
     pub txs: HashMap<TxHash, Transaction>,
 }
@@ -273,13 +277,15 @@ impl Handler<LiveCommittee> for Sleet {
 	info!("");
 	self.txs = msg.txs.clone();
 
-	// Build the live validator committee
-	let mut weighted_validators = vec![];
-	for (id, amount) in msg.validators {
-	    let v_w = util::percent_of(amount, msg.initial_supply);
-	    weighted_validators.push((id.clone(), v_w));
+	let mut s: String = format!("<<{}>>\n", "sleet".cyan());
+	for (id, (_, w)) in msg.validators.clone() {
+	    let id_s = format!("{:?}", id).yellow();
+	    let w_s = format!("{:?}", w).cyan();
+	    s = format!("{} ν = {} {} | {} {}\n", s, "⦑".magenta(), id_s, w_s, "⦒".magenta());
 	}
-	self.validators = weighted_validators.clone();
+	info!("{}", s);
+
+	self.committee = msg.validators;
     }
 }
 	
@@ -298,7 +304,7 @@ impl Handler<FreshTx> for Sleet {
     type Result = ResponseFuture<()>;
 
     fn handle(&mut self, msg: FreshTx, ctx: &mut Context<Self>) -> Self::Result {
-	let validators = self.sample(MIN_WEIGHT).unwrap();
+	let validators = self.sample(ALPHA).unwrap();
 	info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
 	Box::pin(async move {
 	    // Fanout queries to sampled validators
