@@ -453,44 +453,44 @@ impl Handler<QueryTx> for Sleet {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alpha::tx::{CoinbaseTx, Transaction, Tx};
     use ed25519_dalek::Keypair;
     use rand::{rngs::OsRng, CryptoRng};
 
-    // fn generate_coinbase(keypair: Keypair, amount: u64) -> alpha::Transaction {
-    // 	let enc = bincode::serialize(&keypair.public).unwrap();
-    // 	let pkh = blake3::hash(&enc);
-    // 	alpha::Tx::coinbase(pkh.as_bytes().clone(), amount)
-    // }
+    fn generate_coinbase(keypair: Keypair, amount: u64) -> alpha::Transaction {
+        let enc = bincode::serialize(&keypair.public).unwrap();
+        let pkh = blake3::hash(&enc);
+        let tx = Tx::coinbase(pkh.as_bytes().clone(), amount);
+        Transaction::CoinbaseTx(CoinbaseTx { tx })
+    }
 
-    // #[actix_rt::test]
-    // async fn test_strongly_preferred() {
-    // 	let mut sleet = Sleet::new();
+    #[actix_rt::test]
+    async fn test_strongly_preferred() {
+        let mut sleet = Sleet::new();
 
-    // 	let mut csprng = OsRng{};
-    // 	let root_kp = Keypair::generate(&mut csprng);
+        let mut csprng = OsRng {};
+        let root_kp = Keypair::generate(&mut csprng);
 
-    // 	// Generate a genesis set of coins
-    // 	let tx1 = generate_coinbase(root_kp, 1000);
+        // Generate a genesis set of coins
+        let tx1 = generate_coinbase(root_kp, 1000);
 
-    // 	let stx1 = SleetTx::new(vec![], tx1.clone());
-    // 	let stx2 = SleetTx::new(vec![], tx1.clone());
-    // 	let stx3 = SleetTx::new(vec![], tx1.clone());
+        let stx1 = SleetTx::new(vec![], tx1.clone());
+        let stx2 = SleetTx::new(vec![], tx1.clone());
+        let stx3 = SleetTx::new(vec![], tx1.clone());
 
-    // 	// Check that parent selection works with an empty DAG.
-    // 	let v_empty: Vec<alpha::TxHash> = vec![];
-    // 	assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
+        // Check that parent selection works with an empty DAG.
+        let v_empty: Vec<alpha::TxHash> = vec![];
+        assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
 
-    // 	// Insert new vertices into the DAG.
-    // 	sleet.insert(stx1.clone());
-    // 	sleet.insert(stx2.clone());
-    // 	sleet.insert(stx3.clone());
+        // Insert new vertices into the DAG.
+        sleet.insert(stx1.clone());
+        sleet.insert(stx2.clone());
+        sleet.insert(stx3.clone());
 
-    // 	// Coinbase transactions will all conflict, since `tx1` was inserted first it will
-    // 	// be the only preferred parent.
-    // 	assert_eq!(sleet.select_parents(3).unwrap(), vec![
-    // 	    tx1.clone().hash(),
-    // 	]);
-    // }
+        // Coinbase transactions will all conflict, since `tx1` was inserted first it will
+        // be the only preferred parent.
+        assert_eq!(sleet.select_parents(3).unwrap(), vec![tx1.clone().hash(),]);
+    }
 
     #[actix_rt::test]
     async fn test_sampling_insufficient_stake() {
