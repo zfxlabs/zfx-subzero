@@ -250,7 +250,7 @@ impl Handler<GetLivePeers> for Ice {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Committee")]
 pub struct LiveCommittee {
-    pub initial_supply: u64,
+    pub total_stake: u64,
     pub validators: Vec<(Id, u64)>,
 }
 
@@ -272,7 +272,7 @@ impl Handler<LiveCommittee> for Ice {
 	for (id, amount) in msg.validators.iter() {
 	    match self.reservoir.get_live_endpoint(id) {
 		Some(ip) => {
-		    let w = util::percent_of(*amount, msg.initial_supply);
+		    let w = util::percent_of(*amount, msg.total_stake);
 		    let _ = sleet_validators.insert(id.clone(), (ip.clone(), w));
 		    let _ = hail_validators.insert(id.clone(), (ip.clone(), *amount));
 		},

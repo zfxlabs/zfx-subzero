@@ -168,14 +168,13 @@ impl Handler<LiveNetwork> for Alpha {
 		// are validating the network, such that we may determine the peers
 		// `uptime`.
 		let committee = ice_addr.send(ice::LiveCommittee {
-		    initial_supply: state.token_supply,
+		    total_stake: state.total_stake,
 		    validators: state.validators.clone(),
 		}).await.unwrap();
 
 		// Send `sleet` the live committee information for querying transactions.
 		let () = sleet_addr.send(sleet::LiveCommittee {
 		    validators: committee.sleet_validators.clone(),
-		    initial_supply: state.token_supply,
 		    txs: state.txs.clone(),
 		}).await.unwrap();
 
@@ -183,7 +182,7 @@ impl Handler<LiveNetwork> for Alpha {
 		let () = hail_addr.send(hail::LiveCommittee {
                     self_id: self_id.clone(),
 		    height: state.height,
-		    initial_supply: state.token_supply,
+		    total_stake: state.total_stake,
 		    validators: committee.hail_validators.clone(),
 		    vrf_out,
 		}).await.unwrap();

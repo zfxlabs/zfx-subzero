@@ -20,6 +20,7 @@ pub type Weight = f64;
 pub struct State {
     pub height: u64,
     pub token_supply: u64,
+    pub total_stake: u64,
     pub validators: Vec<(Id, u64)>,
     pub txs: HashMap<TxHash, Transaction>,
 }
@@ -31,6 +32,7 @@ impl State {
 	State {
 	    height: 0,
 	    token_supply: 0,
+	    total_stake: 0,
 	    validators: vec![],
 	    txs: HashMap::default(),
 	}
@@ -73,6 +75,8 @@ impl State {
 		    self.txs.insert(tx_hash, tx.clone());
 
 		    self.validators.push((inner_tx.node_id.clone(), inner_tx.value));
+
+		    self.total_stake += inner_tx.value;
 		},
 		Transaction::TransferTx(inner_tx) => {
 		    // TODO: Verify tx
