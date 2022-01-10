@@ -23,7 +23,9 @@ use std::path::Path;
 use std::io::{Read, Write, BufReader};
 
 fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
-    let keypair_path = vec!["/tmp/", &node_id, "/", &node_id, ".keypair"].concat();
+    let tmp_dir = vec!["/tmp/", &node_id].concat();
+    std::fs::create_dir_all(&tmp_dir).expect(&format!("Couldn't create directory: {}", tmp_dir));
+    let keypair_path = vec![&tmp_dir[..], "/", &node_id, ".keypair"].concat();
     match std::fs::File::open(keypair_path.clone()) {
 	Ok(mut file) => {
 	    let mut buf_reader = BufReader::new(file);
@@ -92,7 +94,7 @@ fn main() -> Result<()> {
 	Some(keypair_hex) => {
 	    let dir_path = vec!["/tmp/", &node_id_str].concat();
 	    let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
-	    std::fs::create_dir_all(dir_path).unwrap();
+	    std::fs::create_dir_all(&dir_path).expect(&format!("Couldn't create directory: {}", dir_path));
 	    let mut file = std::fs::File::create(file_path)
 		.unwrap();
 	    file.write_all(keypair_hex.as_bytes()).unwrap();
@@ -118,7 +120,7 @@ fn main() -> Result<()> {
 	let reservoir = Reservoir::new();
 	let ice = Ice::new(node_id, listener_ip, reservoir);
 	let ice_addr = ice.start();
-    
+
 	// Create the `sleet` actor
 	let sleet = Sleet::new();
 	let sleet_addr = sleet.start();
@@ -168,7 +170,7 @@ fn main() -> Result<()> {
 	arbiter.spawn(bootstrap_execution);
 	arbiter.spawn(listener_execution);
     };
-    
+
     let arbiter = Arbiter::new();
     arbiter.spawn(execution);
 
