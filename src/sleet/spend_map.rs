@@ -24,7 +24,7 @@ impl SpendMap {
                     let tx_hashes = o.get_mut();
                     tx_hashes.insert(tx.hash());
                 }
-                Entry::Vacant(mut v) => {
+                Entry::Vacant(v) => {
                     // This output id has no existing conflicts, thus insert a singleton.
                     let mut hs = HashSet::new();
                     hs.insert(tx.hash());
