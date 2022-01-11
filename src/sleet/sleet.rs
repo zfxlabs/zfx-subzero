@@ -5,7 +5,7 @@ use crate::colored::Colorize;
 use crate::chain::alpha::state::Weight;
 use crate::chain::alpha::tx::UTXOId;
 use crate::chain::alpha::{self, Transaction, TxHash};
-use crate::client::{self, Client, Fanout};
+use crate::client::Fanout;
 use crate::graph::DAG;
 use crate::protocol::{Request, Response};
 
@@ -37,7 +37,7 @@ const BETA2: u8 = 20;
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The client used to make external requests.
-    client: Recipient<Fanout>,
+    sender: Recipient<Fanout>,
     /// The identity of this validator.
     node_id: Id,
     /// The weighted validator set.
@@ -56,9 +56,9 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new(client: Recipient<Fanout>, node_id: Id) -> Self {
+    pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
         Sleet {
-            client,
+            sender,
             node_id,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
@@ -387,7 +387,7 @@ impl Handler<FreshTx> for Sleet {
         }
 
         // Fanout queries to sampled validators
-        let send_to_client = self.client.send(Fanout {
+        let send_to_client = self.sender.send(Fanout {
             ips: validator_ips.clone(),
             request: Request::QueryTx(QueryTx { tx: msg.tx.clone() }),
         });
@@ -553,8 +553,8 @@ mod test {
 
     #[actix_rt::test]
     async fn test_strongly_preferred() {
-        let client = DummyClient.start();
-        let mut sleet = Sleet::new(client.recipient(), Id::zero());
+        let sender = DummyClient.start();
+        let mut sleet = Sleet::new(sender.recipient(), Id::zero());
 
         let mut csprng = OsRng {};
         let root_kp = Keypair::generate(&mut csprng);
