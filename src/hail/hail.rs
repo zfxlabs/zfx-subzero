@@ -110,8 +110,7 @@ impl Hail {
         for (id, (ip, w)) in self.committee.iter() {
             validators.push((id.clone(), ip.clone(), w.clone()));
         }
-        // util::sample_weighted(minimum_weight, validators)
-        Ok(vec![])
+        util::sample_weighted(minimum_weight, validators).ok_or(Error::InsufficientWeight)
     }
 }
 
