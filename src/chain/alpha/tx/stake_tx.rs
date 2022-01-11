@@ -9,7 +9,7 @@ use ed25519_dalek::Keypair;
 
 // A transaction is constructed from inputs and outputs and has a type, which we use to
 // create special types of transactions. Note: This is for testing only.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StakeTx {
     pub node_id: Id,
     // pub start_time: Tai64,
@@ -20,14 +20,15 @@ pub struct StakeTx {
     pub value: Amount,
 }
 
-impl std::fmt::Debug for StakeTx {
+impl std::fmt::Display for StakeTx {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let h = hex::encode(self.hash());
-        let s = format!("[{}] {}\n", "node_id".yellow(), self.node_id);
-        let s = format!("{}[{}] {}\n", s, "tx_hash".yellow(), h);
-        let s = format!("{}[{}] {}\n", s, "staked".yellow(), self.value);
-        let s = format!("{}[{}] {}\n", s, "spendable".yellow(), self.tx.sum());
-        write!(f, "{}", s)
+        let s = format!("{{ {}: {}\n", "tx_hash".yellow(), h);
+        let s = format!("{}  {}: Stake\n", s, "type".yellow());
+        let s = format!("{}  {}: {}\n", s, "node_id".yellow(), self.node_id);
+        let s = format!("{}  {}: {}\n", s, "staked".yellow(), self.value);
+        let s = format!("{}  {}: {}\n", s, "spendable".yellow(), self.tx.sum());
+        write!(f, "{} }}", s)
     }
 }
 

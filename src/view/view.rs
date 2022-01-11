@@ -1,10 +1,13 @@
 use super::sampleable_map::SampleableMap;
+
 use crate::client;
+use crate::colored::Colorize;
 use crate::ice::{self, Ice};
 use crate::protocol::{Request, Response};
 use crate::util;
 use crate::version::{Version, VersionAck};
 use crate::zfx_id::Id;
+
 use tracing::{debug, info};
 
 use actix::{Actor, Addr, Context, Handler, ResponseFuture};
@@ -239,7 +242,7 @@ pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
             if bootstrapped {
                 // Once a quorum has been established the `ice`
                 // reservoir is bootstrapped with the peers in `view`.
-                info!("bootstrap quorum ");
+                info!("[{}] obtained bootstrap quorum {}", "view".green(), "✓".green());
                 let PeersResult { peers } = view.send(GetPeers).await.unwrap();
                 if let Bootstrapped = ice.send(ice::Bootstrap { peers }).await.unwrap() {
                     break;

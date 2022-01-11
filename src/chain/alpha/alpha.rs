@@ -161,7 +161,7 @@ impl Handler<LiveNetwork> for Alpha {
 
                 let vrf_out = last_block.vrf_out.clone();
 
-                info!("{} last_accepted = {}", "[alpha]".yellow(), hex::encode(last_accepted_hash));
+                info!("[{}] last_accepted = {}", "alpha".yellow(), hex::encode(last_accepted_hash));
                 // info!("{}", state.format());
 
                 //-------------------------------------------------------------------------

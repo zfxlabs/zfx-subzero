@@ -14,9 +14,9 @@ pub enum Transaction {
 impl std::fmt::Display for Transaction {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Transaction::CoinbaseTx(tx) => write!(f, "{:?}", tx),
-            Transaction::StakeTx(tx) => write!(f, "{:?}", tx),
-            Transaction::TransferTx(tx) => write!(f, "{:?}", tx),
+            Transaction::CoinbaseTx(tx) => write!(f, "{}", tx),
+            Transaction::StakeTx(tx) => write!(f, "{}", tx),
+            Transaction::TransferTx(tx) => write!(f, "{}", tx),
         }
     }
 }

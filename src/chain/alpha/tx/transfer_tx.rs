@@ -1,11 +1,23 @@
 use super::{Input, Output, PublicKeyHash, Tx, TxHash};
 
+use crate::colored::Colorize;
+
 use ed25519_dalek::Keypair;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferTx {
     /// The inputs / outputs of this transaction.
     pub tx: Tx,
+}
+
+impl std::fmt::Display for TransferTx {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let h = hex::encode(self.hash());
+        let s = format!("[{}] {}\n", "tx_hash".yellow(), h);
+        let s = format!("{}[{}] Transfer\n", s, "type".yellow());
+        let s = format!("{}[{}] {}\n", s, "spendable".yellow(), self.tx.sum());
+        write!(f, "{}", s)
+    }
 }
 
 impl TransferTx {

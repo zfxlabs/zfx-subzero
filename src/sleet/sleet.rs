@@ -472,7 +472,7 @@ impl Handler<QueryTx> for Sleet {
             QueryTxAck { id: self.node_id, tx_hash: tx.hash(), outcome: false }
         } else {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                info!("sleet: received new transaction {:?}", tx.clone());
+                info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     let parents = self.select_parents(NPARENTS).unwrap();
                     self.insert(SleetTx::new(parents, tx.clone())).unwrap();
