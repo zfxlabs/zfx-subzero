@@ -353,7 +353,7 @@ impl Handler<QueryComplete> for Sleet {
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
-            self.txs.insert(msg.tx.hash(), msg.tx.clone()).unwrap();
+            let _ = self.txs.insert(msg.tx.hash(), msg.tx.clone());
             // Remove the tx that was spent in this tx.
             for input in msg.tx.inputs().iter() {
                 self.txs.remove(&input.source).unwrap();
@@ -424,15 +424,14 @@ pub struct GetTx {
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct TxAck {
-    pub tx: Transaction,
+    pub tx: Option<Transaction>,
 }
 
 impl Handler<GetTx> for Sleet {
     type Result = TxAck;
 
     fn handle(&mut self, msg: GetTx, _ctx: &mut Context<Self>) -> Self::Result {
-        let tx = self.txs.get(&msg.tx_hash).unwrap();
-        TxAck { tx: tx.clone() }
+        TxAck { tx: self.txs.get(&msg.tx_hash).map(|x| x.clone()) }
     }
 }
 
