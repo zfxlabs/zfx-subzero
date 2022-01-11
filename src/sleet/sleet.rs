@@ -17,7 +17,7 @@ use rand::seq::SliceRandom;
 
 use tracing::{debug, error, info};
 
-use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
+use actix::{Actor, AsyncContext, Context, Handler, Recipient, ResponseFuture};
 use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
@@ -37,7 +37,7 @@ const BETA2: u8 = 20;
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The client used to make external requests.
-    client: Addr<Client>,
+    client: Recipient<Fanout>,
     /// The identity of this validator.
     node_id: Id,
     /// The weighted validator set.
@@ -56,7 +56,7 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new(client: Addr<Client>, node_id: Id) -> Self {
+    pub fn new(client: Recipient<Fanout>, node_id: Id) -> Self {
         Sleet {
             client,
             node_id,
@@ -537,9 +537,25 @@ mod test {
         Transaction::CoinbaseTx(CoinbaseTx { tx })
     }
 
+    struct DummyClient;
+    impl Actor for DummyClient {
+        type Context = Context<Self>;
+
+        fn started(&mut self, _ctx: &mut Context<Self>) {}
+    }
+
+    impl Handler<Fanout> for DummyClient {
+        type Result = ResponseFuture<Vec<Response>>;
+
+        fn handle(&mut self, msg: Fanout, ctx: &mut Context<Self>) -> Self::Result {
+            Box::pin(async move { vec![] })
+        }
+    }
+
     #[actix_rt::test]
     async fn test_strongly_preferred() {
-        let mut sleet = Sleet::new();
+        let client = DummyClient.start();
+        let mut sleet = Sleet::new(client.recipient(), Id::zero());
 
         let mut csprng = OsRng {};
         let root_kp = Keypair::generate(&mut csprng);
