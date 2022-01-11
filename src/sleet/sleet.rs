@@ -5,9 +5,9 @@ use crate::colored::Colorize;
 use crate::chain::alpha::state::Weight;
 use crate::chain::alpha::tx::UTXOId;
 use crate::chain::alpha::{self, Transaction, TxHash};
-use crate::client;
+use crate::client::{self, Client, Fanout};
 use crate::graph::DAG;
-use crate::protocol::Request;
+use crate::protocol::{Request, Response};
 
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
@@ -18,6 +18,7 @@ use rand::seq::SliceRandom;
 use tracing::{debug, error, info};
 
 use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::hash::Hash;
@@ -35,6 +36,8 @@ const BETA2: u8 = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
+    /// The client used to make external requests.
+    client: Addr<Client>,
     /// The identity of this validator.
     node_id: Id,
     /// The weighted validator set.
@@ -53,21 +56,22 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new(node_id: Id) -> Self {
-	Sleet {
-	    node_id,
-	    committee: HashMap::default(),
-	    known_txs: sled::Config::new().temporary(true).open().unwrap(),
-	    queried_txs: sled::Config::new().temporary(true).open().unwrap(),
-	    conflict_map: ConflictMap::new(),
-	    txs: HashMap::default(),
-	    dag: DAG::new(),
-	}
+    pub fn new(client: Addr<Client>, node_id: Id) -> Self {
+        Sleet {
+            client,
+            node_id,
+            committee: HashMap::default(),
+            known_txs: sled::Config::new().temporary(true).open().unwrap(),
+            queried_txs: sled::Config::new().temporary(true).open().unwrap(),
+            conflict_map: ConflictMap::new(),
+            txs: HashMap::default(),
+            dag: DAG::new(),
+        }
     }
 
     // Vertices
 
-    pub fn insert(&mut self, tx: SleetTx) ->Result<()>{
+    pub fn insert(&mut self, tx: SleetTx) -> Result<()> {
         let inner_tx = tx.inner.clone();
         self.conflict_map.insert_tx(inner_tx.clone())?;
         self.dag.insert_vx(inner_tx.hash(), tx.parents.clone())?;
@@ -120,8 +124,8 @@ impl Sleet {
 
     // The ancestral update updates the preferred path through the DAG every time a new
     // vertex is added.
-    pub fn update_ancestral_preference(&mut self, tx: Transaction) -> Result<()> {
-        for tx_hash in self.dag.dfs(&tx.hash()) {
+    pub fn update_ancestral_preference(&mut self, root_txhash: TxHash) -> Result<()> {
+        for tx_hash in self.dag.dfs(&root_txhash) {
             // conviction of T vs Pt.pref
             let pref = self.conflict_map.get_preferred(&tx_hash)?;
             let d1 = self.dag.conviction(tx_hash.clone())?;
@@ -305,53 +309,102 @@ impl Handler<LiveCommittee> for Sleet {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct QueryIncomplete {
+    pub tx: Transaction,
+    pub acks: Vec<Response>,
+}
+
+impl Handler<QueryIncomplete> for Sleet {
+    type Result = ();
+
+    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+        ()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct QueryComplete {
+    pub tx: Transaction,
+    pub acks: Vec<Response>,
+}
+
+impl Handler<QueryComplete> for Sleet {
+    type Result = ();
+
+    fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
+        // FIXME: Verify that there are no duplicate ids
+        let mut outcomes = vec![];
+        for ack in msg.acks.iter() {
+            match ack {
+                Response::QueryTxAck(qtx_ack) => match self.committee.get(&qtx_ack.id) {
+                    Some((_, w)) => outcomes.push((qtx_ack.id, w.clone(), qtx_ack.outcome)),
+                    None => (),
+                },
+                // FIXME: Error
+                _ => (),
+            }
+        }
+        //   if yes: set_chit(tx, 1), update ancestral preferences
+        if sum_outcomes(outcomes) > ALPHA {
+            self.dag.set_chit(msg.tx.hash(), 1).unwrap();
+            self.update_ancestral_preference(msg.tx.hash()).unwrap();
+            info!("[{}] query complete, chit = 1", "sleet".cyan());
+        }
+        //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
+        alpha::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
+    }
+}
+
 // Instead of having an infinite loop as per the paper which receives and processes
 // inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
 // a fresh transaction is received - either externally in `ReceiveTx` or as an internal
 // consensus message via `QueryTx`.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
+#[rtype(result = "Result<()>")]
 pub struct FreshTx {
     pub tx: Transaction,
 }
 
 impl Handler<FreshTx> for Sleet {
-    type Result = ResponseFuture<()>;
+    type Result = ResponseActFuture<Self, Result<()>>;
 
-    fn handle(&mut self, msg: FreshTx, ctx: &mut Context<Self>) -> Self::Result {
-	let validators = self.sample(ALPHA).unwrap();
-	info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
-	let mut validator_ips = vec![];
-	for (_, ip) in validators.iter() {
-	    validator_ips.push(ip.clone());
-	}
-	Box::pin(async move {
-	    let tx = msg.tx;
+    fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
+        let validators = self.sample(ALPHA).unwrap();
+        info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
+        let mut validator_ips = vec![];
+        for (_, ip) in validators.iter() {
+            validator_ips.push(ip.clone());
+        }
 
-	    // Fanout queries to sampled validators
-	    let v = client::fanout(validator_ips.clone(), Request::QueryTx(QueryTx {
-		tx: tx.clone(),
-	    })).await;
+        // Fanout queries to sampled validators
+        let send_to_client = self.client.send(Fanout {
+            ips: validator_ips.clone(),
+            request: Request::QueryTx(QueryTx { tx: msg.tx.clone() }),
+        });
 
-	    // If the length of responses is the same as the length of the sampled ips, then
-	    // every peer responded.
-	    if v.len() == validator_ips.len() {
-		// Otherwise check if `k` * `alpha` > `quiescent_point`
-		//   if yes: set_chit(tx, 1), update ancestral preferences
-		//   if no:  set_chit(tx, 0)
+        // Wrap the future so that subsequent chained handlers can access te actor.
+        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-		// Add the transaction to the queried set
-		// ctx.notify(QueryComplete { tx: tx.clone() })
-		// alpha::insert_tx(&self.queried_txs, tx.clone()).unwrap();
-	    } else {
-		// FIXME: If `v` is smaller than the length of the sampled `validator_ips`
-		// then it means this query must be re-attempted later (synchronous
-		// timebound condition) -- the transaction cannot be marked as queried in
-		// this case since it is this validators faulty connection which caused
-		// the error.
-	    }
-	})
+        let update_self = send_to_client.map(move |result, actor, ctx| {
+            match result {
+                Ok(acks) => {
+                    // If the length of responses is the same as the length of the sampled ips,
+                    // then every peer responded.
+                    if acks.len() == validator_ips.len() {
+                        Ok(ctx.notify(QueryComplete { tx: msg.tx.clone(), acks }))
+                    } else {
+                        Ok(ctx.notify(QueryIncomplete { tx: msg.tx.clone(), acks }))
+                    }
+                }
+                Err(e) => Err(Error::Actix(e)),
+            }
+        });
+
+        Box::pin(update_self)
     }
 }
 
@@ -438,29 +491,29 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
-	let tx = msg.tx.clone();
-	// Skip adding coinbase transactions (block rewards / initial allocations) to the
-	// mempool.
-	if tx.is_coinbase() {
-	    // FIXME: querying about a coinbase should result in an error
-	    QueryTxAck { id: self.node_id, tx_hash: tx.hash(), outcome: false }
-	} else {
-	    if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-		info!("sleet: received new transaction {:?}", tx.clone());
-		if self.spends_valid_utxos(tx.clone()) {
-		    let parents = self.select_parents(NPARENTS).unwrap();
-		    self.insert(SleetTx::new(parents, tx.clone()));
-		    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
-		    ctx.notify(FreshTx { tx: tx.clone() });
-		} else {
-		    error!("invalid transaction");
-		}
-	    }
-	    // FIXME: If we are in the middle of querying this transaction, wait until a
-	    // decision or a synchronous timebound is reached on attempts.
-	    let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
-	    QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
-	}
+        let tx = msg.tx.clone();
+        // Skip adding coinbase transactions (block rewards / initial allocations) to the
+        // mempool.
+        if tx.is_coinbase() {
+            // FIXME: querying about a coinbase should result in an error
+            QueryTxAck { id: self.node_id, tx_hash: tx.hash(), outcome: false }
+        } else {
+            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+                info!("sleet: received new transaction {:?}", tx.clone());
+                if self.spends_valid_utxos(tx.clone()) {
+                    let parents = self.select_parents(NPARENTS).unwrap();
+                    self.insert(SleetTx::new(parents, tx.clone()));
+                    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
+                    ctx.notify(FreshTx { tx: tx.clone() });
+                } else {
+                    error!("invalid transaction");
+                }
+            }
+            // FIXME: If we are in the middle of querying this transaction, wait until a
+            // decision or a synchronous timebound is reached on attempts.
+            let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
+            QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
+        }
     }
 }
 

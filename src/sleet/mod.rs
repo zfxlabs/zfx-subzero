@@ -11,6 +11,7 @@ use crate::graph;
 
 #[derive(Debug)]
 pub enum Error {
+    Actix(actix::MailboxError),
     Sled(sled::Error),
     InvalidTransaction(Transaction),
     InvalidTransactionHash(TxHash),
