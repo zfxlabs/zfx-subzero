@@ -419,7 +419,7 @@ pub struct ReceiveTx {
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct ReceiveTxAck {
     /// hash of applied transaction
-    pub tx_hash : TxHash
+    pub tx_hash : Option<TxHash>
 }
 
 impl Handler<ReceiveTx> for Sleet {
@@ -431,7 +431,7 @@ impl Handler<ReceiveTx> for Sleet {
         // mempool.
         if tx.is_coinbase() {
             // FIXME: receiving a coinbase transaction should result in an error
-            ReceiveTxAck { tx_hash : [0u8; 32]}
+            ReceiveTxAck { tx_hash : None }
         } else {
             let tx_hash = tx.hash();
             if !alpha::is_known_tx(&self.known_txs, tx_hash).unwrap() {
@@ -441,12 +441,13 @@ impl Handler<ReceiveTx> for Sleet {
                     self.insert(SleetTx::new(parents, tx.clone())).unwrap();
                     alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
                     ctx.notify(FreshTx { tx: tx.clone() });
+                    return ReceiveTxAck { tx_hash : Some(tx_hash) }
                 } else {
                     // FIXME: better error handling
                     error!("invalid transaction");
                 }
             }
-            ReceiveTxAck { tx_hash }
+            ReceiveTxAck { tx_hash : None }
         }
     }
 }
