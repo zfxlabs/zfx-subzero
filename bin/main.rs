@@ -126,7 +126,7 @@ fn main() -> Result<()> {
         // Create the `sleet` actor
         let client = Client::new();
         let client_addr = client.start();
-        let sleet = Sleet::new(client_addr, node_id);
+        let sleet = Sleet::new(client_addr.recipient(), node_id);
         let sleet_addr = sleet.start();
 
         // Create the `hail` actor
