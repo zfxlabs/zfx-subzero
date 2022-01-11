@@ -40,6 +40,9 @@ pub enum Error {
     InvalidPredecessor,
     InvalidGenesis,
     InvalidLast,
+
+    // Consensus errors
+    InsufficientWeight,
 }
 
 impl std::error::Error for Error {}

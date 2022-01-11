@@ -6,8 +6,7 @@ use rand::seq::SliceRandom;
 use crate::chain::alpha::state::Weight;
 use crate::zfx_id::Id;
 
-// FIXME
-use crate::sleet::{Error, Result};
+use crate::{Error, Result};
 
 /// Compute the `hail` consensus weight based on the number of tokens a validator has.
 #[inline]

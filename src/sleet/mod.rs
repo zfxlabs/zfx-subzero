@@ -17,7 +17,7 @@ pub enum Error {
     InvalidTransactionHash(TxHash),
     InvalidConflictSet,
     Graph(graph::Error),
-    InsufficientWeight,
+    Other(crate::Error),
 }
 
 impl std::error::Error for Error {}
@@ -25,6 +25,12 @@ impl std::error::Error for Error {}
 impl std::convert::From<sled::Error> for Error {
     fn from(error: sled::Error) -> Self {
         Error::Sled(error)
+    }
+}
+
+impl std::convert::From<crate::Error> for Error {
+    fn from(error: crate::Error) -> Self {
+        Error::Other(error)
     }
 }
 
