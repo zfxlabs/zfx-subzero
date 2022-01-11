@@ -1,33 +1,62 @@
 use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
-use crate::chain::alpha::block::{Block, Height, VrfOutput};
+use crate::chain::alpha::block::{Block, BlockHash, Height, VrfOutput};
+use crate::chain::alpha::state::Weight;
+use crate::client::Fanout;
 use crate::colored::Colorize;
+use crate::graph::DAG;
+use crate::protocol::{Request, Response};
 use crate::util;
 
 use super::conflict_set::ConflictSet;
+use super::{Error, Result};
 
 use tracing::{debug, info};
 
-use actix::{Actor, Context, Handler};
+use actix::{Actor, AsyncContext, Context, Handler, Recipient, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::net::SocketAddr;
 
+// Safety parameters
+
+const ALPHA: f64 = 0.5;
+const BETA1: u8 = 11;
+const BETA2: u8 = 20;
+
+/// Hail is a Snow* based consensus for blocks.
 pub struct Hail {
-    /// The set of all live blocks (non-final)
-    live_blocks: Vec<Block>,
-    /// The set of all queried blocks
-    queried_blocks: Vec<Block>,
+    /// The client used to make external requests.
+    sender: Recipient<Fanout>,
+    /// The identity of this validator.
+    node_id: Id,
+    /// The weighted validator set.
+    committee: HashMap<Id, (SocketAddr, Weight)>,
+    /// The set of all known blocks.
+    known_blocks: sled::Db,
+    /// The set of all queried blocks.
+    queried_blocks: sled::Db,
     /// The map of conflicting blocks at a particular height
     conflict_map: HashMap<Height, ConflictSet>,
+    /// The consensus graph.
+    dag: DAG<BlockHash>,
 }
 
 impl Hail {
     /// Hail is initialised with the most recent `frontier`, which is the last set of
     /// blocks yet to become final.
-    pub fn new(frontier: Vec<Block>) -> Self {
-        Hail { live_blocks: frontier, queried_blocks: vec![], conflict_map: HashMap::default() }
+    pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
+        Hail {
+            sender,
+            node_id,
+            committee: HashMap::default(),
+            known_blocks: sled::Config::new().temporary(true).open().unwrap(),
+            queried_blocks: sled::Config::new().temporary(true).open().unwrap(),
+            conflict_map: HashMap::default(),
+            dag: DAG::new(),
+        }
     }
 
     /// Parent selection selects the most preferred block found within the conflict set at
@@ -43,6 +72,15 @@ impl Hail {
         } else {
             panic!("non-continuous height within consensus : erroneous bootstrap");
         }
+    }
+
+    pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
+        let mut validators = vec![];
+        for (id, (ip, w)) in self.committee.iter() {
+            validators.push((id.clone(), ip.clone(), w.clone()));
+        }
+        // util::sample_weighted(minimum_weight, validators)
+	Ok(vec![])
     }
 }
 
@@ -97,7 +135,7 @@ impl Handler<LiveCommittee> for Hail {
             validators.push((id.clone(), v_w));
         }
 
-        // If we are the next block producer, ...
+        // If we are the next block producer, generate a block if we can
         info!("[{}] is_block_producer = {:?}", "hail".blue(), block_production_slot.is_some());
 
         // Otherwise wait for the next block to be received
@@ -105,22 +143,155 @@ impl Handler<LiveCommittee> for Hail {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "QueryBlockAck")]
-pub struct QueryBlock;
+#[rtype(result = "()")]
+pub struct QueryIncomplete {
+    pub block: Block,
+    pub acks: Vec<Response>,
+}
+
+impl Handler<QueryIncomplete> for Hail {
+    type Result = ();
+
+    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+        ()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct QueryComplete {
+    pub block: Block,
+    pub acks: Vec<Response>,
+}
+
+impl Handler<QueryComplete> for Hail {
+    type Result = ();
+
+    fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
+        // FIXME: Verify that there are no duplicate ids
+        let mut outcomes = vec![];
+        for ack in msg.acks.iter() {
+            match ack {
+                Response::QueryBlockAck(qb_ack) => match self.committee.get(&qb_ack.id) {
+                    Some((_, w)) => outcomes.push((qb_ack.id, w.clone(), qb_ack.outcome)),
+                    None => (),
+                },
+                // FIXME: Error
+                _ => (),
+            }
+        }
+        //   if yes: set_chit(tx, 1), update ancestral preferences
+        // if util::sum_outcomes(outcomes) > ALPHA {
+        //     self.dag.set_chit(msg.block.hash(), 1).unwrap();
+        //     // self.update_ancestral_preference(msg.block.hash()).unwrap();
+        //     info!("[{}] query complete, chit = 1", "hail".blue());
+        // }
+        //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
+        // alpha::insert_block(&self.queried_blocks, msg.block.clone()).unwrap();
+    }
+}
+
+// Instead of having an infinite loop as per the paper which receives and processes
+// inbound unqueried blocks, we instead use the `Actor` and use `notify` whenever
+// a fresh block is received.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Result<()>")]
+pub struct FreshBlock {
+    pub block: Block,
+}
+
+impl Handler<FreshBlock> for Hail {
+    type Result = ResponseActFuture<Self, Result<()>>;
+
+    fn handle(&mut self, msg: FreshBlock, _ctx: &mut Context<Self>) -> Self::Result {
+        let validators = self.sample(ALPHA).unwrap();
+        info!("[{}] sampled {:?}", "hail".blue(), validators.clone());
+        let mut validator_ips = vec![];
+        for (_, ip) in validators.iter() {
+            validator_ips.push(ip.clone());
+        }
+
+        // Fanout queries to sampled validators
+        let send_to_client = self.sender.send(Fanout {
+            ips: validator_ips.clone(),
+            request: Request::QueryBlock(QueryBlock { block: msg.block.clone() }),
+        });
+
+        // Wrap the future so that subsequent chained handlers can access te actor.
+        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
+
+        let update_self = send_to_client.map(move |result, actor, ctx| {
+            match result {
+                Ok(acks) => {
+                    // If the length of responses is the same as the length of the sampled ips,
+                    // then every peer responded.
+                    if acks.len() == validator_ips.len() {
+                        Ok(ctx.notify(QueryComplete { block: msg.block.clone(), acks }))
+                    } else {
+                        Ok(ctx.notify(QueryIncomplete { block: msg.block.clone(), acks }))
+                    }
+                }
+                Err(e) => Err(Error::Actix(e)),
+            }
+        });
+
+        Box::pin(update_self)
+    }
+}
+
+// Receiving blocks. The difference between receiving blocks and receiving a block query
+// is that `ReceiveBlock` is used when we are the block producer generating a new block
+// whereas a `QueryBlock` is used when receiving a block query from another validator.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "ReceiveBlockAck")]
+pub struct ReceiveBlock {
+    pub block: Block,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct QueryBlockAck;
+pub struct ReceiveBlockAck;
+
+impl Handler<ReceiveBlock> for Hail {
+    type Result = ReceiveBlockAck;
+
+    fn handle(&mut self, msg: ReceiveBlock, ctx: &mut Context<Self>) -> Self::Result {
+        let block = msg.block.clone();
+        //if !alpha::is_known_block(&self.known_blocks, block.hash()).unwrap() {
+        info!("[{}] received new block {:?}", "hail".cyan(), block.clone());
+
+        // let parents = self.select_parents(NPARENTS).unwrap();
+        // self.insert(HailBlock::new(parents, block.clone())).unwrap();
+        // alpha::insert_block(&self.known_blocks, block.clone()).unwrap();
+        // ctx.notify(FreshBlock { block: block.clone() });
+        // }
+        ReceiveBlockAck {}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "QueryBlockAck")]
+pub struct QueryBlock {
+    pub block: Block,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct QueryBlockAck {
+    pub id: Id,
+    pub block_hash: BlockHash,
+    pub outcome: bool,
+}
 
 impl Handler<QueryBlock> for Hail {
     type Result = QueryBlockAck;
 
-    fn handle(&mut self, msg: QueryBlock, _ctx: &mut Context<Self>) -> Self::Result {
-        QueryBlockAck {}
+    fn handle(&mut self, msg: QueryBlock, ctx: &mut Context<Self>) -> Self::Result {
+        let block = msg.block.clone();
+
+        // FIXME: If we are in the middle of querying this transaction, wait until a
+        // decision or a synchronous timebound is reached on attempts.
+        // let outcome = self.is_strongly_preferred(msg.block.hash()).unwrap();
+        QueryBlockAck { id: self.node_id, block_hash: msg.block.hash(), outcome: false }
     }
 }
-
-// Generate a block whenever we are a block producer and have pending transactions in
-// `sleet`.
-// pub async fn generate_block() {}
-
-// pub async fn run() { }

@@ -266,7 +266,7 @@ impl Reservoir {
         // has been made.
         if q.len() >= K {
             if self.process_decision(peer_id.clone(), q.clone()) {
-                info!("{} bootstrapped", "[ice]".magenta());
+                info!("[{}] bootstrapped {}", "ice".magenta(), "✓".magenta());
             }
         }
     }
