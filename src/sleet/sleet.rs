@@ -324,7 +324,7 @@ impl Handler<QueryComplete> for Sleet {
             let _ = self.txs.insert(msg.tx.hash(), msg.tx.clone());
             // Remove the tx that was spent in this tx.
             for input in msg.tx.inputs().iter() {
-                self.txs.remove(&input.source).unwrap();
+                self.txs.remove(&input.source);
             }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
@@ -417,7 +417,10 @@ pub struct ReceiveTx {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct ReceiveTxAck;
+pub struct ReceiveTxAck {
+    /// hash of applied transaction
+    pub tx_hash : TxHash
+}
 
 impl Handler<ReceiveTx> for Sleet {
     type Result = ReceiveTxAck;
@@ -428,9 +431,10 @@ impl Handler<ReceiveTx> for Sleet {
         // mempool.
         if tx.is_coinbase() {
             // FIXME: receiving a coinbase transaction should result in an error
-            ReceiveTxAck {}
+            ReceiveTxAck { tx_hash : [0u8; 32]}
         } else {
-            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+            let tx_hash = tx.hash();
+            if !alpha::is_known_tx(&self.known_txs, tx_hash).unwrap() {
                 info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     let parents = self.select_parents(NPARENTS).unwrap();
@@ -442,7 +446,7 @@ impl Handler<ReceiveTx> for Sleet {
                     error!("invalid transaction");
                 }
             }
-            ReceiveTxAck {}
+            ReceiveTxAck { tx_hash }
         }
     }
 }
@@ -487,6 +491,23 @@ impl Handler<QueryTx> for Sleet {
             let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
             QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Transactions")]
+pub struct GetTransactions;
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct Transactions {
+    pub ids: Vec<TxHash>,
+}
+
+impl Handler<GetTransactions> for Sleet {
+    type Result = Transactions;
+
+    fn handle(&mut self, _msg: GetTransactions, _ctx: &mut Context<Self>) -> Self::Result {
+        return Transactions { ids: self.txs.keys().cloned().collect::<Vec<TxHash>>() };
     }
 }
 
