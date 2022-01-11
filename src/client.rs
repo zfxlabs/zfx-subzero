@@ -3,10 +3,57 @@ use crate::protocol::{Request, Response};
 use crate::{Error, Result};
 use tracing::{debug, error};
 
+use actix::{Actor, Context, Handler, ResponseFuture};
 use futures::FutureExt;
 use std::net::SocketAddr;
 
+pub struct Client;
+
+impl Client {
+    pub fn new() -> Client {
+        Client {}
+    }
+}
+
+impl Actor for Client {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        debug!("started client");
+    }
+}
+
 /// Sends a single request and waits for a response.
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Result<Option<Response>>")]
+pub struct Oneshot {
+    pub ip: SocketAddr,
+    pub request: Request,
+}
+
+impl Handler<Oneshot> for Client {
+    type Result = ResponseFuture<Result<Option<Response>>>;
+
+    fn handle(&mut self, msg: Oneshot, ctx: &mut Context<Self>) -> Self::Result {
+        Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone()).await })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Vec<Response>")]
+pub struct Fanout {
+    pub ips: Vec<SocketAddr>,
+    pub request: Request,
+}
+
+impl Handler<Fanout> for Client {
+    type Result = ResponseFuture<Vec<Response>>;
+
+    fn handle(&mut self, msg: Fanout, ctx: &mut Context<Self>) -> Self::Result {
+        Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone()).await })
+    }
+}
+
 pub async fn oneshot(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
     let mut channel: Channel<Request, Response> = Channel::connect(&ip).await?;
     let (mut sender, mut receiver) = channel.split();

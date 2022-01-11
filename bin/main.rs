@@ -1,4 +1,5 @@
 use zfx_subzero::chain::alpha::Alpha;
+use zfx_subzero::client::Client;
 use zfx_subzero::hail::Hail;
 use zfx_subzero::ice::{self, Ice, Reservoir};
 use zfx_subzero::server::{Router, Server};
@@ -123,7 +124,9 @@ fn main() -> Result<()> {
         let ice_addr = ice.start();
 
         // Create the `sleet` actor
-        let sleet = Sleet::new();
+        let client = Client::new();
+        let client_addr = client.start();
+        let sleet = Sleet::new(client_addr, node_id);
         let sleet_addr = sleet.start();
 
         // Create the `hail` actor
