@@ -10,14 +10,12 @@ use crate::sleet::{self, Sleet};
 use crate::Result;
 use crate::{ice, ice::Ice};
 
-use super::block::{self, BlockHash, VrfOutput};
-use super::state::{State, Weight};
+use super::block::{self, BlockHash};
+use super::state::State;
 
 use tracing::{debug, info};
 
 use actix::{Actor, Addr, Context, Handler, ResponseFuture};
-
-use rand::Rng;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

@@ -1,11 +1,6 @@
 use crate::chain::alpha::tx::Transaction;
 use crate::chain::alpha::tx::{CoinbaseTx, StakeTx};
 use crate::chain::alpha::InitialStaker;
-use crate::util;
-
-use tai64::Tai64;
-
-use std::net::SocketAddr;
 
 pub type BlockHash = [u8; 32];
 pub type VrfOutput = [u8; 32];

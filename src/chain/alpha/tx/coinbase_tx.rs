@@ -1,4 +1,4 @@
-use super::{Input, Output, PublicKeyHash, Tx, TxHash};
+use super::{Input, Output, PublicKeyHash, Tx};
 
 /// Coinbase transactions are used for block rewards and initial staking allocations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

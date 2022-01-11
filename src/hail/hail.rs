@@ -2,7 +2,6 @@ use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
 use crate::chain::alpha::block::{Block, Height, VrfOutput};
-use crate::chain::alpha::tx::StakeTx;
 use crate::colored::Colorize;
 use crate::util;
 
@@ -10,7 +9,7 @@ use super::conflict_set::ConflictSet;
 
 use tracing::{debug, info};
 
-use actix::{Actor, Addr, Context, Handler};
+use actix::{Actor, Context, Handler};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::net::SocketAddr;

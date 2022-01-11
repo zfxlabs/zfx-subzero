@@ -1,5 +1,4 @@
-use byteorder::BigEndian;
-use zerocopy::{byteorder::U64, AsBytes, FromBytes, Unaligned};
+use zerocopy::{AsBytes, FromBytes, Unaligned};
 
 #[derive(Clone, FromBytes, AsBytes, Unaligned)]
 #[repr(C)]

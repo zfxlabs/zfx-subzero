@@ -3,10 +3,9 @@ use crate::colored::Colorize;
 use crate::chain::alpha::Amount;
 use crate::zfx_id::Id;
 
-use super::{Input, Output, Transaction, Tx, TxHash};
+use super::{Input, Output, Tx};
 
 use ed25519_dalek::Keypair;
-use tai64::Tai64;
 
 // A transaction is constructed from inputs and outputs and has a type, which we use to
 // create special types of transactions. Note: This is for testing only.
