@@ -8,7 +8,6 @@ use crate::chain::alpha::{self, Transaction, TxHash};
 use crate::client;
 use crate::graph::DAG;
 use crate::protocol::Request;
-use crate::util;
 
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
@@ -65,10 +64,11 @@ impl Sleet {
 
     // Vertices
 
-    pub fn insert(&mut self, tx: SleetTx) {
+    pub fn insert(&mut self, tx: SleetTx) ->Result<()>{
         let inner_tx = tx.inner.clone();
-        self.conflict_map.insert_tx(inner_tx.clone());
-        self.dag.insert_vx(inner_tx.hash(), tx.parents.clone());
+        self.conflict_map.insert_tx(inner_tx.clone())?;
+        self.dag.insert_vx(inner_tx.hash(), tx.parents.clone())?;
+        Ok(())
     }
 
     // Branch preference
@@ -124,7 +124,7 @@ impl Sleet {
             let d1 = self.dag.conviction(tx_hash.clone())?;
             let d2 = self.dag.conviction(pref)?;
             // update the conflict set at this tx
-            self.conflict_map.update_conflict_set(tx_hash.clone(), d1, d2);
+            self.conflict_map.update_conflict_set(tx_hash.clone(), d1, d2)?;
         }
         Ok(())
     }
@@ -316,7 +316,7 @@ pub struct FreshTx {
 impl Handler<FreshTx> for Sleet {
     type Result = ResponseFuture<()>;
 
-    fn handle(&mut self, msg: FreshTx, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
         let validators = self.sample(ALPHA).unwrap();
         info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
         let mut validator_ips = vec![];
@@ -395,7 +395,7 @@ impl Handler<ReceiveTx> for Sleet {
                 info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     let parents = self.select_parents(NPARENTS).unwrap();
-                    self.insert(SleetTx::new(parents, tx.clone()));
+                    self.insert(SleetTx::new(parents, tx.clone())).unwrap();
                     alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
                     ctx.notify(FreshTx { tx: tx.clone() });
                 } else {
@@ -435,7 +435,7 @@ impl Handler<QueryTx> for Sleet {
                 info!("sleet: received new transaction {:?}", tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     let parents = self.select_parents(NPARENTS).unwrap();
-                    self.insert(SleetTx::new(parents, tx.clone()));
+                    self.insert(SleetTx::new(parents, tx.clone())).unwrap();
                     alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
                     ctx.notify(FreshTx { tx: tx.clone() });
                 } else {
@@ -453,44 +453,42 @@ impl Handler<QueryTx> for Sleet {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alpha::tx::{CoinbaseTx, Transaction, Tx};
     use ed25519_dalek::Keypair;
     use rand::{rngs::OsRng, CryptoRng};
 
-    // fn generate_coinbase(keypair: Keypair, amount: u64) -> alpha::Transaction {
-    // 	let enc = bincode::serialize(&keypair.public).unwrap();
-    // 	let pkh = blake3::hash(&enc);
-    // 	alpha::Tx::coinbase(pkh.as_bytes().clone(), amount)
-    // }
+    fn generate_coinbase(keypair: &Keypair, amount: u64) -> alpha::Transaction {
+        let enc = bincode::serialize(&keypair.public).unwrap();
+        let pkh = blake3::hash(&enc);
+        let tx = Tx::coinbase(pkh.as_bytes().clone(), amount);
+        Transaction::CoinbaseTx(CoinbaseTx { tx })
+    }
 
-    // #[actix_rt::test]
-    // async fn test_strongly_preferred() {
-    // 	let mut sleet = Sleet::new();
+    #[actix_rt::test]
+    async fn test_strongly_preferred() {
+        let mut sleet = Sleet::new();
 
-    // 	let mut csprng = OsRng{};
-    // 	let root_kp = Keypair::generate(&mut csprng);
+        let mut csprng = OsRng {};
+        let root_kp = Keypair::generate(&mut csprng);
 
-    // 	// Generate a genesis set of coins
-    // 	let tx1 = generate_coinbase(root_kp, 1000);
+        // Generate a genesis set of coins
+        let stx1 = SleetTx::new(vec![], generate_coinbase(&root_kp, 1000));
+        let stx2 = SleetTx::new(vec![], generate_coinbase(&root_kp, 1001));
+        let stx3 = SleetTx::new(vec![], generate_coinbase(&root_kp, 1002));
 
-    // 	let stx1 = SleetTx::new(vec![], tx1.clone());
-    // 	let stx2 = SleetTx::new(vec![], tx1.clone());
-    // 	let stx3 = SleetTx::new(vec![], tx1.clone());
+        // Check that parent selection works with an empty DAG.
+        let v_empty: Vec<alpha::TxHash> = vec![];
+        assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
 
-    // 	// Check that parent selection works with an empty DAG.
-    // 	let v_empty: Vec<alpha::TxHash> = vec![];
-    // 	assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
+        // Insert new vertices into the DAG.
+        sleet.insert(stx1.clone()).unwrap();
+        sleet.insert(stx2.clone()).unwrap();
+        sleet.insert(stx3.clone()).unwrap();
 
-    // 	// Insert new vertices into the DAG.
-    // 	sleet.insert(stx1.clone());
-    // 	sleet.insert(stx2.clone());
-    // 	sleet.insert(stx3.clone());
-
-    // 	// Coinbase transactions will all conflict, since `tx1` was inserted first it will
-    // 	// be the only preferred parent.
-    // 	assert_eq!(sleet.select_parents(3).unwrap(), vec![
-    // 	    tx1.clone().hash(),
-    // 	]);
-    // }
+        // Coinbase transactions will all conflict, since `tx1` was inserted first it will
+        // be the only preferred parent.
+        assert_eq!(sleet.select_parents(3).unwrap(), vec![stx1.inner.hash(),]);
+    }
 
     #[actix_rt::test]
     async fn test_sampling_insufficient_stake() {

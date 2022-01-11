@@ -35,8 +35,8 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     pub fn insert_vx(&mut self, vx: V, edges: Vec<V>) -> Result<()> {
         // Insert the inversion of the edges
         match self.inv.entry(vx.clone()) {
-            Entry::Occupied(mut o) => (),
-            Entry::Vacant(mut v) => {
+            Entry::Occupied(_) => (),
+            Entry::Vacant(v) => {
                 let _ = v.insert(vec![]);
             }
         }
@@ -46,13 +46,13 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
                     let o = o.get_mut();
                     o.push(vx.clone());
                 }
-                Entry::Vacant(mut v) => return Err(Error::VacantEntry),
+                Entry::Vacant(_) => return Err(Error::VacantEntry),
             }
         }
         // Insert DAG with all inbound edges
         match self.g.entry(vx.clone()) {
             Entry::Occupied(_) => return Err(Error::VertexExists),
-            Entry::Vacant(mut v1) => {
+            Entry::Vacant(v1) => {
                 let _ = v1.insert(edges);
             }
         }
@@ -301,7 +301,7 @@ mod test {
     fn make_dag(data: &[(u8, &[u8])]) -> DAG<u8> {
         let mut dag = DAG::<u8>::new();
         for (v, ps) in data {
-            dag.insert_vx(*v, ps.to_vec());
+            dag.insert_vx(*v, ps.to_vec()).unwrap();
         }
         dag
     }

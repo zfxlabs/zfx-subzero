@@ -70,7 +70,7 @@ impl ConflictMap {
                     let cs = o.get_mut();
                     cs.insert(self_tx_hash.clone());
                 }
-                Entry::Vacant(mut v) => {
+                Entry::Vacant(_) => {
                     // Otherwise this must be an error: All prior transactions should have
                     // at minimum a singleton conflict set.
                     return Err(Error::InvalidConflictSet);
