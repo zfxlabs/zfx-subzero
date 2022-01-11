@@ -6,9 +6,6 @@ use rand::seq::SliceRandom;
 use crate::chain::alpha::state::Weight;
 use crate::zfx_id::Id;
 
-// FIXME
-use crate::sleet::{Error, Result};
-
 /// Compute the `hail` consensus weight based on the number of tokens a validator has.
 #[inline]
 pub fn percent_of(qty: u64, total: u64) -> f64 {
@@ -26,7 +23,7 @@ pub fn sum_outcomes(outcomes: Vec<(Id, Weight, bool)>) -> f64 {
 pub fn sample_weighted(
     min_w: Weight,
     mut validators: Vec<(Id, SocketAddr, Weight)>,
-) -> Result<Vec<(Id, SocketAddr)>> {
+) -> Option<Vec<(Id, SocketAddr)>> {
     let mut rng = rand::thread_rng();
     validators.shuffle(&mut rng);
     let mut sample = vec![];
@@ -39,9 +36,9 @@ pub fn sample_weighted(
         w += w_v;
     }
     if w < min_w {
-        Err(Error::InsufficientWeight)
+        None
     } else {
-        Ok(sample)
+        Some(sample)
     }
 }
 
@@ -55,13 +52,13 @@ mod test {
 
         let empty = vec![];
         match sample_weighted(0.66, empty) {
-            Err(Error::InsufficientWeight) => (),
+            None => (),
             x => panic!("unexpected: {:?}", x),
         }
 
         let not_enough = vec![(Id::one(), dummy_ip, 0.1), (Id::two(), dummy_ip, 0.1)];
         match sample_weighted(0.66, not_enough) {
-            Err(Error::InsufficientWeight) => (),
+            None => (),
             x => panic!("unexpected: {:?}", x),
         }
     }
@@ -72,13 +69,13 @@ mod test {
 
         let v = vec![(Id::one(), dummy_ip, 0.7)];
         match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v == vec![(Id::one(), dummy_ip)]),
+            Some(v) => assert!(v == vec![(Id::one(), dummy_ip)]),
             x => panic!("unexpected: {:?}", x),
         }
 
         let v = vec![(Id::one(), dummy_ip, 0.6), (Id::two(), dummy_ip, 0.1)];
         match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v.len() == 2),
+            Some(v) => assert!(v.len() == 2),
             x => panic!("unexpected: {:?}", x),
         }
 
@@ -88,7 +85,7 @@ mod test {
             (Id::zero(), dummy_ip, 0.1),
         ];
         match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
+            Some(v) => assert!(v.len() >= 2 && v.len() <= 3),
             x => panic!("unexpected: {:?}", x),
         }
     }
