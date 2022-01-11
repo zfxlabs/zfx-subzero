@@ -324,7 +324,7 @@ impl Handler<QueryComplete> for Sleet {
             let _ = self.txs.insert(msg.tx.hash(), msg.tx.clone());
             // Remove the tx that was spent in this tx.
             for input in msg.tx.inputs().iter() {
-                self.txs.remove(&input.source);
+                self.txs.remove(&input.source).unwrap();
             }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
