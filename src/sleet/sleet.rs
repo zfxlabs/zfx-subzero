@@ -1,6 +1,5 @@
-use crate::zfx_id::Id;
-
 use crate::colored::Colorize;
+use crate::zfx_id::Id;
 
 use crate::chain::alpha::state::Weight;
 use crate::chain::alpha::tx::UTXOId;
@@ -8,12 +7,11 @@ use crate::chain::alpha::{self, Transaction, TxHash};
 use crate::client::Fanout;
 use crate::graph::DAG;
 use crate::protocol::{Request, Response};
+use crate::util;
 
 use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
 use super::{Error, Result};
-
-use rand::seq::SliceRandom;
 
 use tracing::{debug, error, info};
 
@@ -204,7 +202,7 @@ impl Sleet {
         for (id, (ip, w)) in self.committee.iter() {
             validators.push((id.clone(), ip.clone(), w.clone()));
         }
-        sample_weighted(minimum_weight, validators)
+        util::sample_weighted(minimum_weight, validators)
     }
 
     /// Checks whether a transactions inputs spends valid outputs. If two transactions
@@ -229,36 +227,6 @@ impl Sleet {
         }
         true
     }
-}
-
-#[inline]
-fn sample_weighted(
-    min_w: Weight,
-    mut validators: Vec<(Id, SocketAddr, Weight)>,
-) -> Result<Vec<(Id, SocketAddr)>> {
-    let mut rng = rand::thread_rng();
-    validators.shuffle(&mut rng);
-    let mut sample = vec![];
-    let mut w = 0.0;
-    for (id, ip, w_v) in validators {
-        if w >= min_w {
-            break;
-        }
-        sample.push((id, ip));
-        w += w_v;
-    }
-    if w < min_w {
-        Err(Error::InsufficientWeight)
-    } else {
-        Ok(sample)
-    }
-}
-
-#[inline]
-pub fn sum_outcomes(outcomes: Vec<(Id, Weight, bool)>) -> f64 {
-    outcomes
-        .iter()
-        .fold(0.0, |acc, (_id, weight, result)| if *result { acc + *weight } else { acc })
 }
 
 impl Actor for Sleet {
@@ -348,7 +316,7 @@ impl Handler<QueryComplete> for Sleet {
             }
         }
         //   if yes: set_chit(tx, 1), update ancestral preferences
-        if sum_outcomes(outcomes) > ALPHA {
+        if util::sum_outcomes(outcomes) > ALPHA {
             self.dag.set_chit(msg.tx.hash(), 1).unwrap();
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
@@ -576,66 +544,5 @@ mod test {
         // Coinbase transactions will all conflict, since `tx1` was inserted first it will
         // be the only preferred parent.
         assert_eq!(sleet.select_parents(3).unwrap(), vec![stx1.inner.hash(),]);
-    }
-
-    #[actix_rt::test]
-    async fn test_sampling_insufficient_stake() {
-        let dummy_ip: SocketAddr = "0.0.0.0:1111".parse().unwrap();
-
-        let empty = vec![];
-        match sample_weighted(0.66, empty) {
-            Err(Error::InsufficientWeight) => (),
-            x => panic!("unexpected: {:?}", x),
-        }
-
-        let not_enough = vec![(Id::one(), dummy_ip, 0.1), (Id::two(), dummy_ip, 0.1)];
-        match sample_weighted(0.66, not_enough) {
-            Err(Error::InsufficientWeight) => (),
-            x => panic!("unexpected: {:?}", x),
-        }
-    }
-
-    #[actix_rt::test]
-    async fn test_sampling() {
-        let dummy_ip: SocketAddr = "0.0.0.0:1111".parse().unwrap();
-
-        let v = vec![(Id::one(), dummy_ip, 0.7)];
-        match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v == vec![(Id::one(), dummy_ip)]),
-            x => panic!("unexpected: {:?}", x),
-        }
-
-        let v = vec![(Id::one(), dummy_ip, 0.6), (Id::two(), dummy_ip, 0.1)];
-        match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v.len() == 2),
-            x => panic!("unexpected: {:?}", x),
-        }
-
-        let v = vec![
-            (Id::one(), dummy_ip, 0.6),
-            (Id::two(), dummy_ip, 0.1),
-            (Id::zero(), dummy_ip, 0.1),
-        ];
-        match sample_weighted(0.66, v) {
-            Ok(v) => assert!(v.len() >= 2 && v.len() <= 3),
-            x => panic!("unexpected: {:?}", x),
-        }
-    }
-
-    #[actix_rt::test]
-    async fn test_sum_outcomes() {
-        let zid = Id::zero();
-        let empty = vec![];
-        assert_eq!(0.0, sum_outcomes(empty));
-
-        let one_true = vec![(zid, 0.66, true)];
-        assert_eq!(0.66, sum_outcomes(one_true));
-
-        let one_false = vec![(zid, 0.66, false)];
-        assert_eq!(0.0, sum_outcomes(one_false));
-
-        let true_false =
-            vec![(zid, 0.1, false), (zid, 0.1, true), (zid, 0.1, false), (zid, 0.1, true)];
-        assert_eq!(0.2, sum_outcomes(true_false));
     }
 }
