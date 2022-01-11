@@ -352,6 +352,12 @@ impl Handler<QueryComplete> for Sleet {
             self.dag.set_chit(msg.tx.hash(), 1).unwrap();
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
+            // Let `sleet` know that you can now build on this tx
+            self.txs.insert(msg.tx.hash(), msg.tx.clone()).unwrap();
+            // Remove the tx that was spent in this tx.
+            for input in msg.tx.inputs().iter() {
+                self.txs.remove(&input.source).unwrap();
+            }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
         alpha::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
@@ -502,7 +508,7 @@ impl Handler<QueryTx> for Sleet {
                 info!("sleet: received new transaction {:?}", tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     let parents = self.select_parents(NPARENTS).unwrap();
-                    self.insert(SleetTx::new(parents, tx.clone()));
+                    self.insert(SleetTx::new(parents, tx.clone())).unwrap();
                     alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
                     ctx.notify(FreshTx { tx: tx.clone() });
                 } else {
