@@ -2,7 +2,7 @@ use super::input::Input;
 use super::output::{Amount, Output, PublicKeyHash};
 use super::{Error, Result};
 
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
+use ed25519_dalek::Keypair;
 
 pub type TxHash = [u8; 32];
 

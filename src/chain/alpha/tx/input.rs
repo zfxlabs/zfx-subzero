@@ -1,6 +1,6 @@
 use super::TxHash;
 
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer};
+use ed25519_dalek::{Keypair, PublicKey, Signature, Signer};
 
 pub type UTXOId = [u8; 32];
 

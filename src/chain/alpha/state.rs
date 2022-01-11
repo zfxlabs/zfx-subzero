@@ -1,16 +1,12 @@
 use super::block::Block;
-use super::tx::{Transaction, TxHash, UTXOId};
+use super::tx::{Transaction, TxHash};
 use super::{Error, Result};
 
 use crate::colored::Colorize;
 
 use crate::zfx_id::Id;
 
-use tai64::Tai64;
-
 use std::collections::HashMap;
-
-use tracing::error;
 
 //-- State resulting from the application of blocks
 

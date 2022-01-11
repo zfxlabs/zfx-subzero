@@ -3,7 +3,7 @@ use crate::{Error, Result};
 use super::types::*;
 use super::{Transaction, TxHash};
 
-use zerocopy::{AsBytes, FromBytes};
+use zerocopy::AsBytes;
 
 /// Have we seen this transaction a priori.
 pub fn is_known_tx(db: &sled::Db, tx_hash: TxHash) -> Result<bool> {

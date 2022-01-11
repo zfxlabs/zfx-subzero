@@ -35,6 +35,8 @@ const BETA2: u8 = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
+    /// The identity of this validator.
+    node_id: Id,
     /// The weighted validator set.
     committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions.
@@ -51,15 +53,16 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new() -> Self {
-        Sleet {
-            committee: HashMap::default(),
-            known_txs: sled::Config::new().temporary(true).open().unwrap(),
-            queried_txs: sled::Config::new().temporary(true).open().unwrap(),
-            conflict_map: ConflictMap::new(),
-            txs: HashMap::default(),
-            dag: DAG::new(),
-        }
+    pub fn new(node_id: Id) -> Self {
+	Sleet {
+	    node_id,
+	    committee: HashMap::default(),
+	    known_txs: sled::Config::new().temporary(true).open().unwrap(),
+	    queried_txs: sled::Config::new().temporary(true).open().unwrap(),
+	    conflict_map: ConflictMap::new(),
+	    txs: HashMap::default(),
+	    dag: DAG::new(),
+	}
     }
 
     // Vertices
@@ -316,29 +319,39 @@ pub struct FreshTx {
 impl Handler<FreshTx> for Sleet {
     type Result = ResponseFuture<()>;
 
-    fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
-        let validators = self.sample(ALPHA).unwrap();
-        info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
-        let mut validator_ips = vec![];
-        for (_, ip) in validators.iter() {
-            validator_ips.push(ip.clone());
-        }
-        Box::pin(async move {
-            // Fanout queries to sampled validators
-            let v = client::fanout(validator_ips, Request::QueryTx(QueryTx { tx: msg.tx.clone() }))
-                .await;
+    fn handle(&mut self, msg: FreshTx, ctx: &mut Context<Self>) -> Self::Result {
+	let validators = self.sample(ALPHA).unwrap();
+	info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
+	let mut validator_ips = vec![];
+	for (_, ip) in validators.iter() {
+	    validator_ips.push(ip.clone());
+	}
+	Box::pin(async move {
+	    let tx = msg.tx;
 
-            // FIXME: If `v` is smaller than the length of the sampled `validator_ips` then
-            // it means this query must be re-attempted later (synchronous timebound
-            // condition) -- the transaction cannot be marked as queried in this case since
-            // it is this validators faulty connection which caused the error.
+	    // Fanout queries to sampled validators
+	    let v = client::fanout(validator_ips.clone(), Request::QueryTx(QueryTx {
+		tx: tx.clone(),
+	    })).await;
 
-            // Otherwise check if `k` * `alpha` > `quiescent_point`
-            //   if yes: set_chit(tx, 1), update ancestral preferences
-            //   if no:  set_chit(tx, 0)
+	    // If the length of responses is the same as the length of the sampled ips, then
+	    // every peer responded.
+	    if v.len() == validator_ips.len() {
+		// Otherwise check if `k` * `alpha` > `quiescent_point`
+		//   if yes: set_chit(tx, 1), update ancestral preferences
+		//   if no:  set_chit(tx, 0)
 
-            // Add the transaction to the queried set
-        })
+		// Add the transaction to the queried set
+		// ctx.notify(QueryComplete { tx: tx.clone() })
+		// alpha::insert_tx(&self.queried_txs, tx.clone()).unwrap();
+	    } else {
+		// FIXME: If `v` is smaller than the length of the sampled `validator_ips`
+		// then it means this query must be re-attempted later (synchronous
+		// timebound condition) -- the transaction cannot be marked as queried in
+		// this case since it is this validators faulty connection which caused
+		// the error.
+	    }
+	})
     }
 }
 
@@ -416,6 +429,7 @@ pub struct QueryTx {
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct QueryTxAck {
+    pub id: Id,
     pub tx_hash: TxHash,
     pub outcome: bool,
 }
@@ -424,29 +438,29 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
-        let tx = msg.tx.clone();
-        // Skip adding coinbase transactions (block rewards / initial allocations) to the
-        // mempool.
-        if tx.is_coinbase() {
-            // FIXME: querying about a coinbase should result in an error
-            QueryTxAck { tx_hash: tx.hash(), outcome: false }
-        } else {
-            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                info!("sleet: received new transaction {:?}", tx.clone());
-                if self.spends_valid_utxos(tx.clone()) {
-                    let parents = self.select_parents(NPARENTS).unwrap();
-                    self.insert(SleetTx::new(parents, tx.clone())).unwrap();
-                    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
-                    ctx.notify(FreshTx { tx: tx.clone() });
-                } else {
-                    error!("invalid transaction");
-                }
-            }
-            // FIXME: If we are in the middle of querying this transaction, wait until a
-            // decision or a synchronous timebound is reached on attempts.
-            let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
-            QueryTxAck { tx_hash: msg.tx.hash(), outcome }
-        }
+	let tx = msg.tx.clone();
+	// Skip adding coinbase transactions (block rewards / initial allocations) to the
+	// mempool.
+	if tx.is_coinbase() {
+	    // FIXME: querying about a coinbase should result in an error
+	    QueryTxAck { id: self.node_id, tx_hash: tx.hash(), outcome: false }
+	} else {
+	    if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+		info!("sleet: received new transaction {:?}", tx.clone());
+		if self.spends_valid_utxos(tx.clone()) {
+		    let parents = self.select_parents(NPARENTS).unwrap();
+		    self.insert(SleetTx::new(parents, tx.clone()));
+		    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
+		    ctx.notify(FreshTx { tx: tx.clone() });
+		} else {
+		    error!("invalid transaction");
+		}
+	    }
+	    // FIXME: If we are in the middle of querying this transaction, wait until a
+	    // decision or a synchronous timebound is reached on attempts.
+	    let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
+	    QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
+	}
     }
 }
 
