@@ -76,7 +76,6 @@ impl Sleet {
             Err(Error::InvalidTransaction(tx))
         } else {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     self.insert(sleet_tx.clone())?;
                     alpha::insert_tx(&self.known_txs, tx.clone());
@@ -86,7 +85,7 @@ impl Sleet {
                     Err(Error::InvalidTransaction(tx))
                 }
             } else {
-                info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
+                // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
                 Ok(())
             }
         }
@@ -328,6 +327,14 @@ impl Handler<QueryComplete> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
+        if alpha::contains_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
+            error!(
+                "[{}] Got response for already queried transaction\n{}",
+                "sleet".cyan(),
+                msg.tx.inner.clone()
+            );
+            return;
+        }
         // FIXME: Verify that there are no duplicate ids
         let mut outcomes = vec![];
         for ack in msg.acks.iter() {
@@ -368,6 +375,17 @@ impl Handler<FreshTx> for Sleet {
     type Result = ResponseActFuture<Self, Result<()>>;
 
     fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
+        if alpha::contains_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
+            /*
+            error!(
+                "[{}] Querying already queried transaction {}",
+                "sleet".cyan(),
+                msg.tx.inner.clone()
+            );
+            */
+            let do_nothing = actix::fut::wrap_future::<_, Self>(async { Ok(()) });
+            return Box::pin(do_nothing);
+        }
         let validators = self.sample(ALPHA).unwrap();
         info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
         let mut validator_ips = vec![];
@@ -440,6 +458,7 @@ impl Handler<GenerateTx> for Sleet {
     type Result = GenerateTxAck;
 
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] Received new transaction\n{}", "sleet".cyan(), tx.clone());
         let parents = self.select_parents(NPARENTS).unwrap();
         let sleet_tx = SleetTx::new(parents, msg.tx.clone());
 
@@ -480,6 +499,8 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] Received query for transaction\n{}", "sleet".cyan(), msg.tx.inner.clone());
+
         let tx = msg.tx.inner.clone();
         match self.on_receive_tx(msg.tx.clone()) {
             Ok(()) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
