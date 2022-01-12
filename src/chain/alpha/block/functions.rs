@@ -57,6 +57,25 @@ pub fn accept(db: sled::Db, block: Block) -> Result<BlockHash> {
     }
 }
 
+/// Have we seen this block a priori.
+pub fn is_known_block(db: &sled::Db, h: Height, block_hash: BlockHash) -> Result<bool> {
+    let key = Key::new(h, block_hash);
+    match db.contains_key(key.as_bytes()) {
+        Ok(r) => Ok(r),
+        Err(err) => Err(Error::Sled(err)),
+    }
+}
+
+/// Inserts a new block.
+pub fn insert_block(db: &sled::Db, block: Block) -> Result<Option<sled::IVec>> {
+    let encoded = bincode::serialize(&block).unwrap();
+    let key = Key::new(block.height, block.hash());
+    match db.insert(key.as_bytes(), encoded) {
+        Ok(v) => Ok(v),
+        Err(err) => Err(Error::Sled(err)),
+    }
+}
+
 //-- Fetching the last accepted blocks and their ancestors
 
 pub fn get_last_accepted_hash(db: &sled::Db) -> Result<BlockHash> {
