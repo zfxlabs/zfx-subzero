@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
         // the `Transaction` rather than the inner `Tx` (maybe FIXME needs to be looked at).
         let transfer_tx = TransferTx::new(&keypair, tx_hash, inner_tx, pkh.clone(), pkh.clone(), 1);
         let tx = Transaction::TransferTx(transfer_tx);
-        let _ = client::oneshot(peer_ip, Request::ReceiveTx(sleet::ReceiveTx { tx })).await?;
+        let _ = client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { tx })).await?;
     }
 
     Ok(())

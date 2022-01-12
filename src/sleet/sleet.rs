@@ -67,6 +67,31 @@ impl Sleet {
         }
     }
 
+    fn on_receive_tx(&mut self, sleet_tx: SleetTx) -> Result<()> {
+        let tx = sleet_tx.inner.clone();
+        // Skip adding coinbase transactions (block rewards / initial allocations) to the
+        // mempool.
+        if tx.is_coinbase() {
+            // FIXME: more specific errors
+            Err(Error::InvalidTransaction(tx))
+        } else {
+            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+                info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
+                if self.spends_valid_utxos(tx.clone()) {
+                    self.insert(sleet_tx.clone())?;
+                    alpha::insert_tx(&self.known_txs, tx.clone());
+                    Ok(())
+                } else {
+                    // FIXME: more specific errors
+                    Err(Error::InvalidTransaction(tx))
+                }
+            } else {
+                // FIXME is it ok to ignore this?
+                Ok(())
+            }
+        }
+    }
+
     // Vertices
 
     pub fn insert(&mut self, tx: SleetTx) -> Result<()> {
@@ -399,54 +424,44 @@ impl Handler<GetTx> for Sleet {
     }
 }
 
-// Receiving transactions. The only difference between receiving transactions and receiving
-// a transaction query is that any client should be able to send `sleet` a `ReceiveTx`
-// message, whereas only network validators should be able to perform a `QueryTx`.
-//
-// Otherwise the functionality is identical but `QueryTx` returns a consensus response -
-// whether the transaction is strongly preferred or not.
-
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "ReceiveTxAck")]
-pub struct ReceiveTx {
+#[rtype(result = "GenerateTxAck")]
+pub struct GenerateTx {
     pub tx: Transaction,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct ReceiveTxAck {
+pub struct GenerateTxAck {
     /// hash of applied transaction
-    pub tx_hash : Option<TxHash>
+    tx_hash: Option<TxHash>,
 }
 
-impl Handler<ReceiveTx> for Sleet {
-    type Result = ReceiveTxAck;
+impl Handler<GenerateTx> for Sleet {
+    type Result = GenerateTxAck;
 
-    fn handle(&mut self, msg: ReceiveTx, ctx: &mut Context<Self>) -> Self::Result {
-        let tx = msg.tx.clone();
-        // Skip adding coinbase transactions (block rewards / initial allocations) to the
-        // mempool.
-        if tx.is_coinbase() {
-            // FIXME: receiving a coinbase transaction should result in an error
-            ReceiveTxAck { tx_hash : None }
-        } else {
-            let tx_hash = tx.hash();
-            if !alpha::is_known_tx(&self.known_txs, tx_hash).unwrap() {
-                info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
-                if self.spends_valid_utxos(tx.clone()) {
-                    let parents = self.select_parents(NPARENTS).unwrap();
-                    let sleet_tx = SleetTx::new(parents, tx.clone());
-                    self.insert(sleet_tx.clone()).unwrap();
-                    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
-                    ctx.notify(FreshTx { tx: sleet_tx.clone() });
-                } else {
-                    // FIXME: better error handling
-                    error!("invalid transaction");
-                }
+    fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
+        let parents = self.select_parents(NPARENTS).unwrap();
+        let sleet_tx = SleetTx::new(parents, msg.tx.clone());
+
+        match self.on_receive_tx(sleet_tx.clone()) {
+            Ok(()) => {
+                ctx.notify(FreshTx { tx: sleet_tx });
+                GenerateTxAck { tx_hash: Some(msg.tx.hash()) }
             }
-            ReceiveTxAck { tx_hash : None }
+            Err(e) => {
+                // Log error
+                GenerateTxAck { tx_hash: None }
+            }
         }
     }
 }
+
+// Receiving transactions. The only difference between receiving transactions and receiving
+// a transaction query is that any client should be able to send `sleet` a `GenerateTx`
+// message, whereas only network validators should be able to perform a `QueryTx`.
+//
+// Otherwise the functionality is identical but `QueryTx` returns a consensus response -
+// whether the transaction is strongly preferred or not.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
@@ -465,28 +480,17 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
-        let tx = msg.tx.clone();
-        // Skip adding coinbase transactions (block rewards / initial allocations) to the
-        // mempool.
-        if tx.inner.is_coinbase() {
-            // FIXME: querying about a coinbase should result in an error
-            QueryTxAck { id: self.node_id, tx_hash: tx.hash(), outcome: false }
-        } else {
-            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                info!("[{}] received new transaction {}", "sleet".cyan(), tx.inner.clone());
-                if self.spends_valid_utxos(tx.inner.clone()) {
-                    self.insert(tx.clone()).unwrap();
-                    alpha::insert_tx(&self.known_txs, tx.inner.clone()).unwrap();
-                    ctx.notify(FreshTx { tx: tx.clone() });
-                } else {
-                    error!("invalid transaction");
-                }
+        let tx = msg.tx.inner.clone();
+        match self.on_receive_tx(msg.tx.clone()) {
+            Ok(()) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
+            Err(e) => {
+                // Log error
             }
-            // FIXME: If we are in the middle of querying this transaction, wait until a
-            // decision or a synchronous timebound is reached on attempts.
-            let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
-            QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
         }
+        // FIXME: If we are in the middle of querying this transaction, wait until a
+        // decision or a synchronous timebound is reached on attempts.
+        let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
+        QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
     }
 }
 

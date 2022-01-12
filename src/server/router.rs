@@ -68,10 +68,10 @@ impl Handler<Request> for Router {
                     let tx_ack = sleet.send(get_tx).await.unwrap();
                     Response::TxAck(tx_ack)
                 }
-                Request::ReceiveTx(receive_tx) => {
-                    debug!("routing ReceiveTx -> Sleet");
-                    let receive_tx_ack = sleet.send(receive_tx).await.unwrap();
-                    Response::ReceiveTxAck(receive_tx_ack)
+                Request::GenerateTx(generate_tx) => {
+                    debug!("routing GenerateTx -> Sleet");
+                    let receive_tx_ack = sleet.send(generate_tx).await.unwrap();
+                    Response::GenerateTxAck(receive_tx_ack)
                 }
                 Request::QueryTx(query_tx) => {
                     debug!("routing QueryTx -> Sleet");
