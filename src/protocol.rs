@@ -19,7 +19,7 @@ pub enum Request {
     GetTransactions,
     // Sleet
     GetTx(sleet::GetTx),
-    ReceiveTx(sleet::ReceiveTx),
+    GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     // Hail
     QueryBlock(hail::QueryBlock),
@@ -37,7 +37,7 @@ pub enum Response {
     Transactions(sleet::Transactions),
     // Sleet
     TxAck(sleet::TxAck),
-    ReceiveTxAck(sleet::ReceiveTxAck),
+    GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     // Hail
     QueryBlockAck(hail::QueryBlockAck),
