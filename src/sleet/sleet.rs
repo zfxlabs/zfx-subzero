@@ -280,7 +280,7 @@ impl Handler<LiveCommittee> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
-    pub tx: Transaction,
+    pub tx: SleetTx,
     pub acks: Vec<Response>,
 }
 
@@ -295,7 +295,7 @@ impl Handler<QueryIncomplete> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryComplete {
-    pub tx: Transaction,
+    pub tx: SleetTx,
     pub acks: Vec<Response>,
 }
 
@@ -324,7 +324,7 @@ impl Handler<QueryComplete> for Sleet {
             let _ = self.txs.insert(msg.tx.hash(), msg.tx.clone());
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        alpha::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
+        alpha::insert_tx(&self.queried_txs, msg.tx.inner.clone()).unwrap();
     }
 }
 
@@ -336,7 +336,7 @@ impl Handler<QueryComplete> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 pub struct FreshTx {
-    pub tx: Transaction,
+    pub tx: SleetTx,
 }
 
 impl Handler<FreshTx> for Sleet {
@@ -434,10 +434,10 @@ impl Handler<ReceiveTx> for Sleet {
                 info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
                 if self.spends_valid_utxos(tx.clone()) {
                     let parents = self.select_parents(NPARENTS).unwrap();
-                    self.insert(SleetTx::new(parents, tx.clone())).unwrap();
+                    let sleet_tx = SleetTx::new(parents, tx.clone());
+                    self.insert(sleet_tx.clone()).unwrap();
                     alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
-                    ctx.notify(FreshTx { tx: tx.clone() });
-                    return ReceiveTxAck { tx_hash : Some(tx_hash) }
+                    ctx.notify(FreshTx { tx: sleet_tx.clone() });
                 } else {
                     // FIXME: better error handling
                     error!("invalid transaction");
@@ -451,7 +451,7 @@ impl Handler<ReceiveTx> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
 pub struct QueryTx {
-    pub tx: Transaction,
+    pub tx: SleetTx,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -468,16 +468,15 @@ impl Handler<QueryTx> for Sleet {
         let tx = msg.tx.clone();
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
-        if tx.is_coinbase() {
+        if tx.inner.is_coinbase() {
             // FIXME: querying about a coinbase should result in an error
             QueryTxAck { id: self.node_id, tx_hash: tx.hash(), outcome: false }
         } else {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                info!("[{}] received new transaction {}", "sleet".cyan(), tx.clone());
-                if self.spends_valid_utxos(tx.clone()) {
-                    let parents = self.select_parents(NPARENTS).unwrap();
-                    self.insert(SleetTx::new(parents, tx.clone())).unwrap();
-                    alpha::insert_tx(&self.known_txs, tx.clone()).unwrap();
+                info!("[{}] received new transaction {}", "sleet".cyan(), tx.inner.clone());
+                if self.spends_valid_utxos(tx.inner.clone()) {
+                    self.insert(tx.clone()).unwrap();
+                    alpha::insert_tx(&self.known_txs, tx.inner.clone()).unwrap();
                     ctx.notify(FreshTx { tx: tx.clone() });
                 } else {
                     error!("invalid transaction");
