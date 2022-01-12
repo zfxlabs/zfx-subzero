@@ -1,10 +1,10 @@
+mod conflict_map;
 mod conflict_set;
 mod hail;
-mod height_map;
 
 pub use hail::*;
 
-use crate::chain::alpha::block::{Block, BlockHash};
+use crate::chain::alpha::block::{Block, BlockHash, Height};
 use crate::graph;
 
 #[derive(Debug)]
@@ -13,6 +13,7 @@ pub enum Error {
     Sled(sled::Error),
     InvalidBlock(Block),
     InvalidBlockHash(BlockHash),
+    InvalidHeight(Height),
     InvalidConflictSet,
     Graph(graph::Error),
     InsufficientWeight,
