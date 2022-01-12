@@ -7,6 +7,7 @@ use crate::view::View;
 use tracing::{debug, error, info};
 
 use actix::{Actor, Addr, Context, Handler, ResponseFuture};
+use crate::sleet;
 
 pub struct Router {
     view: Addr<View>,
@@ -55,6 +56,11 @@ impl Handler<Request> for Router {
                     debug!("routing GetLastAccepted -> Alpha");
                     let last_accepted = alpha.send(alpha::GetLastAccepted).await.unwrap();
                     Response::LastAccepted(last_accepted)
+                }
+                Request::GetTransactions => {
+                    debug!("routing GetTransactions -> Alpha");
+                    let transactions = sleet.send(sleet::GetTransactions).await.unwrap();
+                    Response::Transactions(transactions)
                 }
                 // Sleet external requests
                 Request::GetTx(get_tx) => {

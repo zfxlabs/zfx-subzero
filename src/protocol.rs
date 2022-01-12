@@ -1,4 +1,5 @@
 use crate::chain::alpha;
+use crate::chain::alpha::TxHash;
 use crate::hail;
 use crate::ice;
 use crate::sleet;
@@ -14,6 +15,8 @@ pub enum Request {
     // Chain Bootstrapping
     GetLastAccepted,
     GetAncestors,
+    // State
+    GetTransactions,
     // Sleet
     GetTx(sleet::GetTx),
     ReceiveTx(sleet::ReceiveTx),
@@ -31,6 +34,7 @@ pub enum Response {
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,
+    Transactions(sleet::Transactions),
     // Sleet
     TxAck(sleet::TxAck),
     ReceiveTxAck(sleet::ReceiveTxAck),

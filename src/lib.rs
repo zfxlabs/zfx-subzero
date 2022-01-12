@@ -17,6 +17,7 @@ pub mod util;
 pub mod version;
 pub mod view;
 pub mod zfx_id;
+pub mod integration_test;
 
 use protocol::{Request, Response};
 
