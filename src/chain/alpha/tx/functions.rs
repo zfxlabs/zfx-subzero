@@ -24,3 +24,11 @@ pub fn insert_tx(db: &sled::Db, tx: Transaction) -> Result<Option<sled::IVec>> {
         Err(err) => Err(Error::Sled(err)),
     }
 }
+
+pub fn contains_tx(db: &sled::Db, h: TxHash) -> Result<bool> {
+    let key = Key::new(h);
+    match db.contains_key(key.as_bytes()) {
+        Ok(v) => Ok(v),
+        Err(err) => Err(Error::Sled(err)),
+    }
+}
