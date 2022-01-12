@@ -86,7 +86,7 @@ impl Sleet {
                     Err(Error::InvalidTransaction(tx))
                 }
             } else {
-                // FIXME is it ok to ignore this?
+                info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
                 Ok(())
             }
         }
@@ -449,7 +449,7 @@ impl Handler<GenerateTx> for Sleet {
                 GenerateTxAck { tx_hash: Some(msg.tx.hash()) }
             }
             Err(e) => {
-                // Log error
+                error!("[{}] Couldn't insert new transaction {}: {}", "sleet".cyan(), msg.tx, e);
                 GenerateTxAck { tx_hash: None }
             }
         }
@@ -484,13 +484,24 @@ impl Handler<QueryTx> for Sleet {
         match self.on_receive_tx(msg.tx.clone()) {
             Ok(()) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
             Err(e) => {
-                // Log error
+                error!(
+                    "[{}] Couldn't insert queried transaction {}: {}",
+                    "sleet".cyan(),
+                    msg.tx.inner,
+                    e
+                );
             }
         }
         // FIXME: If we are in the middle of querying this transaction, wait until a
         // decision or a synchronous timebound is reached on attempts.
-        let outcome = self.is_strongly_preferred(msg.tx.hash()).unwrap();
-        QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome }
+        match self.is_strongly_preferred(msg.tx.hash()) {
+            Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome },
+            Err(e) => {
+                error!("[{}] Missing ancestor of {}: {}", "sleet".cyan(), msg.tx.inner, e);
+                // FIXME We're voting against the tx w/o having enough information
+                QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome: false }
+            }
+        }
     }
 }
 
