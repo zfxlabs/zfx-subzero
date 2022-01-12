@@ -9,6 +9,7 @@ use crate::graph::DAG;
 use crate::protocol::{Request, Response};
 use crate::util;
 
+use super::conflict_map::ConflictMap;
 use super::conflict_set::ConflictSet;
 use super::{Error, Result};
 
@@ -26,6 +27,18 @@ const ALPHA: f64 = 0.5;
 const BETA1: u8 = 11;
 const BETA2: u8 = 20;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Vertex {
+    height: Height,
+    block_hash: BlockHash,
+}
+
+impl Vertex {
+    pub fn new(height: Height, block_hash: BlockHash) -> Self {
+        Vertex { height, block_hash }
+    }
+}
+
 /// Hail is a Snow* based consensus for blocks.
 pub struct Hail {
     /// The client used to make external requests.
@@ -39,9 +52,9 @@ pub struct Hail {
     /// The set of all queried blocks.
     queried_blocks: sled::Db,
     /// The map of conflicting blocks at a particular height
-    conflict_map: HashMap<Height, ConflictSet>,
+    conflict_map: ConflictMap,
     /// The consensus graph.
-    dag: DAG<BlockHash>,
+    dag: DAG<Vertex>,
 }
 
 impl Hail {
@@ -54,24 +67,42 @@ impl Hail {
             committee: HashMap::default(),
             known_blocks: sled::Config::new().temporary(true).open().unwrap(),
             queried_blocks: sled::Config::new().temporary(true).open().unwrap(),
-            conflict_map: HashMap::default(),
+            conflict_map: ConflictMap::new(),
             dag: DAG::new(),
         }
     }
 
-    /// Parent selection selects the most preferred block found within the conflict set at
-    /// a given height of `h - 1` with respect to the block being proposed.
-    pub fn select_parent(&mut self, height: Height) -> Block {
-        // If the conflict map is empty then consensus is now being started, thus we must
-        // recover the conflict map from the latest frontier.
+    // Branch preference
 
-        // Fetch the preferred entry at the provided height.
-        if let Entry::Occupied(o) = self.conflict_map.entry(height) {
-            let cs: &ConflictSet = o.get();
-            cs.pref.clone()
-        } else {
-            panic!("non-continuous height within consensus : erroneous bootstrap");
+    /// Starts at some vertex and does a depth first search in order to compute whether
+    /// the vertex is strongly preferred (by checking whether all its ancestry is
+    /// preferred).
+    pub fn is_strongly_preferred(&self, vx: Vertex) -> Result<bool> {
+        for ancestor in self.dag.dfs(&vx) {
+            if !self.conflict_map.is_preferred(&ancestor.height, ancestor.block_hash)? {
+                return Ok(false);
+            }
         }
+        Ok(true)
+    }
+
+    // Adaptive Parent Selection
+
+    /// Starts at the live edges (the leaf nodes) of the `DAG` and does a depth first
+    /// search until a preferrential parent is found.
+    pub fn select_parent(&mut self) -> Result<Option<Vertex>> {
+        if self.dag.is_empty() {
+            return Ok(None);
+        }
+        let leaves = self.dag.leaves();
+        for leaf in leaves {
+            for elt in self.dag.dfs(&leaf) {
+                if self.is_strongly_preferred(elt.clone())? {
+                    return Ok(Some(elt.clone()));
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
@@ -80,7 +111,7 @@ impl Hail {
             validators.push((id.clone(), ip.clone(), w.clone()));
         }
         // util::sample_weighted(minimum_weight, validators)
-	Ok(vec![])
+        Ok(vec![])
     }
 }
 
@@ -180,13 +211,14 @@ impl Handler<QueryComplete> for Hail {
                 _ => (),
             }
         }
-        //   if yes: set_chit(tx, 1), update ancestral preferences
-        // if util::sum_outcomes(outcomes) > ALPHA {
-        //     self.dag.set_chit(msg.block.hash(), 1).unwrap();
-        //     // self.update_ancestral_preference(msg.block.hash()).unwrap();
-        //     info!("[{}] query complete, chit = 1", "hail".blue());
-        // }
-        //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
+        // if yes: set_chit(tx, 1), update ancestral preferences
+        if util::sum_outcomes(outcomes) > ALPHA {
+            let vx = Vertex::new(msg.block.height, msg.block.hash());
+            self.dag.set_chit(vx, 1).unwrap();
+            // self.update_ancestral_preference(msg.block.hash()).unwrap();
+            info!("[{}] query complete, chit = 1", "hail".blue());
+        }
+        // if no:  set_chit(tx, 0) -- happens in `insert_vx`
         // alpha::insert_block(&self.queried_blocks, msg.block.clone()).unwrap();
     }
 }
