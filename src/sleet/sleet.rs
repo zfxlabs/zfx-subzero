@@ -67,7 +67,9 @@ impl Sleet {
         }
     }
 
-    fn on_receive_tx(&mut self, sleet_tx: SleetTx) -> Result<()> {
+    /// Called for all newly discovered transactions.
+    /// Returns `true` if the transaction haven't been encountered before
+    fn on_receive_tx(&mut self, sleet_tx: SleetTx) -> Result<bool> {
         let tx = sleet_tx.inner.clone();
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
@@ -79,14 +81,14 @@ impl Sleet {
                 if self.spends_valid_utxos(tx.clone()) {
                     self.insert(sleet_tx.clone())?;
                     alpha::insert_tx(&self.known_txs, tx.clone());
-                    Ok(())
+                    Ok(true)
                 } else {
                     // FIXME: more specific errors
                     Err(Error::InvalidTransaction(tx))
                 }
             } else {
                 // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
-                Ok(())
+                Ok(false)
             }
         }
     }
@@ -376,13 +378,6 @@ impl Handler<FreshTx> for Sleet {
 
     fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
         if alpha::contains_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
-            /*
-            error!(
-                "[{}] Querying already queried transaction {}",
-                "sleet".cyan(),
-                msg.tx.inner.clone()
-            );
-            */
             let do_nothing = actix::fut::wrap_future::<_, Self>(async { Ok(()) });
             return Box::pin(do_nothing);
         }
@@ -458,15 +453,17 @@ impl Handler<GenerateTx> for Sleet {
     type Result = GenerateTxAck;
 
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] Received new transaction\n{}", "sleet".cyan(), tx.clone());
+        info!("[{}] Generating new transaction\n{}", "sleet".cyan(), msg.tx.clone());
         let parents = self.select_parents(NPARENTS).unwrap();
         let sleet_tx = SleetTx::new(parents, msg.tx.clone());
 
         match self.on_receive_tx(sleet_tx.clone()) {
-            Ok(()) => {
+            Ok(true) => {
                 ctx.notify(FreshTx { tx: sleet_tx });
                 GenerateTxAck { tx_hash: Some(msg.tx.hash()) }
             }
+            Ok(false) => GenerateTxAck { tx_hash: Some(msg.tx.hash()) },
+
             Err(e) => {
                 error!("[{}] Couldn't insert new transaction {}: {}", "sleet".cyan(), msg.tx, e);
                 GenerateTxAck { tx_hash: None }
@@ -499,11 +496,11 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] Received query for transaction\n{}", "sleet".cyan(), msg.tx.inner.clone());
-
+        // info!("[{}] Received query for transaction\n{}", "sleet".cyan(), msg.tx.inner.clone());
         let tx = msg.tx.inner.clone();
         match self.on_receive_tx(msg.tx.clone()) {
-            Ok(()) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
+            Ok(true) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
+            Ok(false) => (),
             Err(e) => {
                 error!(
                     "[{}] Couldn't insert queried transaction {}: {}",
