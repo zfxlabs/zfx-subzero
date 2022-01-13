@@ -14,7 +14,7 @@ pub enum Error {
     Actix(actix::MailboxError),
     Sled(sled::Error),
     /// Coinbase transactions cannot be sent to the mempool
-    InvalidCoinBaseTransaction(Transaction),
+    InvalidCoinbaseTransaction(Transaction),
     /// Tx is trying to spend invalid UTXOs
     SpendsInvalidUTXOs(Transaction),
     InvalidTransactionHash(TxHash),
