@@ -462,7 +462,7 @@ impl Handler<GenerateTx> for Sleet {
                 ctx.notify(FreshTx { tx: sleet_tx });
                 GenerateTxAck { tx_hash: Some(msg.tx.hash()) }
             }
-            Ok(false) => GenerateTxAck { tx_hash: Some(msg.tx.hash()) },
+            Ok(false) => GenerateTxAck { tx_hash: None },
 
             Err(e) => {
                 error!("[{}] Couldn't insert new transaction {}: {}", "sleet".cyan(), msg.tx, e);
