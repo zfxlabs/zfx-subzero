@@ -2,7 +2,6 @@ use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
 use crate::chain::alpha::state::Weight;
-use crate::chain::alpha::tx::UTXOId;
 use crate::chain::alpha::{self, Transaction, TxHash};
 use crate::client::Fanout;
 use crate::graph::DAG;
@@ -15,11 +14,10 @@ use super::{Error, Result};
 
 use tracing::{debug, error, info};
 
-use actix::{Actor, AsyncContext, Context, Handler, Recipient, ResponseFuture};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
+use actix::{Actor, AsyncContext, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
-use std::hash::Hash;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
 // Parent selection
@@ -79,7 +77,7 @@ impl Sleet {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
                 if self.spends_valid_utxos(tx.clone()) {
                     self.insert(sleet_tx.clone())?;
-                    alpha::insert_tx(&self.known_txs, tx.clone());
+                    let _ = alpha::insert_tx(&self.known_txs, tx.clone());
                     Ok(true)
                 } else {
                     Err(Error::SpendsInvalidUTXOs(tx))
@@ -311,7 +309,7 @@ pub struct QueryIncomplete {
 impl Handler<QueryIncomplete> for Sleet {
     type Result = ();
 
-    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
         ()
     }
 }
@@ -395,7 +393,7 @@ impl Handler<FreshTx> for Sleet {
         // Wrap the future so that subsequent chained handlers can access te actor.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-        let update_self = send_to_client.map(move |result, actor, ctx| {
+        let update_self = send_to_client.map(move |result, _actor, ctx| {
             match result {
                 Ok(acks) => {
                     // If the length of responses is the same as the length of the sampled ips,
@@ -495,7 +493,6 @@ impl Handler<QueryTx> for Sleet {
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
         // info!("[{}] Received query for transaction\n{}", "sleet".cyan(), msg.tx.inner.clone());
-        let tx = msg.tx.inner.clone();
         match self.on_receive_tx(msg.tx.clone()) {
             Ok(true) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
             Ok(false) => (),
