@@ -50,7 +50,7 @@ mod integration_test {
         {
             sleep(Duration::from_secs(2));
             let tx = get_tx_from_hash(ack.tx_hash.unwrap().clone(), node_0.address).await?;
-            println!("value = {}",tx.outputs[0].value);
+            println!("value = {}", tx.outputs[0].value);
             assert_eq!(spend_amount, tx.outputs[0].value)
         } else {
             panic!("No acknowledgment received from sending the transaction");

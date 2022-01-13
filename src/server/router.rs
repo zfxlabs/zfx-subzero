@@ -6,8 +6,8 @@ use crate::view::View;
 
 use tracing::{debug, error, info};
 
-use actix::{Actor, Addr, Context, Handler, ResponseFuture};
 use crate::sleet;
+use actix::{Actor, Addr, Context, Handler, ResponseFuture};
 
 pub struct Router {
     view: Addr<View>,

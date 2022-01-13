@@ -10,6 +10,7 @@ pub mod client;
 pub mod graph;
 pub mod hail;
 pub mod ice;
+pub mod integration_test;
 pub mod protocol;
 pub mod server;
 pub mod sleet;
@@ -17,7 +18,6 @@ pub mod util;
 pub mod version;
 pub mod view;
 pub mod zfx_id;
-pub mod integration_test;
 
 use protocol::{Request, Response};
 

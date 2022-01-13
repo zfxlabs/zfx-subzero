@@ -329,7 +329,7 @@ impl Handler<QueryComplete> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
-        if alpha::contains_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
+        if alpha::is_known_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
             error!(
                 "[{}] Got response for already queried transaction\n{}",
                 "sleet".cyan(),
@@ -377,7 +377,7 @@ impl Handler<FreshTx> for Sleet {
     type Result = ResponseActFuture<Self, Result<()>>;
 
     fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
-        if alpha::contains_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
+        if alpha::is_known_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
             let do_nothing = actix::fut::wrap_future::<_, Self>(async { Ok(()) });
             return Box::pin(do_nothing);
         }
