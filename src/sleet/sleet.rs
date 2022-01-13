@@ -355,7 +355,7 @@ impl Handler<QueryComplete> for Sleet {
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
-            let _ = self.txs.insert(msg.tx.hash(), msg.tx.clone());
+            let _ = self.txs.insert(msg.tx.hash(), msg.tx.inner.clone());
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
         alpha::insert_tx(&self.queried_txs, msg.tx.inner.clone()).unwrap();
@@ -364,7 +364,7 @@ impl Handler<QueryComplete> for Sleet {
 
 // Instead of having an infinite loop as per the paper which receives and processes
 // inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
-// a fresh transaction is received - either externally in `ReceiveTx` or as an internal
+// a fresh transaction is received - either externally in `GenerateTx` or as an internal
 // consensus message via `QueryTx`.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
@@ -446,7 +446,7 @@ pub struct GenerateTx {
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct GenerateTxAck {
     /// hash of applied transaction
-    tx_hash: Option<TxHash>,
+    pub tx_hash: Option<TxHash>,
 }
 
 impl Handler<GenerateTx> for Sleet {

@@ -33,9 +33,9 @@ mod integration_test {
         let tx = get_tx_from_hash(tx_hash.clone(), node_0.address).await?;
 
         let spend_amount = 5;
-        if let Some(Response::ReceiveTxAck(ack)) = client::oneshot(
+        if let Some(Response::GenerateTxAck(ack)) = client::oneshot(
             node_0.address,
-            Request::ReceiveTx(sleet::ReceiveTx {
+            Request::GenerateTx(sleet::GenerateTx {
                 tx: Transaction::TransferTx(TransferTx::new(
                     &node_0.keypair,
                     tx_hash,
