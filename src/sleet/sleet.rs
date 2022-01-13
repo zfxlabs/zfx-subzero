@@ -72,7 +72,7 @@ impl Sleet {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
         if tx.is_coinbase() {
-            Err(Error::InvalidCoinBaseTransaction(tx))
+            Err(Error::InvalidCoinbaseTransaction(tx))
         } else {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
                 if self.spends_valid_utxos(tx.clone()) {
@@ -325,14 +325,6 @@ impl Handler<QueryComplete> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
-        if alpha::is_known_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
-            error!(
-                "[{}] Got response for already queried transaction\n{}",
-                "sleet".cyan(),
-                msg.tx.inner.clone()
-            );
-            return;
-        }
         // FIXME: Verify that there are no duplicate ids
         let mut outcomes = vec![];
         for ack in msg.acks.iter() {
@@ -373,10 +365,6 @@ impl Handler<FreshTx> for Sleet {
     type Result = ResponseActFuture<Self, Result<()>>;
 
     fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
-        if alpha::is_known_tx(&self.queried_txs, msg.tx.hash()).unwrap() {
-            let do_nothing = actix::fut::wrap_future::<_, Self>(async { Ok(()) });
-            return Box::pin(do_nothing);
-        }
         let validators = self.sample(ALPHA).unwrap();
         info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
         let mut validator_ips = vec![];
