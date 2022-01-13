@@ -74,8 +74,7 @@ impl Sleet {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
         if tx.is_coinbase() {
-            // FIXME: more specific errors
-            Err(Error::InvalidTransaction(tx))
+            Err(Error::InvalidCoinBaseTransaction(tx))
         } else {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
                 if self.spends_valid_utxos(tx.clone()) {
@@ -83,8 +82,7 @@ impl Sleet {
                     alpha::insert_tx(&self.known_txs, tx.clone());
                     Ok(true)
                 } else {
-                    // FIXME: more specific errors
-                    Err(Error::InvalidTransaction(tx))
+                    Err(Error::SpendsInvalidUTXOs(tx))
                 }
             } else {
                 // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
