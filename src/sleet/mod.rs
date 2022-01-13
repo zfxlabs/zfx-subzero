@@ -13,7 +13,10 @@ use crate::graph;
 pub enum Error {
     Actix(actix::MailboxError),
     Sled(sled::Error),
-    InvalidTransaction(Transaction),
+    /// Coinbase transactions cannot be sent to the mempool
+    InvalidCoinBaseTransaction(Transaction),
+    /// Tx is trying to spend invalid UTXOs
+    SpendsInvalidUTXOs(Transaction),
     InvalidTransactionHash(TxHash),
     InvalidConflictSet,
     Graph(graph::Error),
