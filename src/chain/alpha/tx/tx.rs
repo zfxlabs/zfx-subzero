@@ -83,7 +83,7 @@ impl Tx {
         let mut consumed = 0;
         let mut inputs = vec![];
 
-        for output in self.outputs.iter() {
+        for output in self.outputs().iter() {
             if consumed < amount {
                 inputs.push(Input::new(keypair, tx_hash.clone(), i.clone()));
 
@@ -123,7 +123,7 @@ impl Tx {
         let mut change_amount = 0;
         let mut inputs = vec![];
         let mut i = 0;
-        for output in self.outputs.iter() {
+        for output in self.outputs().iter() {
             let input = Input::new(keypair, tx_hash.clone(), i.clone());
             inputs.push(input);
             if amount_to_stake > output.value {
@@ -150,7 +150,7 @@ impl Tx {
 
     pub fn sum(&self) -> u64 {
         let mut total = 0;
-        for output in self.outputs.iter() {
+        for output in self.outputs().iter() {
             total += output.value;
         }
         total
@@ -183,7 +183,6 @@ mod test {
     use super::*;
 
     use ed25519_dalek::Keypair;
-    use rand::{rngs::OsRng, CryptoRng};
 
     #[actix_rt::test]
     async fn test_spend_with_three_outputs() {
@@ -297,9 +296,11 @@ mod test {
     }
 
     fn generate_keys() -> (Keypair, Keypair, [u8; 32], [u8; 32]) {
-        let mut csprng = OsRng {};
-        let kp1 = Keypair::generate(&mut csprng);
-        let kp2 = Keypair::generate(&mut csprng);
+	let kp1_hex = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned();
+	let kp2_hex = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned();
+
+        let kp1 = Keypair::from_bytes(&hex::decode(kp1_hex).unwrap()).unwrap();
+	let kp2 = Keypair::from_bytes(&hex::decode(kp2_hex).unwrap()).unwrap();
 
         let pkh1 = hash_public(&kp1);
         let pkh2 = hash_public(&kp2);
