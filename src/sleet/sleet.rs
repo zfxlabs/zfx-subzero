@@ -17,7 +17,7 @@ use tracing::{debug, error, info};
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
 use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 // Parent selection
@@ -46,6 +46,8 @@ pub struct Sleet {
     conflict_map: ConflictMap,
     /// A vector containing the transactions of the last accepted block.
     txs: HashMap<TxHash, Transaction>,
+    /// The map contains transaction already accepted
+    accepted_txs: HashSet<TxHash>,
     /// The consensus graph.
     dag: DAG<TxHash>,
 }
@@ -61,6 +63,7 @@ impl Sleet {
             queried_txs: sled::Config::new().temporary(true).open().unwrap(),
             conflict_map: ConflictMap::new(),
             txs: HashMap::default(),
+            accepted_txs: HashSet::default(),
             dag: DAG::new(),
         }
     }
@@ -176,9 +179,9 @@ impl Sleet {
     /// Checks whether the parent of the provided `TxHash` is final - note that we do not
     /// traverse all of the parents of the accepted parent, since a child transaction
     /// cannot be final if its parent is not also final.
-    pub fn is_accepted(&self, initial_tx_hash: TxHash) -> Result<bool> {
+    pub fn is_accepted(&self, initial_tx_hash: &TxHash) -> Result<bool> {
         let mut parent_accepted = true;
-        match self.dag.get(&initial_tx_hash) {
+        match self.dag.get(initial_tx_hash) {
             Some(parents) => {
                 for parent in parents.iter() {
                     if !self.is_accepted_tx(&parent)? {
@@ -190,7 +193,7 @@ impl Sleet {
             None => return Err(Error::InvalidTransactionHash(initial_tx_hash.clone())),
         }
         if parent_accepted {
-            self.is_accepted_tx(&initial_tx_hash)
+            self.is_accepted_tx(initial_tx_hash)
         } else {
             Ok(false)
         }
@@ -208,13 +211,28 @@ impl Sleet {
         let leaves = self.dag.leaves();
         for leaf in leaves {
             for tx_hash in self.dag.dfs(&leaf) {
-                if self.is_accepted(tx_hash.clone())? {
+                if self.is_accepted(tx_hash)? {
                     accepted_frontier.push(tx_hash.clone());
                     break;
                 }
             }
         }
         Ok(accepted_frontier)
+    }
+
+    /// Check if a transaction or one of its ancestors have become accepted
+    pub fn check_accepted(&mut self, tx_hash: &TxHash) -> Result<Vec<TxHash>> {
+        let mut new = vec![];
+        for t in self.dag.dfs(tx_hash) {
+            if self.accepted_txs.contains(t) {
+                continue;
+            }
+            if self.is_accepted(t)? {
+                new.push(t.clone());
+                let _ = self.accepted_txs.insert(t.clone());
+            }
+        }
+        Ok(new)
     }
 
     // Weighted sampling
@@ -324,7 +342,7 @@ pub struct QueryComplete {
 impl Handler<QueryComplete> for Sleet {
     type Result = ();
 
-    fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: QueryComplete, ctx: &mut Context<Self>) -> Self::Result {
         // FIXME: Verify that there are no duplicate ids
         let mut outcomes = vec![];
         for ack in msg.acks.iter() {
@@ -344,12 +362,40 @@ impl Handler<QueryComplete> for Sleet {
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
             let _ = self.txs.insert(msg.tx.hash(), msg.tx.inner.clone());
+
+            // The transaction or some of its ancestors may have become
+            // accepted. Check this.
+            let new_accepted = self.check_accepted(&msg.tx.hash());
+            match new_accepted {
+                Ok(new_accepted) => {
+                    if !new_accepted.is_empty() {
+                        ctx.notify(NewAccepted { tx_hashes: new_accepted });
+                    }
+                }
+                // FIXME
+                Err(e) => (),
+            }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
         alpha::insert_tx(&self.queried_txs, msg.tx.inner.clone()).unwrap();
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct NewAccepted {
+    pub tx_hashes: Vec<TxHash>,
+}
+impl Handler<NewAccepted> for Sleet {
+    type Result = ();
+
+    fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
+        // TODO Fetch from db and send new batch of txs to Hail
+        for t in msg.tx_hashes.iter() {
+            info!("[{}] transaction is accepted {:?}", "sleet".cyan(), t);
+        }
+    }
+}
 // Instead of having an infinite loop as per the paper which receives and processes
 // inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
 // a fresh transaction is received - either externally in `GenerateTx` or as an internal
