@@ -24,7 +24,9 @@ pub struct GossipAck {}
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "Rumours")]
-pub struct GossipQuery {}
+pub struct GossipQuery {
+    pub network_size: usize,
+}
 
 #[derive(Debug, Clone, MessageResponse)]
 pub struct Rumours {
@@ -66,6 +68,7 @@ impl PriorityMap {
     pub fn take_n(&mut self, n: usize) -> Vec<Gossip> {
         let mut v: Vec<(GossipId, u64)> = vec![];
 
+        // Take `n` at the most
         for _ in 0..n {
             match self.q.pop_min() {
                 None => break,
@@ -73,10 +76,12 @@ impl PriorityMap {
             }
         }
 
+        // Increase the score of taken ones.
         for (id, p) in v.iter() {
             self.q.push_increase(*id, p + 1);
         }
 
+        // GossipId -> Gossip mapping
         v.iter().map(|(id, _)| self.h.get(&id).unwrap().clone()).collect()
     }
 
@@ -120,7 +125,11 @@ impl Handler<GossipQuery> for DisseminationComponent {
     type Result = Rumours;
 
     fn handle(&mut self, msg: GossipQuery, _ctx: &mut Context<Self>) -> Self::Result {
-        Rumours { rumours: self.rumours.take_n(GOSSIP_LIMIT) }
+        let rumours_limit = ((msg.network_size as f64).log2()).ceil() as u64;
+        println!("limit: {:?}", rumours_limit);
+        let r = Rumours { rumours: self.rumours.take_n(GOSSIP_LIMIT) };
+        self.rumours.cleanup(rumours_limit);
+        r
     }
 }
 
@@ -129,7 +138,7 @@ mod tests {
     use super::*;
     use rand::Rng;
 
-    const N: usize = 10; // Number of gossip messages
+    const N: usize = 100; // Number of gossip messages
     const NETWORK_SIZE: usize = 128; // Networks size in the test
 
     #[actix_rt::test]
@@ -205,7 +214,8 @@ mod tests {
             _ => panic!("unexpected send result"),
         }
 
-        let Rumours { mut rumours } = dc_addr.send(GossipQuery {}).await.unwrap();
+        let Rumours { mut rumours } =
+            dc_addr.send(GossipQuery { network_size: NETWORK_SIZE }).await.unwrap();
         assert_eq!(rumours.len(), 1);
         let Gossip::Leaver { id } = rumours.pop().unwrap();
         assert_eq!(id, stored_id);
@@ -228,10 +238,12 @@ mod tests {
             }
         }
 
-        let pulls = ((N / GOSSIP_LIMIT) as usize + 1);
+        let logn = ((NETWORK_SIZE as f64).log2()) as usize;
+        let pulls = ((N / GOSSIP_LIMIT) as usize) * logn + GOSSIP_LIMIT;
 
         for i in 0..pulls {
-            let Rumours { mut rumours } = dc_addr.send(GossipQuery {}).await.unwrap();
+            let Rumours { mut rumours } =
+                dc_addr.send(GossipQuery { network_size: NETWORK_SIZE }).await.unwrap();
             let len = rumours.len();
             if len > GOSSIP_LIMIT {
                 panic!("unexpected rumours length {:?}", len);
@@ -244,6 +256,9 @@ mod tests {
                 assert!(ids.contains(&id));
             }
         }
+        let Rumours { mut rumours } =
+            dc_addr.send(GossipQuery { network_size: NETWORK_SIZE }).await.unwrap();
+        assert_eq!(rumours.len(), 0);
     }
 }
 
