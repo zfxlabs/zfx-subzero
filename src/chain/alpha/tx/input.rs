@@ -38,7 +38,7 @@ impl Ord for Input {
                     match self_owner.cmp(&other_owner) {
                         Ordering::Equal => {
                             let self_signature = bincode::serialize(&self.signature).unwrap();
-                            let other_signature = bincode::serialize(&self.signature).unwrap();
+                            let other_signature = bincode::serialize(&other.signature).unwrap();
                             self_signature.cmp(&other_signature)
                         }
                         ord => ord,
@@ -61,7 +61,7 @@ impl PartialOrd for Input {
                     match self_owner.cmp(&other_owner) {
                         Ordering::Equal => {
                             let self_signature = bincode::serialize(&self.signature).unwrap();
-                            let other_signature = bincode::serialize(&self.signature).unwrap();
+                            let other_signature = bincode::serialize(&other.signature).unwrap();
                             Some(self_signature.cmp(&other_signature))
                         }
                         ord => Some(ord),
