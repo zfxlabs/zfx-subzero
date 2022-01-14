@@ -1,4 +1,4 @@
-use super::input::Input;
+use super::input::{Input, UTXOId};
 use super::inputs::Inputs;
 use super::output::{Amount, Output, PublicKeyHash};
 use super::outputs::Outputs;
@@ -12,6 +12,22 @@ use ed25519_dalek::Keypair;
 pub type TxHash = [u8; 32];
 
 pub const FEE: u64 = 100;
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct UTXOIds {
+    utxo_ids: Vec<UTXOId>,
+}
+
+impl UTXOIds {
+    pub fn new(inputs: Inputs<Input>) -> Self {
+        let mut utxo_ids = vec![];
+        for input in inputs.iter() {
+            utxo_ids.push(input.utxo_id());
+        }
+        utxo_ids.sort();
+        UTXOIds { utxo_ids }
+    }
+}
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
@@ -56,9 +72,7 @@ impl Tx {
     }
 
     pub fn outputs(&self) -> Vec<Output> {
-        let mut v: Vec<Output> = self.outputs.iter().cloned().collect();
-        v.sort();
-        v
+        self.outputs.outputs.clone()
     }
 
     pub fn coinbase(owner: PublicKeyHash, value: Amount) -> Tx {
@@ -296,11 +310,11 @@ mod test {
     }
 
     fn generate_keys() -> (Keypair, Keypair, [u8; 32], [u8; 32]) {
-	let kp1_hex = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned();
-	let kp2_hex = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned();
+        let kp1_hex = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned();
+        let kp2_hex = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned();
 
         let kp1 = Keypair::from_bytes(&hex::decode(kp1_hex).unwrap()).unwrap();
-	let kp2 = Keypair::from_bytes(&hex::decode(kp2_hex).unwrap()).unwrap();
+        let kp2 = Keypair::from_bytes(&hex::decode(kp2_hex).unwrap()).unwrap();
 
         let pkh1 = hash_public(&kp1);
         let pkh2 = hash_public(&kp2);
