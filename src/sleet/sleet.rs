@@ -392,7 +392,7 @@ impl Handler<NewAccepted> for Sleet {
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         // TODO Fetch from db and send new batch of txs to Hail
         for t in msg.tx_hashes.iter() {
-            info!("[{}] transaction is accepted {:?}", "sleet".cyan(), t);
+            info!("[{}] transaction is accepted {}", "sleet".cyan(), hex::encode(t));
         }
     }
 }
@@ -483,9 +483,9 @@ impl Handler<GenerateTx> for Sleet {
     type Result = GenerateTxAck;
 
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] Generating new transaction\n{}", "sleet".cyan(), msg.tx.clone());
         let parents = self.select_parents(NPARENTS).unwrap();
         let sleet_tx = SleetTx::new(parents, msg.tx.clone());
+        info!("[{}] Generating new transaction\n{}", "sleet".cyan(), sleet_tx);
 
         match self.on_receive_tx(sleet_tx.clone()) {
             Ok(true) => {
