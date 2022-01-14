@@ -1,4 +1,6 @@
 mod dag;
+mod hyperarc;
+mod hypergraph;
 
 pub use dag::*;
 
@@ -7,7 +9,10 @@ pub enum Error {
     VertexExists,
     VacantEntry,
     UndefinedChit,
+    UndefinedUTXO,
     ChitReplace,
+    DuplicateUTXO,
+    DuplicateInputs,
 }
 
 impl std::error::Error for Error {}
