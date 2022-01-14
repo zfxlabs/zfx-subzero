@@ -1,8 +1,9 @@
 mod conflict_map;
-mod conflict_set;
 mod sleet;
 mod sleet_tx;
 mod spend_map;
+
+pub mod conflict_set;
 
 pub use sleet::*;
 

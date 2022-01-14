@@ -3,6 +3,8 @@ use super::{Error, Result};
 
 use crate::chain::alpha::tx::{Input, Inputs, Output, Outputs, Tx, UTXOIds};
 
+use crate::sleet::conflict_set::ConflictSet;
+
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 #[derive(Debug)]
@@ -62,14 +64,10 @@ impl Hypergraph {
         Ok(())
     }
 
-    pub fn conflicts(&self, inputs: Inputs<Input>) -> (Vec<Tx>, Tx) {
+    pub fn conflicts(&self, inputs: Inputs<Input>) -> ConflictSet<Tx> {
         let spent_outputs = UTXOIds::new(inputs.clone());
         let hyperarc = self.get(&spent_outputs).unwrap();
-        let entry = hyperarc.get(&inputs).unwrap();
-        let r: HashSet<Tx> = entry.0.iter().cloned().collect();
-        let mut v: Vec<Tx> = r.iter().cloned().collect();
-        v.sort();
-        (v, entry.1.clone())
+        hyperarc.get(&inputs).unwrap()
     }
 }
 
@@ -78,6 +76,7 @@ mod test {
     use super::Hypergraph;
 
     use crate::chain::alpha::tx::{Input, Inputs, Output, Outputs, Tx, UTXOIds};
+    use crate::sleet::conflict_set::ConflictSet;
 
     use std::collections::HashSet;
 
@@ -102,19 +101,22 @@ mod test {
         let output1 = Output::new(pkh2, 1000);
         let tx1 = Tx::new(vec![input2.clone()], vec![output1.clone()]);
         hg.insert_tx(tx1.clone()).unwrap();
-        assert_eq!(hg.conflicts(tx1.inputs.clone()), (vec![tx1.clone()], tx1.clone()));
+        assert_eq!(hg.conflicts(tx1.inputs.clone()), conflict_set(vec![tx1.clone()], tx1.clone()));
 
         // A transaction that spends the same input but produces a distinct output should conflict.
         let output2 = Output::new(pkh2, 900);
         let tx2 = Tx::new(vec![input2.clone()], vec![output2.clone()]);
         hg.insert_tx(tx2.clone()).unwrap();
-        assert_eq!(hg.conflicts(tx2.inputs.clone()), (vec![tx2.clone(), tx1.clone()], tx1.clone()));
+        assert_eq!(
+            hg.conflicts(tx2.inputs.clone()),
+            conflict_set(vec![tx2.clone(), tx1.clone()], tx1.clone())
+        );
 
         // A transaction that spends a distinct input should not conflict.
         let input3 = Input::new(&kp2, dummy_tx_hash2.clone(), 0);
         let tx3 = Tx::new(vec![input3], vec![output2]);
         hg.insert_tx(tx3.clone()).unwrap();
-        assert_eq!(hg.conflicts(tx3.inputs.clone()), (vec![tx3.clone()], tx3.clone()));
+        assert_eq!(hg.conflicts(tx3.inputs.clone()), conflict_set(vec![tx3.clone()], tx3.clone()));
     }
 
     // #[actix_rt::test]
@@ -254,6 +256,15 @@ mod test {
     // 	hg.insert_tx(tx4.outputs.clone(), tx7.clone()).unwrap();
     // 	assert_eq!(hg.conflicts(tx4.outputs.clone(), tx7.inputs.clone()), (vec![tx7.clone()], tx7.clone()));
     // }
+
+    fn conflict_set(conflicts: Vec<Tx>, pref: Tx) -> ConflictSet<Tx> {
+        ConflictSet {
+            conflicts: conflicts.iter().cloned().collect(),
+            pref: pref.clone(),
+            last: pref,
+            cnt: 0u8,
+        }
+    }
 
     fn hash_public(keypair: &Keypair) -> [u8; 32] {
         let enc = bincode::serialize(&keypair.public).unwrap();
