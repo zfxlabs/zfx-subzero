@@ -1,6 +1,11 @@
 use super::input::Input;
+use super::inputs::Inputs;
 use super::output::{Amount, Output, PublicKeyHash};
+use super::outputs::Outputs;
 use super::{Error, Result};
+
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 use ed25519_dalek::Keypair;
 
@@ -10,13 +15,50 @@ pub const FEE: u64 = 100;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
-    pub inputs: Vec<Input>,
-    pub outputs: Vec<Output>,
+    pub inputs: Inputs<Input>,
+    pub outputs: Outputs<Output>,
+}
+
+impl Hash for Tx {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inputs.hash(state);
+        self.outputs.hash(state);
+    }
+}
+
+impl Ord for Tx {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.inputs.cmp(&other.inputs) {
+            Ordering::Equal => self.outputs.cmp(&other.outputs),
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for Tx {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.inputs.cmp(&other.inputs) {
+            Ordering::Equal => Some(self.outputs.cmp(&other.outputs)),
+            ord => Some(ord),
+        }
+    }
 }
 
 impl Tx {
     pub fn new(inputs: Vec<Input>, outputs: Vec<Output>) -> Tx {
-        Tx { inputs, outputs }
+        Tx { inputs: Inputs::new(inputs), outputs: Outputs::new(outputs) }
+    }
+
+    pub fn inputs(&self) -> Vec<Input> {
+        let mut v: Vec<Input> = self.inputs.iter().cloned().collect();
+        v.sort();
+        v
+    }
+
+    pub fn outputs(&self) -> Vec<Output> {
+        let mut v: Vec<Output> = self.outputs.iter().cloned().collect();
+        v.sort();
+        v
     }
 
     pub fn coinbase(owner: PublicKeyHash, value: Amount) -> Tx {
@@ -158,8 +200,8 @@ mod test {
         let tx2 = tx1.spend(&kp1, pkh2, pkh1, tx1.hash(), 1800).unwrap();
 
         assert_eq!(tx2.inputs.len(), 3);
-        assert_eq!(tx2.outputs[0].value, 1800); // total spent - fee
-        assert_eq!(tx2.outputs[1].value, 100); // remaining spendable amount
+        assert_eq!(tx2.outputs()[0].value, 1800); // total spent - fee
+        assert_eq!(tx2.outputs()[1].value, 100); // remaining spendable amount
     }
 
     #[actix_rt::test]
