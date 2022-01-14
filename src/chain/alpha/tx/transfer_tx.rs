@@ -36,11 +36,11 @@ impl TransferTx {
     }
 
     pub fn inputs(&self) -> Vec<Input> {
-        self.tx.inputs.clone()
+        self.tx.inputs()
     }
 
     pub fn outputs(&self) -> Vec<Output> {
-        self.tx.outputs.clone()
+        self.tx.outputs()
     }
 
     pub fn hash(&self) -> [u8; 32] {
