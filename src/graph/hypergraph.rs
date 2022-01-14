@@ -86,23 +86,6 @@ mod test {
     use std::collections::HashSet;
 
     use ed25519_dalek::Keypair;
-    use rand::{rngs::OsRng, CryptoRng};
-
-    fn hash_public(keypair: &Keypair) -> [u8; 32] {
-        let enc = bincode::serialize(&keypair.public).unwrap();
-        blake3::hash(&enc).as_bytes().clone()
-    }
-
-    fn generate_keys() -> (Keypair, Keypair, [u8; 32], [u8; 32]) {
-        let mut csprng = OsRng {};
-        let kp1 = Keypair::generate(&mut csprng);
-        let kp2 = Keypair::generate(&mut csprng);
-
-        let pkh1 = hash_public(&kp1);
-        let pkh2 = hash_public(&kp2);
-
-        return (kp1, kp2, pkh1, pkh2);
-    }
 
     #[actix_rt::test]
     async fn test_hypergraph() {
@@ -139,64 +122,91 @@ mod test {
         assert_eq!(c3, (vec![tx3.clone()], tx3.clone()));
     }
 
-    // #[actix_rt::test]
-    // async fn test_multiple_inputs() {
-    // 	// The genesis spendable outputs `go`
-    // 	let go = Outputs::new(vec![0]);
-    // 	let mut hg: Hypergraph<u8, u8> = Hypergraph::new(go.clone());
+    #[actix_rt::test]
+    async fn test_multiple_inputs() {
+        let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-    // 	// A transaction that spends `go` with an input `gi`.
-    // 	let tx1 = Tx::new(vec![0, 1], vec![1]);
-    // 	hg.insert_tx(go.clone(), tx1.clone()).unwrap();
-    // 	assert_eq!(hg.conflicts(go.clone(), tx1.inputs.clone()), (vec![tx1.clone()], tx1.clone()));
+        let dummy_tx_hash0 = [0u8; 32];
+        let dummy_tx_hash1 = [1u8; 32];
 
-    // 	// A transaction that spends the same inputs.
-    // 	let tx2 = Tx::new(vec![0, 1], vec![2]);
-    // 	hg.insert_tx(go.clone(), tx2.clone()).unwrap();
-    // 	assert_eq!(hg.conflicts(go.clone(), tx2.inputs.clone()), (vec![tx1.clone(), tx2.clone()], tx1.clone()));
+        // Some root unspent outputs for `genesis`.
+        let output0 = Output::new(pkh1, 1000);
+        let genesis = Outputs::new(vec![output0]);
+        let mut hg: Hypergraph = Hypergraph::new(genesis.clone());
 
-    // 	// A transaction that spends a distinct inputs.
-    // 	let tx3 = Tx::new(vec![2, 3], vec![3]);
-    // 	hg.insert_tx(go.clone(), tx3.clone()).unwrap();
-    // 	assert_eq!(hg.conflicts(go.clone(), tx3.inputs.clone()), (vec![tx3.clone()], tx3.clone()));
+	// A transaction that spends `genesis` and produces a new output.
+        let input1 = Input::new(&kp1, dummy_tx_hash0.clone(), 0);
+        let output1 = Output::new(pkh2, 1000);
+	let tx1 = Tx::new(vec![input1.clone()], vec![output1]);
+	hg.insert_tx(genesis.clone(), tx1.clone()).unwrap();
+	let c1 = hg.conflicts(genesis.clone(), tx1.inputs.clone());
+	assert_eq!(c1, (vec![tx1.clone()], tx1.clone()));
 
-    // 	// A transaction that spends multiple conflicting inputs
-    // 	let tx4 = Tx::new(vec![0, 1, 2, 3], vec![4]);
-    // 	hg.insert_tx(go.clone(), tx4.clone()).unwrap();
-    // 	assert_eq!(hg.conflicts(go.clone(), tx4.inputs.clone()), (vec![tx1.clone(), tx2.clone(), tx4.clone(), tx3.clone()], tx1.clone()));
-    // }
+	// A transaction that spends the same inputs.
+        let output2 = Output::new(pkh2, 900);
+	let tx2 = Tx::new(vec![input1.clone()], vec![output2.clone()]);
+	hg.insert_tx(genesis.clone(), tx2.clone()).unwrap();
+	let c2 = hg.conflicts(genesis.clone(), tx2.inputs.clone());
+	assert_eq!(c2, (vec![tx2.clone(), tx1.clone()], tx1.clone()));
 
-    // #[actix_rt::test]
-    // async fn test_disjoint_inputs() {
-    // 	// The genesis spendable outputs `go`
-    // 	let go = Outputs::new(vec![0]);
-    // 	let mut hg: Hypergraph<u8, u8> = Hypergraph::new(go.clone());
+	// A transaction that spends a distinct inputs but produces the same outputs.
+        let input2 = Input::new(&kp2, dummy_tx_hash1.clone(), 0);
+        let tx3 = Tx::new(vec![input2.clone()], vec![output2]);
+        hg.insert_tx(genesis.clone(), tx3.clone()).unwrap();
+        let c3 = hg.conflicts(genesis.clone(), tx3.inputs.clone());
+        assert_eq!(c3, (vec![tx3.clone()], tx3.clone()));
 
-    // 	// A transaction that spends `go` and produces a new output
-    // 	let tx1 = Tx::new(vec![0, 1], vec![1]);
-    // 	hg.insert_tx(go.clone(), tx1.clone());
-    // 	assert_eq!(hg.conflicts(go.clone(), tx1.inputs.clone()), (vec![tx1.clone()], tx1.clone()));
+	// A transaction that spends multiple conflicting inputs
+	let output3 = Output::new(pkh2, 800);
+	let tx4 = Tx::new(vec![input1.clone(), input2.clone()], vec![output3]);
+	hg.insert_tx(genesis.clone(), tx4.clone()).unwrap();
+	let c4 = hg.conflicts(genesis.clone(), tx4.inputs.clone());
+	assert_eq!(c4, (vec![tx2.clone(), tx1.clone(), tx4.clone(), tx3.clone()], tx1.clone()));
+    }
 
-    // 	// A transaction that spends some of the same inputs as `tx1`
-    // 	let tx2 = Tx::new(vec![1, 2], vec![2]);
-    // 	hg.insert_tx(go.clone(), tx2.clone());
-    // 	assert_eq!(hg.conflicts(go.clone(), tx2.inputs.clone()), (vec![tx1.clone(), tx2.clone()], tx1.clone()));
+    #[actix_rt::test]
+    async fn test_disjoint_inputs() {
+        let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-    // 	// A transaction that spends some of te same inputs as `tx2`
-    // 	let tx3 = Tx::new(vec![2, 3, 4], vec![3]);
-    // 	hg.insert_tx(go.clone(), tx3.clone());
-    // 	assert_eq!(hg.conflicts(go.clone(), tx3.inputs.clone()), (vec![tx2.clone(), tx3.clone()], tx2.clone()));
+        let dummy_tx_hash0 = [0u8; 32];
+        let dummy_tx_hash1 = [1u8; 32];
 
-    // 	// A transaction that spends one of the same inputs as `tx3`
-    // 	let tx4 = Tx::new(vec![3], vec![4]);
-    // 	hg.insert_tx(go.clone(), tx4.clone());
-    // 	assert_eq!(hg.conflicts(go.clone(), tx4.inputs.clone()), (vec![tx3.clone(), tx4.clone()], tx3.clone()));
+        // Some root unspent outputs for `genesis`.
+        let output0 = Output::new(pkh1, 1000);
+        let genesis = Outputs::new(vec![output0]);
+        let mut hg: Hypergraph = Hypergraph::new(genesis.clone());
 
-    // 	// Another transaction that spends one of the same inputs as `tx3`
-    // 	let tx5 = Tx::new(vec![4], vec![5]);
-    // 	hg.insert_tx(go.clone(), tx5.clone());
-    // 	assert_eq!(hg.conflicts(go.clone(), tx5.inputs.clone()), (vec![tx3.clone(), tx5.clone()], tx3.clone()));
-    // }
+	// A transaction that spends `genesis` and produces a new output
+        let input1 = Input::new(&kp1, dummy_tx_hash0.clone(), 0);
+        let output1 = Output::new(pkh2, 1000);
+	let tx1 = Tx::new(vec![input1.clone()], vec![output1]);
+	hg.insert_tx(genesis.clone(), tx1.clone()).unwrap();
+	let c1 = hg.conflicts(genesis.clone(), tx1.inputs.clone());
+	assert_eq!(c1, (vec![tx1.clone()], tx1.clone()));
+
+	// A transaction that spends some of the same inputs as `tx1`
+        let output2 = Output::new(pkh2, 900);
+        let input2 = Input::new(&kp2, dummy_tx_hash1.clone(), 0);
+	let tx2 = Tx::new(vec![input1.clone(), input2.clone()], vec![output2.clone()]);
+	hg.insert_tx(genesis.clone(), tx2.clone()).unwrap();
+	let c2 = hg.conflicts(genesis.clone(), tx2.inputs.clone());
+	assert_eq!(c2, (vec![tx1.clone(), tx2.clone()], tx1.clone()));
+
+	// A transaction that spends some of te same inputs as `tx2`
+	// let tx3 = Tx::new(vec![2, 3, 4], vec![3]);
+	// hg.insert_tx(go.clone(), tx3.clone());
+	// assert_eq!(hg.conflicts(go.clone(), tx3.inputs.clone()), (vec![tx2.clone(), tx3.clone()], tx2.clone()));
+
+	// A transaction that spends one of the same inputs as `tx3`
+	// let tx4 = Tx::new(vec![3], vec![4]);
+	// hg.insert_tx(go.clone(), tx4.clone());
+	// assert_eq!(hg.conflicts(go.clone(), tx4.inputs.clone()), (vec![tx3.clone(), tx4.clone()], tx3.clone()));
+
+	// Another transaction that spends one of the same inputs as `tx3`
+	// let tx5 = Tx::new(vec![4], vec![5]);
+	// hg.insert_tx(go.clone(), tx5.clone());
+	// assert_eq!(hg.conflicts(go.clone(), tx5.inputs.clone()), (vec![tx3.clone(), tx5.clone()], tx3.clone()));
+    }
 
     // #[actix_rt::test]
     // async fn test_outputs() {
@@ -239,4 +249,22 @@ mod test {
     // 	hg.insert_tx(tx4.outputs.clone(), tx7.clone()).unwrap();
     // 	assert_eq!(hg.conflicts(tx4.outputs.clone(), tx7.inputs.clone()), (vec![tx7.clone()], tx7.clone()));
     // }
+
+    fn hash_public(keypair: &Keypair) -> [u8; 32] {
+        let enc = bincode::serialize(&keypair.public).unwrap();
+        blake3::hash(&enc).as_bytes().clone()
+    }
+
+    fn generate_keys() -> (Keypair, Keypair, [u8; 32], [u8; 32]) {
+	let kp1_hex = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned();
+	let kp2_hex = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned();
+
+        let kp1 = Keypair::from_bytes(&hex::decode(kp1_hex).unwrap()).unwrap();
+	let kp2 = Keypair::from_bytes(&hex::decode(kp2_hex).unwrap()).unwrap();
+
+        let pkh1 = hash_public(&kp1);
+        let pkh2 = hash_public(&kp2);
+
+        return (kp1, kp2, pkh1, pkh2);
+    }
 }
