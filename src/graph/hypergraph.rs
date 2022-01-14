@@ -1,7 +1,7 @@
-use super::{Error, Result};
 use super::hyperarc::Hyperarc;
+use super::{Error, Result};
 
-use crate::chain::alpha::tx::{Tx, Inputs, Outputs, Input, Output};
+use crate::chain::alpha::tx::{Input, Inputs, Output, Outputs, Tx};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
@@ -11,8 +11,7 @@ pub struct Hypergraph {
     h: HashMap<Outputs<Output>, Hyperarc>,
 }
 
-impl std::ops::Deref for Hypergraph
-{
+impl std::ops::Deref for Hypergraph {
     type Target = HashMap<Outputs<Output>, Hyperarc>;
 
     fn deref(&self) -> &'_ Self::Target {
@@ -20,61 +19,61 @@ impl std::ops::Deref for Hypergraph
     }
 }
 
-impl std::ops::DerefMut for Hypergraph
-{
+impl std::ops::DerefMut for Hypergraph {
     fn deref_mut(&mut self) -> &'_ mut Self::Target {
         &mut self.h
     }
 }
 
-impl Hypergraph
-{
+impl Hypergraph {
     pub fn new(g: Outputs<Output>) -> Self {
-	let mut map: HashMap<Outputs<Output>, Hyperarc> = HashMap::default();
-	let _ = map.insert(g.clone(), Hyperarc::new());
-	Hypergraph { h: map }
+        let mut map: HashMap<Outputs<Output>, Hyperarc> = HashMap::default();
+        let _ = map.insert(g.clone(), Hyperarc::new());
+        Hypergraph { h: map }
     }
 
     pub fn insert_tx(&mut self, spent_outputs: Outputs<Output>, tx: Tx) -> Result<()> {
-	// Try to insert the new outputs.
-	match self.entry(tx.outputs.clone()) {
-	    // If the new outputs already exists then it is a duplicate transaction.
-	    Entry::Occupied(_) =>
-		(),
-	    Entry::Vacant(v) => {
-		// Insert an empty set of edges for the new output.
-		let _ = v.insert(Hyperarc::new());
-	    },
-	};
-	// Update the input edges.
-	match self.entry(spent_outputs.clone()) {
-	    Entry::Occupied(mut o) => {
-		let hyperarc = o.get_mut();
-		match hyperarc.get(&tx.inputs) {
-		    // If there is already an equivalent inputs edge for the output being spent, then
-		    // there is a conflict.
-		    Some(existing) => {
-			let () = hyperarc.update(tx);
-		    },
-		    None => {
-			let _ = hyperarc.insert_new(tx).unwrap();
-		    },
-		}
-	    },
-	    // If the outputs being spent do not exist then error.
-	    Entry::Vacant(mut v) =>
-		return Err(Error::UndefinedUTXO),
-	}
-	Ok(())
+        // Try to insert the new outputs.
+        match self.entry(tx.outputs.clone()) {
+            // If the new outputs already exists then it is a duplicate transaction.
+            Entry::Occupied(_) => (),
+            Entry::Vacant(v) => {
+                // Insert an empty set of edges for the new output.
+                let _ = v.insert(Hyperarc::new());
+            }
+        };
+        // Update the input edges.
+        match self.entry(spent_outputs.clone()) {
+            Entry::Occupied(mut o) => {
+                let hyperarc = o.get_mut();
+                match hyperarc.get(&tx.inputs) {
+                    // If there is already an equivalent inputs edge for the output being spent, then
+                    // there is a conflict.
+                    Some(existing) => {
+                        let () = hyperarc.update(tx);
+                    }
+                    None => {
+                        let _ = hyperarc.insert_new(tx).unwrap();
+                    }
+                }
+            }
+            // If the outputs being spent do not exist then error.
+            Entry::Vacant(mut v) => return Err(Error::UndefinedUTXO),
+        }
+        Ok(())
     }
 
-    pub fn conflicts(&self, spent_outputs: Outputs<Output>, inputs: Inputs<Input>) -> (Vec<Tx>, Tx) {
-	let hyperarc = self.get(&spent_outputs).unwrap();
-	let entry = hyperarc.get(&inputs).unwrap();
-	let r: HashSet<Tx> = entry.0.iter().cloned().collect();
-	let mut v: Vec<Tx> = r.iter().cloned().collect();
-	v.sort();
-	(v, entry.1.clone())
+    pub fn conflicts(
+        &self,
+        spent_outputs: Outputs<Output>,
+        inputs: Inputs<Input>,
+    ) -> (Vec<Tx>, Tx) {
+        let hyperarc = self.get(&spent_outputs).unwrap();
+        let entry = hyperarc.get(&inputs).unwrap();
+        let r: HashSet<Tx> = entry.0.iter().cloned().collect();
+        let mut v: Vec<Tx> = r.iter().cloned().collect();
+        v.sort();
+        (v, entry.1.clone())
     }
 }
 
@@ -224,5 +223,5 @@ impl Hypergraph
 // 	hg.insert_tx(tx4.outputs.clone(), tx7.clone()).unwrap();
 // 	assert_eq!(hg.conflicts(tx4.outputs.clone(), tx7.inputs.clone()), (vec![tx7.clone()], tx7.clone()));
 //     }
-    
+
 // }
