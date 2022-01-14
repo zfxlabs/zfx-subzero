@@ -239,7 +239,7 @@ mod tests {
         }
 
         let logn = ((NETWORK_SIZE as f64).log2()) as usize;
-        let pulls = ((N / GOSSIP_LIMIT) as usize) * logn + GOSSIP_LIMIT;
+        let pulls = ((N * logn) / GOSSIP_LIMIT) + 1;
 
         for i in 0..pulls {
             let Rumours { mut rumours } =
