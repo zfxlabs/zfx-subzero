@@ -19,10 +19,24 @@ pub struct UTXOIds {
 }
 
 impl UTXOIds {
-    pub fn new(inputs: Inputs<Input>) -> Self {
+    pub fn from_inputs(inputs: Inputs<Input>) -> Self {
         let mut utxo_ids = vec![];
         for input in inputs.iter() {
             utxo_ids.push(input.utxo_id());
+        }
+        utxo_ids.sort();
+        UTXOIds { utxo_ids }
+    }
+
+    pub fn from_outputs(txhash: TxHash, outputs: Outputs<Output>) -> Self {
+        let mut utxo_ids = vec![];
+        for i in 0..outputs.len() {
+            let source = txhash.clone();
+            let i = i.clone() as u8;
+            let bytes = vec![source.to_vec(), vec![i]].concat();
+            let encoded = bincode::serialize(&bytes).unwrap();
+            let utxo_id = blake3::hash(&encoded).as_bytes().clone();
+            utxo_ids.push(utxo_id);
         }
         utxo_ids.sort();
         UTXOIds { utxo_ids }
@@ -297,6 +311,21 @@ mod test {
         assert_eq!(tx3.inputs.len(), 1);
         assert_eq!(tx3.outputs.len(), 1);
         assert_eq!(tx3.sum(), 500 - FEE);
+    }
+
+    #[actix_rt::test]
+    async fn test_utxo_ids() {
+        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+
+        let genesis_tx = Tx::new(vec![], vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000)]);
+        let genesis_output_utxo_ids =
+            UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
+        let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
+        let input2 = Input::new(&kp2, genesis_tx.hash(), 1);
+        let output1 = Output::new(pkh1, 1000);
+        let tx1 = Tx::new(vec![input1, input2], vec![output1]);
+        let tx1_input_utxo_ids = UTXOIds::from_inputs(tx1.inputs.clone());
+        assert_eq!(genesis_output_utxo_ids.clone(), tx1_input_utxo_ids.clone());
     }
 
     fn hash_public(keypair: &Keypair) -> [u8; 32] {
