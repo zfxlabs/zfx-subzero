@@ -3,6 +3,8 @@ mod hypergraph;
 
 pub use dag::*;
 
+use crate::chain::alpha::tx::TxHash;
+
 #[derive(Debug)]
 pub enum Error {
     VertexExists,
@@ -12,6 +14,8 @@ pub enum Error {
     ChitReplace,
     DuplicateUTXO,
     DuplicateInputs,
+    InvalidTxHash(TxHash),
+    EmptyHypergraph,
 }
 
 impl std::error::Error for Error {}
