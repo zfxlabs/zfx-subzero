@@ -1,5 +1,4 @@
 mod dag;
-mod hyperarc;
 mod hypergraph;
 
 pub use dag::*;
