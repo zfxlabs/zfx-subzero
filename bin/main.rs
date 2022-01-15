@@ -123,15 +123,18 @@ fn main() -> Result<()> {
         let ice = Ice::new(node_id, listener_ip, reservoir);
         let ice_addr = ice.start();
 
-        // Create the `sleet` actor
+        // Create the 'client' actor
         let client = Client::new();
         let client_addr = client.start();
-        let sleet = Sleet::new(client_addr.clone().recipient(), node_id);
-        let sleet_addr = sleet.start();
 
         // Create the `hail` actor
-        let hail = Hail::new(client_addr.recipient(), node_id);
+        let hail = Hail::new(client_addr.clone().recipient(), node_id);
         let hail_addr = hail.start();
+
+        // Create the `sleet` actor
+        let sleet =
+            Sleet::new(client_addr.clone().recipient(), hail_addr.clone().recipient(), node_id);
+        let sleet_addr = sleet.start();
 
         // Create the `alpha` actor
         let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();

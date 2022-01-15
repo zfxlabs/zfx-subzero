@@ -5,6 +5,7 @@ use crate::chain::alpha::state::Weight;
 use crate::chain::alpha::{self, Transaction, TxHash};
 use crate::client::Fanout;
 use crate::graph::DAG;
+use crate::hail::AcceptedTransactions;
 use crate::protocol::{Request, Response};
 use crate::util;
 
@@ -34,6 +35,8 @@ const BETA2: u8 = 20;
 pub struct Sleet {
     /// The client used to make external requests.
     sender: Recipient<Fanout>,
+    /// Connection to Hail
+    hail_recipient: Recipient<AcceptedTransactions>,
     /// The identity of this validator.
     node_id: Id,
     /// The weighted validator set.
@@ -54,9 +57,14 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
+    pub fn new(
+        sender: Recipient<Fanout>,
+        hail_recipient: Recipient<AcceptedTransactions>,
+        node_id: Id,
+    ) -> Self {
         Sleet {
             sender,
+            hail_recipient,
             node_id,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
@@ -389,12 +397,14 @@ impl Handler<NewAccepted> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
-        // TODO Fetch from db and send new batch of txs to Hail
+        let mut txs = vec![];
         for t in msg.tx_hashes.iter() {
             // At this point we can be sure that the tx is known
             let tx = alpha::get_tx(&self.known_txs, t).unwrap().unwrap();
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx);
+            txs.push(tx);
         }
+        self.hail_recipient.do_send(AcceptedTransactions { txs });
     }
 }
 // Instead of having an infinite loop as per the paper which receives and processes
