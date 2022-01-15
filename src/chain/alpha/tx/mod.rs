@@ -9,6 +9,7 @@ mod transaction;
 mod transfer_tx;
 mod tx;
 mod types;
+mod utxo_ids;
 
 pub use coinbase_tx::*;
 pub use functions::*;
@@ -20,6 +21,7 @@ pub use stake_tx::*;
 pub use transaction::*;
 pub use transfer_tx::*;
 pub use tx::*;
+pub use utxo_ids::*;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
