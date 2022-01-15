@@ -391,7 +391,9 @@ impl Handler<NewAccepted> for Sleet {
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         // TODO Fetch from db and send new batch of txs to Hail
         for t in msg.tx_hashes.iter() {
-            info!("[{}] transaction is accepted {}", "sleet".cyan(), hex::encode(t));
+            // At this point we can be sure that the tx is known
+            let tx = alpha::get_tx(&self.known_txs, t).unwrap().unwrap();
+            info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx);
         }
     }
 }
