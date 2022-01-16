@@ -544,8 +544,7 @@ mod test {
         let pkh = blake3::hash(&enc).as_bytes().clone();
         Transaction::TransferTx(TransferTx::new(
             &keypair,
-            from.hash(),
-            from.inner(),
+            from.clone(),
             pkh.clone(),
             pkh.clone(),
             amount,
