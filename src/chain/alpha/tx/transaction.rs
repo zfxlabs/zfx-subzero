@@ -1,4 +1,4 @@
-use super::{Input, Output, Tx};
+use super::{Input, Inputs, Output, Outputs, Tx};
 
 use super::coinbase_tx::CoinbaseTx;
 use super::stake_tx::StakeTx;
@@ -37,16 +37,16 @@ impl Transaction {
         }
     }
 
-    pub fn inputs(&self) -> Vec<Input> {
+    pub fn inputs(&self) -> Inputs<Input> {
         match self {
             // coinbase transactions have no inputs
-            Transaction::CoinbaseTx(tx) => vec![],
+            Transaction::CoinbaseTx(tx) => Inputs::new(vec![]),
             Transaction::StakeTx(tx) => tx.inputs(),
             Transaction::TransferTx(tx) => tx.inputs(),
         }
     }
 
-    pub fn outputs(&self) -> Vec<Output> {
+    pub fn outputs(&self) -> Outputs<Output> {
         match self {
             Transaction::CoinbaseTx(tx) => tx.outputs(),
             Transaction::StakeTx(tx) => tx.outputs(),
@@ -85,7 +85,7 @@ mod tests {
         let fee = 100;
         let allocation = 2000;
         let staked = 1000;
-        let alloc_tx = CoinbaseTx::new(pkh, allocation.clone());
+        let alloc_tx = CoinbaseTx::from_output(pkh, allocation.clone());
         let stake_tx = StakeTx::new(&kp, node_id, alloc_tx.tx, staked);
         assert_eq!(stake_tx.inputs().len(), 1);
         assert_eq!(stake_tx.outputs().len(), 1);
