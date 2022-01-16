@@ -1,15 +1,15 @@
 use super::{Error, Result};
 
-use crate::chain::alpha::tx::{Input, Inputs, Tx, TxHash, UTXOIds};
+use crate::chain::alpha::tx::{Input, Inputs, Transaction, TxHash, UTXOIds};
 
 use crate::sleet::conflict_set::ConflictSet;
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 pub struct UTXOGraph {
-    dh: HashMap<UTXOIds, Vec<Tx>>,
+    dh: HashMap<UTXOIds, Vec<Transaction>>,
     // Maintains an ordered set of transactions for conflict set preference.
-    cs: Vec<(TxHash, ConflictSet<Tx>)>,
+    cs: Vec<(TxHash, ConflictSet<TxHash>)>,
 }
 
 impl UTXOGraph {
@@ -23,9 +23,9 @@ impl UTXOGraph {
         }
     }
 
-    pub fn insert_tx(&mut self, tx: Tx) -> Result<()> {
+    pub fn insert_tx(&mut self, tx: Transaction) -> Result<()> {
         // The utxo ids that this transaction consumes.
-        let mut consumed_utxo_ids = UTXOIds::from_inputs(tx.inputs.clone());
+        let mut consumed_utxo_ids = UTXOIds::from_inputs(tx.inputs());
         // If there exists an intersecting set of utxo ids in the hypergraph then we are
         // spending from those outputs.
         let mut intersecting_vertices = HashSet::new();
@@ -41,7 +41,7 @@ impl UTXOGraph {
         if consumed_utxo_ids.len() > 0 {
             return Err(Error::UndefinedUTXO);
         } else {
-            let produced_utxo_ids = UTXOIds::from_outputs(tx.hash(), tx.outputs.clone());
+            let produced_utxo_ids = UTXOIds::from_outputs(tx.hash(), tx.outputs());
             // First we make sure that the produced `utxo_ids` exist within the hypergraph.
             match self.dh.entry(produced_utxo_ids.clone()) {
                 // If the produced utxo ids already exist then we have an error - a duplicate
@@ -61,11 +61,11 @@ impl UTXOGraph {
                 }
             }
             let tx_i = self.cs.len();
-            self.cs.push((tx.hash(), ConflictSet::new(tx.clone())));
+            self.cs.push((tx.hash(), ConflictSet::new(tx.hash())));
 
             // For each set of intersecting vertices (UTXOId bundles) an arc is produced relating the
             // UTXOIds to the new transaction.
-            let consumed_utxo_ids = UTXOIds::from_inputs(tx.inputs.clone());
+            let consumed_utxo_ids = UTXOIds::from_inputs(tx.inputs());
             let mut conflicts = vec![];
             for utxo_ids in intersecting_vertices.iter() {
                 match self.dh.entry(utxo_ids.clone()) {
@@ -77,7 +77,7 @@ impl UTXOGraph {
                             if arc_tx.clone() == tx.clone() {
                                 return Err(Error::DuplicateUTXO);
                             }
-                            if !arc_tx.inputs.is_disjoint(&tx.inputs) {
+                            if !arc_tx.inputs().is_disjoint(&tx.inputs()) {
                                 conflicts.push(arc_tx.clone());
                             }
                         }
@@ -99,7 +99,7 @@ impl UTXOGraph {
                     if self.cs[i].0 == conflicting_tx.hash() {
                         // Note: We do not change the properties of the conflict set since this one
                         // came first and is thus preferred.
-                        self.cs[i].1.conflicts.insert(tx.clone());
+                        self.cs[i].1.conflicts.insert(tx.hash());
                         // Save the properties of the first conflict set (the most preferred).
                         if pref.is_none() {
                             pref = Some(self.cs[i].1.pref.clone());
@@ -117,18 +117,17 @@ impl UTXOGraph {
                 self.cs[tx_i].1.last = last.unwrap();
                 self.cs[tx_i].1.cnt = cnt;
                 for ordered_tx in ordered_conflicting_txs.iter().cloned() {
-                    println!("inserting = {:?}", ordered_tx.outputs.clone());
-                    self.cs[tx_i].1.conflicts.insert(ordered_tx);
+                    self.cs[tx_i].1.conflicts.insert(ordered_tx.hash());
                 }
             }
         }
         Ok(())
     }
 
-    pub fn accept_tx(&mut self, tx: Tx) -> Result<()> {
+    pub fn accept_tx(&mut self, tx: Transaction) -> Result<()> {
         // Once a transaction is accepted we wish to remove all the conflicts from the graph
         // in order to free up space for future entries.
-        match self.conflicting_txs(tx.clone()) {
+        match self.conflicting_txs(&tx.hash()) {
             Some(conflict_set) => {
                 // If the transaction does not conflict then we are done.
                 if conflict_set.is_singleton() {
@@ -138,11 +137,11 @@ impl UTXOGraph {
                 // First fetch all the conflicting utxo ids produced by the conflicting txs,
                 // excluding the `tx` being accepted.
                 let mut conflicting_utxo_ids = vec![];
-                for conflicting_tx in conflict_set.conflicts.iter() {
-                    if tx.hash() == conflicting_tx.hash() {
+                for conflicting_tx_hash in conflict_set.conflicts.iter() {
+                    if tx.hash().eq(conflicting_tx_hash) {
                         continue;
                     }
-                    let utxo_ids = UTXOIds::from_outputs(tx.hash(), tx.outputs.clone());
+                    let utxo_ids = UTXOIds::from_outputs(tx.hash(), tx.outputs());
                     conflicting_utxo_ids.push(utxo_ids);
                 }
 
@@ -158,7 +157,7 @@ impl UTXOGraph {
                         if arcs[i].clone() == tx.clone() {
                             continue;
                         }
-                        if conflict_set.conflicts.contains(&arcs[i]) {
+                        if conflict_set.conflicts.contains(&arcs[i].hash()) {
                             arcs.remove(i);
                         }
                     }
@@ -166,14 +165,14 @@ impl UTXOGraph {
 
                 // Next remove the conflicting transactions from the conflict sets, preserving
                 // the ordering.
-                let mut cs = vec![];
+                let mut cs: Vec<(TxHash, ConflictSet<TxHash>)> = vec![];
                 for i in 0..self.cs.len() {
                     if self.cs[i].0 == tx.hash() {
-                        cs.push((tx.hash(), ConflictSet::new(tx.clone())));
+                        cs.push((tx.hash(), ConflictSet::new(tx.hash())));
                     }
                     let mut conflicts = false;
-                    for conflicting_tx in conflict_set.conflicts.iter() {
-                        if self.cs[i].0 == conflicting_tx.hash() {
+                    for conflicting_tx_hash in conflict_set.conflicts.iter() {
+                        if self.cs[i].0.eq(conflicting_tx_hash) {
                             conflicts = true;
                             break;
                         }
@@ -195,23 +194,10 @@ impl UTXOGraph {
         }
     }
 
-    pub fn conflicting_txs(&self, tx: Tx) -> Option<ConflictSet<Tx>> {
+    pub fn conflicting_txs(&self, tx_hash: &TxHash) -> Option<ConflictSet<TxHash>> {
         if self.cs.len() > 0 {
             for i in 0..self.cs.len() {
-                if self.cs[i].0 == tx.hash() {
-                    return Some(self.cs[i].1.clone());
-                }
-            }
-            None
-        } else {
-            None
-        }
-    }
-
-    pub fn conflicting_txs_by_hash(&self, tx_hash: &TxHash) -> Option<ConflictSet<Tx>> {
-        if self.cs.len() > 0 {
-            for i in 0..self.cs.len() {
-                if &self.cs[i].0 == tx_hash {
+                if self.cs[i].0.eq(tx_hash) {
                     return Some(self.cs[i].1.clone());
                 }
             }
@@ -222,49 +208,49 @@ impl UTXOGraph {
     }
 
     pub fn is_singleton(&self, tx_hash: &TxHash) -> Result<bool> {
-        match self.conflicting_txs_by_hash(tx_hash) {
+        match self.conflicting_txs(tx_hash) {
             Some(conflict_set) => Ok(conflict_set.is_singleton()),
             None => Err(Error::InvalidTxHash(tx_hash.clone())),
         }
     }
 
     pub fn get_preferred(&self, tx_hash: &TxHash) -> Result<TxHash> {
-        match self.conflicting_txs_by_hash(tx_hash) {
-            Some(conflict_set) => Ok(conflict_set.pref.hash()),
+        match self.conflicting_txs(tx_hash) {
+            Some(conflict_set) => Ok(conflict_set.pref),
             None => Err(Error::InvalidTxHash(tx_hash.clone())),
         }
     }
 
-    pub fn is_preferred(&self, tx: Tx) -> Result<bool> {
-        match self.conflicting_txs(tx.clone()) {
-            Some(conflict_set) => Ok(conflict_set.is_preferred(tx.clone())),
-            None => Err(Error::InvalidTxHash(tx.hash())),
+    pub fn is_preferred(&self, tx_hash: &TxHash) -> Result<bool> {
+        match self.conflicting_txs(tx_hash) {
+            Some(conflict_set) => Ok(conflict_set.is_preferred(tx_hash.clone())),
+            None => Err(Error::InvalidTxHash(tx_hash.clone())),
         }
     }
 
     pub fn get_confidence(&self, tx_hash: &TxHash) -> Result<u8> {
-        match self.conflicting_txs_by_hash(tx_hash) {
+        match self.conflicting_txs(tx_hash) {
             Some(conflict_set) => Ok(conflict_set.cnt),
             None => Err(Error::InvalidTxHash(tx_hash.clone())),
         }
     }
 
-    pub fn update_conflict_set(&mut self, tx: Tx, d1: u8, d2: u8) -> Result<()> {
+    pub fn update_conflict_set(&mut self, tx_hash: &TxHash, d1: u8, d2: u8) -> Result<()> {
         if self.cs.len() > 0 {
             for i in 0..self.cs.len() {
-                if self.cs[i].0 == tx.hash() {
+                if self.cs[i].0.eq(tx_hash) {
                     if d1 > d2 {
-                        self.cs[i].1.pref = tx.clone();
+                        self.cs[i].1.pref = tx_hash.clone();
                     }
-                    if tx.clone() != self.cs[i].1.last {
-                        self.cs[i].1.last = tx.clone();
+                    if !tx_hash.eq(&self.cs[i].1.last) {
+                        self.cs[i].1.last = tx_hash.clone();
                     } else {
                         self.cs[i].1.cnt += 1;
                     }
                     return Ok(());
                 }
             }
-            Err(Error::InvalidTxHash(tx.hash()))
+            Err(Error::InvalidTxHash(tx_hash.clone()))
         } else {
             Err(Error::EmptyUTXOGraph)
         }
@@ -275,7 +261,10 @@ impl UTXOGraph {
 mod test {
     use super::UTXOGraph;
 
-    use crate::chain::alpha::tx::{Input, Inputs, Output, Outputs, Tx, UTXOIds};
+    use crate::chain::alpha::tx::{CoinbaseTx, TransferTx};
+    use crate::chain::alpha::tx::{
+        Input, Inputs, Output, Outputs, Transaction, Tx, TxHash, UTXOIds,
+    };
     use crate::sleet::conflict_set::ConflictSet;
 
     use std::collections::HashSet;
@@ -283,17 +272,18 @@ mod test {
     use ed25519_dalek::Keypair;
 
     #[actix_rt::test]
-    async fn test_hypergraph() {
+    async fn test_utxo_graph() {
         let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
         // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
         // but for the purposes of the hypergraph it doesn't matter.
-        let genesis_tx = Tx::new(
-            vec![],
-            vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000), Output::new(pkh2, 500)],
-        );
-
-        let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
+        let genesis_coinbase_tx = CoinbaseTx::new(Outputs::new(vec![
+            Output::new(pkh1, 1000),
+            Output::new(pkh2, 1000),
+            Output::new(pkh2, 500),
+        ]));
+        let genesis_tx = Transaction::CoinbaseTx(genesis_coinbase_tx);
+        let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs());
         let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
 
         let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
@@ -301,221 +291,243 @@ mod test {
         let input3 = Input::new(&kp2, genesis_tx.hash(), 2);
 
         // A transaction that spends `genesis` and produces a new output for `pkh2`.
-        let output1 = Output::new(pkh2, 1000);
-        let tx1 = Tx::new(vec![input1.clone()], vec![output1.clone()]);
+        let transfer_tx = TransferTx::new(
+            &kp2,
+            genesis_tx.hash(),
+            genesis_tx.inner(),
+            pkh2.clone(),
+            pkh1.clone(),
+            500,
+        );
+        let tx1 = Transaction::TransferTx(transfer_tx);
         dh.insert_tx(tx1.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
-        let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
+        let expected: HashSet<TxHash> = vec![tx1.hash()].iter().cloned().collect();
+        let c1 = dh.conflicting_txs(&tx1.hash()).unwrap();
         assert_eq!(c1.conflicts.len(), 1);
         assert_eq!(c1.conflicts, expected);
-        assert_eq!(c1.pref, tx1.clone());
+        assert_eq!(c1.pref, tx1.hash());
 
         // A transaction that spends the same inputs but produces a distinct output should conflict.
-        let output2 = Output::new(pkh2, 900);
-        let tx2 = Tx::new(vec![input1.clone(), input2.clone()], vec![output2.clone()]);
+        let transfer_tx = TransferTx::new(
+            &kp2,
+            genesis_tx.hash(),
+            genesis_tx.inner(),
+            pkh2.clone(),
+            pkh1.clone(),
+            550,
+        );
+        let tx2 = Transaction::TransferTx(transfer_tx);
         dh.insert_tx(tx2.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone(), tx2.clone()].iter().cloned().collect();
-        let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
+        let expected: HashSet<TxHash> = vec![tx1.hash(), tx2.hash()].iter().cloned().collect();
+        let c2 = dh.conflicting_txs(&tx2.hash()).unwrap();
         assert_eq!(c2.conflicts.len(), 2);
         assert_eq!(c2.conflicts, expected);
-        assert_eq!(c2.pref, tx1.clone());
+        assert_eq!(c2.pref, tx1.hash());
 
         // A transaction that spends a distinct input should not conflict.
-        let tx3 = Tx::new(vec![input3.clone()], vec![output2.clone()]);
-        dh.insert_tx(tx3.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx3.clone()].iter().cloned().collect();
-        let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
-        assert_eq!(c3.conflicts.len(), 1);
-        assert_eq!(c3.conflicts, expected);
-        assert_eq!(c3.pref, tx3.clone());
-    }
-
-    #[actix_rt::test]
-    async fn test_multiple_inputs() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
-
-        // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
-        // but for the purposes of the hypergraph it doesn't matter.
-        let genesis_tx = Tx::new(
-            vec![],
-            vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000), Output::new(pkh2, 500)],
+        let transfer_tx = TransferTx::new(
+            &kp1,
+            genesis_tx.hash(),
+            genesis_tx.inner(),
+            pkh2.clone(),
+            pkh1.clone(),
+            550,
         );
-
-        let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
-        let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
-
-        let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
-        let input2 = Input::new(&kp2, genesis_tx.hash(), 1);
-        let input3 = Input::new(&kp2, genesis_tx.hash(), 2);
-
-        // A transaction that spends `genesis` and produces a new output for `pkh2`.
-        let output1 = Output::new(pkh2, 1000);
-        let tx1 = Tx::new(vec![input1.clone()], vec![output1.clone()]);
-        dh.insert_tx(tx1.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
-        let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
-        assert_eq!(c1.conflicts.len(), 1);
-        assert_eq!(c1.conflicts, expected);
-        assert_eq!(c1.pref, tx1.clone());
-
-        // A transaction that spends the same inputs but produces a distinct output should conflict.
-        let output2 = Output::new(pkh2, 900);
-        let tx2 = Tx::new(vec![input1.clone(), input2.clone()], vec![output2.clone()]);
-        dh.insert_tx(tx2.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone(), tx2.clone()].iter().cloned().collect();
-        let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
-        assert_eq!(c2.conflicts.len(), 2);
-        assert_eq!(c2.conflicts, expected);
-        assert_eq!(c2.pref, tx1.clone());
-
-        // A transaction that spends a distinct input should not conflict.
-        let tx3 = Tx::new(vec![input3.clone()], vec![output2.clone()]);
+        let tx3 = Transaction::TransferTx(transfer_tx);
         dh.insert_tx(tx3.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx3.clone()].iter().cloned().collect();
-        let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
+        let expected: HashSet<TxHash> = vec![tx3.hash()].iter().cloned().collect();
+        let c3 = dh.conflicting_txs(&tx3.hash()).unwrap();
         assert_eq!(c3.conflicts.len(), 1);
         assert_eq!(c3.conflicts, expected);
-        assert_eq!(c3.pref, tx3.clone());
-
-        // A transaction that spends multiple conflicting inputs
-        let output3 = Output::new(pkh2, 800);
-        let tx4 = Tx::new(vec![input1.clone(), input2.clone(), input3.clone()], vec![output3]);
-        dh.insert_tx(tx4.clone()).unwrap();
-        let expected: HashSet<Tx> =
-            vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()].iter().cloned().collect();
-        let c4 = dh.conflicting_txs(tx4.clone()).unwrap();
-        assert_eq!(c4.conflicts.len(), 4);
-        assert_eq!(c4.conflicts, expected);
-        assert_eq!(c4.pref, tx1.clone());
+        assert_eq!(c3.pref, tx3.hash());
     }
 
-    #[actix_rt::test]
-    async fn test_disjoint_inputs() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+    // #[actix_rt::test]
+    // async fn test_multiple_inputs() {
+    //     let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-        // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
-        // but for the purposes of the hypergraph it doesn't matter.
-        let genesis_tx = Tx::new(
-            vec![],
-            vec![
-                Output::new(pkh1, 1000),
-                Output::new(pkh2, 1000),
-                Output::new(pkh2, 500),
-                Output::new(pkh2, 400),
-            ],
-        );
+    //     // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
+    //     // but for the purposes of the hypergraph it doesn't matter.
+    //     let genesis_tx = Tx::new(
+    //         vec![],
+    //         vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000), Output::new(pkh2, 500)],
+    //     );
 
-        let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
-        let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
+    //     let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
+    //     let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
 
-        let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
-        let input2 = Input::new(&kp2, genesis_tx.hash(), 1);
-        let input3 = Input::new(&kp2, genesis_tx.hash(), 2);
-        let input4 = Input::new(&kp2, genesis_tx.hash(), 3);
+    //     let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
+    //     let input2 = Input::new(&kp2, genesis_tx.hash(), 1);
+    //     let input3 = Input::new(&kp2, genesis_tx.hash(), 2);
 
-        // A transaction that spends `genesis` and produces a new output for `pkh2`.
-        let output1 = Output::new(pkh2, 1000);
-        let tx1 = Tx::new(vec![input1.clone()], vec![output1.clone()]);
-        dh.insert_tx(tx1.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
-        let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
-        assert_eq!(c1.conflicts.len(), 1);
-        assert_eq!(c1.conflicts, expected);
-        assert_eq!(c1.pref, tx1.clone());
+    //     // A transaction that spends `genesis` and produces a new output for `pkh2`.
+    //     let output1 = Output::new(pkh2, 1000);
+    //     let tx1 = Tx::new(vec![input1.clone()], vec![output1.clone()]);
+    //     dh.insert_tx(tx1.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
+    //     let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
+    //     assert_eq!(c1.conflicts.len(), 1);
+    //     assert_eq!(c1.conflicts, expected);
+    //     assert_eq!(c1.pref, tx1.clone());
 
-        // A transaction that spends some of the same inputs as `tx1`
-        let output2 = Output::new(pkh2, 900);
-        let tx2 = Tx::new(vec![input1.clone(), input2.clone()], vec![output2.clone()]);
-        dh.insert_tx(tx2.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone(), tx2.clone()].iter().cloned().collect();
-        let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
-        assert_eq!(c2.conflicts.len(), 2);
-        assert_eq!(c2.conflicts, expected);
-        assert_eq!(c2.pref, tx1.clone());
+    //     // A transaction that spends the same inputs but produces a distinct output should conflict.
+    //     let output2 = Output::new(pkh2, 900);
+    //     let tx2 = Tx::new(vec![input1.clone(), input2.clone()], vec![output2.clone()]);
+    //     dh.insert_tx(tx2.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx1.clone(), tx2.clone()].iter().cloned().collect();
+    //     let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
+    //     assert_eq!(c2.conflicts.len(), 2);
+    //     assert_eq!(c2.conflicts, expected);
+    //     assert_eq!(c2.pref, tx1.clone());
 
-        // A transaction that spends some of the same inputs as `tx2`
-        let output3 = Output::new(pkh2, 800);
-        let tx3 =
-            Tx::new(vec![input2.clone(), input3.clone(), input4.clone()], vec![output3.clone()]);
-        dh.insert_tx(tx3.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx2.clone(), tx3.clone()].iter().cloned().collect();
-        let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
-        assert_eq!(c3.conflicts.len(), 2);
-        assert_eq!(c3.conflicts, expected);
-        assert_eq!(c3.pref, tx1.clone());
+    //     // A transaction that spends a distinct input should not conflict.
+    //     let tx3 = Tx::new(vec![input3.clone()], vec![output2.clone()]);
+    //     dh.insert_tx(tx3.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx3.clone()].iter().cloned().collect();
+    //     let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
+    //     assert_eq!(c3.conflicts.len(), 1);
+    //     assert_eq!(c3.conflicts, expected);
+    //     assert_eq!(c3.pref, tx3.clone());
 
-        // A transaction that spends one of the same inputs as `tx3`
-        let output4 = Output::new(pkh2, 700);
-        let tx4 = Tx::new(vec![input3.clone()], vec![output4.clone()]);
-        dh.insert_tx(tx4.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx3.clone(), tx4.clone()].iter().cloned().collect();
-        let c4 = dh.conflicting_txs(tx4.clone()).unwrap();
-        assert_eq!(c4.conflicts.len(), 2);
-        assert_eq!(c4.conflicts, expected);
-        assert_eq!(c4.pref, tx1.clone());
+    //     // A transaction that spends multiple conflicting inputs
+    //     let output3 = Output::new(pkh2, 800);
+    //     let tx4 = Tx::new(vec![input1.clone(), input2.clone(), input3.clone()], vec![output3]);
+    //     dh.insert_tx(tx4.clone()).unwrap();
+    //     let expected: HashSet<Tx> =
+    //         vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()].iter().cloned().collect();
+    //     let c4 = dh.conflicting_txs(tx4.clone()).unwrap();
+    //     assert_eq!(c4.conflicts.len(), 4);
+    //     assert_eq!(c4.conflicts, expected);
+    //     assert_eq!(c4.pref, tx1.clone());
+    // }
 
-        // Another transaction that spends one of the same inputs as `tx3`
-        let output5 = Output::new(pkh2, 600);
-        let tx5 = Tx::new(vec![input4.clone()], vec![output5.clone()]);
-        dh.insert_tx(tx5.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx3.clone(), tx5.clone()].iter().cloned().collect();
-        let c5 = dh.conflicting_txs(tx5.clone()).unwrap();
-        assert_eq!(c5.conflicts.len(), 2);
-        assert_eq!(c5.conflicts, expected);
-        assert_eq!(c5.pref, tx1.clone());
-    }
+    // #[actix_rt::test]
+    // async fn test_disjoint_inputs() {
+    //     let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-    #[actix_rt::test]
-    async fn test_outputs() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+    //     // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
+    //     // but for the purposes of the hypergraph it doesn't matter.
+    //     let genesis_tx = Tx::new(
+    //         vec![],
+    //         vec![
+    //             Output::new(pkh1, 1000),
+    //             Output::new(pkh2, 1000),
+    //             Output::new(pkh2, 500),
+    //             Output::new(pkh2, 400),
+    //         ],
+    //     );
 
-        // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
-        // but for the purposes of the hypergraph it doesn't matter.
-        let genesis_tx = Tx::new(vec![], vec![Output::new(pkh1, 1000)]);
+    //     let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
+    //     let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
 
-        let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
-        let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
+    //     let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
+    //     let input2 = Input::new(&kp2, genesis_tx.hash(), 1);
+    //     let input3 = Input::new(&kp2, genesis_tx.hash(), 2);
+    //     let input4 = Input::new(&kp2, genesis_tx.hash(), 3);
 
-        let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
+    //     // A transaction that spends `genesis` and produces a new output for `pkh2`.
+    //     let output1 = Output::new(pkh2, 1000);
+    //     let tx1 = Tx::new(vec![input1.clone()], vec![output1.clone()]);
+    //     dh.insert_tx(tx1.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
+    //     let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
+    //     assert_eq!(c1.conflicts.len(), 1);
+    //     assert_eq!(c1.conflicts, expected);
+    //     assert_eq!(c1.pref, tx1.clone());
 
-        // A transaction that spends `genesis` and produces two new outputs
-        let tx1 =
-            Tx::new(vec![input1.clone()], vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000)]);
-        dh.insert_tx(tx1.clone()).unwrap();
-        let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
-        assert_eq!(c1.conflicts.len(), 1);
-        assert_eq!(c1.conflicts, expected);
+    //     // A transaction that spends some of the same inputs as `tx1`
+    //     let output2 = Output::new(pkh2, 900);
+    //     let tx2 = Tx::new(vec![input1.clone(), input2.clone()], vec![output2.clone()]);
+    //     dh.insert_tx(tx2.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx1.clone(), tx2.clone()].iter().cloned().collect();
+    //     let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
+    //     assert_eq!(c2.conflicts.len(), 2);
+    //     assert_eq!(c2.conflicts, expected);
+    //     assert_eq!(c2.pref, tx1.clone());
 
-        // A transaction that spends one output from `tx1` and produces a new output.
-        let input2 = Input::new(&kp1, tx1.hash(), 0);
-        let tx2 = Tx::new(vec![input2.clone()], vec![Output::new(pkh1, 1000)]);
-        dh.insert_tx(tx2.clone()).unwrap();
-        let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx2.clone()].iter().cloned().collect();
-        assert_eq!(c2.conflicts.len(), 1);
-        assert_eq!(c2.conflicts, expected);
+    //     // A transaction that spends some of the same inputs as `tx2`
+    //     let output3 = Output::new(pkh2, 800);
+    //     let tx3 =
+    //         Tx::new(vec![input2.clone(), input3.clone(), input4.clone()], vec![output3.clone()]);
+    //     dh.insert_tx(tx3.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx2.clone(), tx3.clone()].iter().cloned().collect();
+    //     let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
+    //     assert_eq!(c3.conflicts.len(), 2);
+    //     assert_eq!(c3.conflicts, expected);
+    //     assert_eq!(c3.pref, tx1.clone());
 
-        // A transaction that spends another output from `tx1` and produces two new outputs.
-        let input3 = Input::new(&kp2, tx1.hash(), 1);
-        let tx3 =
-            Tx::new(vec![input3.clone()], vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000)]);
-        dh.insert_tx(tx3.clone()).unwrap();
-        let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx3.clone()].iter().cloned().collect();
-        assert_eq!(c3.conflicts.len(), 1);
-        assert_eq!(c3.conflicts, expected);
+    //     // A transaction that spends one of the same inputs as `tx3`
+    //     let output4 = Output::new(pkh2, 700);
+    //     let tx4 = Tx::new(vec![input3.clone()], vec![output4.clone()]);
+    //     dh.insert_tx(tx4.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx3.clone(), tx4.clone()].iter().cloned().collect();
+    //     let c4 = dh.conflicting_txs(tx4.clone()).unwrap();
+    //     assert_eq!(c4.conflicts.len(), 2);
+    //     assert_eq!(c4.conflicts, expected);
+    //     assert_eq!(c4.pref, tx1.clone());
 
-        // A transaction which spends tx3 outputs and conflicts with tx1
-        let input4 = Input::new(&kp1, tx3.hash(), 0);
-        let tx4 = Tx::new(vec![input1.clone(), input4.clone()], vec![Output::new(pkh1, 1000)]);
-        dh.insert_tx(tx4.clone()).unwrap();
-        let c4 = dh.conflicting_txs(tx4.clone()).unwrap();
-        let expected: HashSet<Tx> = vec![tx1.clone(), tx4.clone()].iter().cloned().collect();
-        assert_eq!(c4.conflicts.len(), 2);
-        assert_eq!(c4.conflicts, expected);
-        assert_eq!(c4.pref, tx1.clone());
-    }
+    //     // Another transaction that spends one of the same inputs as `tx3`
+    //     let output5 = Output::new(pkh2, 600);
+    //     let tx5 = Tx::new(vec![input4.clone()], vec![output5.clone()]);
+    //     dh.insert_tx(tx5.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx3.clone(), tx5.clone()].iter().cloned().collect();
+    //     let c5 = dh.conflicting_txs(tx5.clone()).unwrap();
+    //     assert_eq!(c5.conflicts.len(), 2);
+    //     assert_eq!(c5.conflicts, expected);
+    //     assert_eq!(c5.pref, tx1.clone());
+    // }
+
+    // #[actix_rt::test]
+    // async fn test_outputs() {
+    //     let (kp1, kp2, pkh1, pkh2) = generate_keys();
+
+    //     // Some root unspent outputs for `genesis`. We assume this input refers to a UTXO with funds
+    //     // but for the purposes of the hypergraph it doesn't matter.
+    //     let genesis_tx = Tx::new(vec![], vec![Output::new(pkh1, 1000)]);
+
+    //     let genesis = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs.clone());
+    //     let mut dh: UTXOGraph = UTXOGraph::new(genesis.clone());
+
+    //     let input1 = Input::new(&kp1, genesis_tx.hash(), 0);
+
+    //     // A transaction that spends `genesis` and produces two new outputs
+    //     let tx1 =
+    //         Tx::new(vec![input1.clone()], vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000)]);
+    //     dh.insert_tx(tx1.clone()).unwrap();
+    //     let c1 = dh.conflicting_txs(tx1.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx1.clone()].iter().cloned().collect();
+    //     assert_eq!(c1.conflicts.len(), 1);
+    //     assert_eq!(c1.conflicts, expected);
+
+    //     // A transaction that spends one output from `tx1` and produces a new output.
+    //     let input2 = Input::new(&kp1, tx1.hash(), 0);
+    //     let tx2 = Tx::new(vec![input2.clone()], vec![Output::new(pkh1, 1000)]);
+    //     dh.insert_tx(tx2.clone()).unwrap();
+    //     let c2 = dh.conflicting_txs(tx2.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx2.clone()].iter().cloned().collect();
+    //     assert_eq!(c2.conflicts.len(), 1);
+    //     assert_eq!(c2.conflicts, expected);
+
+    //     // A transaction that spends another output from `tx1` and produces two new outputs.
+    //     let input3 = Input::new(&kp2, tx1.hash(), 1);
+    //     let tx3 =
+    //         Tx::new(vec![input3.clone()], vec![Output::new(pkh1, 1000), Output::new(pkh2, 1000)]);
+    //     dh.insert_tx(tx3.clone()).unwrap();
+    //     let c3 = dh.conflicting_txs(tx3.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx3.clone()].iter().cloned().collect();
+    //     assert_eq!(c3.conflicts.len(), 1);
+    //     assert_eq!(c3.conflicts, expected);
+
+    //     // A transaction which spends tx3 outputs and conflicts with tx1
+    //     let input4 = Input::new(&kp1, tx3.hash(), 0);
+    //     let tx4 = Tx::new(vec![input1.clone(), input4.clone()], vec![Output::new(pkh1, 1000)]);
+    //     dh.insert_tx(tx4.clone()).unwrap();
+    //     let c4 = dh.conflicting_txs(tx4.clone()).unwrap();
+    //     let expected: HashSet<Tx> = vec![tx1.clone(), tx4.clone()].iter().cloned().collect();
+    //     assert_eq!(c4.conflicts.len(), 2);
+    //     assert_eq!(c4.conflicts, expected);
+    //     assert_eq!(c4.pref, tx1.clone());
+    // }
 
     fn hash_public(keypair: &Keypair) -> [u8; 32] {
         let enc = bincode::serialize(&keypair.public).unwrap();
