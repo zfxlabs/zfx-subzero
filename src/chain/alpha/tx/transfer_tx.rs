@@ -1,4 +1,4 @@
-use super::{Input, Output, PublicKeyHash, Tx, TxHash};
+use super::{Input, Inputs, Output, Outputs, PublicKeyHash, Tx, TxHash};
 
 use crate::colored::Colorize;
 
@@ -35,11 +35,11 @@ impl TransferTx {
         TransferTx { tx }
     }
 
-    pub fn inputs(&self) -> Vec<Input> {
+    pub fn inputs(&self) -> Inputs<Input> {
         self.tx.inputs()
     }
 
-    pub fn outputs(&self) -> Vec<Output> {
+    pub fn outputs(&self) -> Outputs<Output> {
         self.tx.outputs()
     }
 

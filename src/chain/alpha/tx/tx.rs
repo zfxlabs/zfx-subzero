@@ -45,22 +45,24 @@ impl PartialOrd for Tx {
 }
 
 impl Tx {
-    pub fn new(inputs: Vec<Input>, outputs: Vec<Output>) -> Tx {
+    pub fn new(inputs: Inputs<Input>, outputs: Outputs<Output>) -> Self {
+        Tx { inputs, outputs }
+    }
+
+    pub fn from_vecs(inputs: Vec<Input>, outputs: Vec<Output>) -> Tx {
         Tx { inputs: Inputs::new(inputs), outputs: Outputs::new(outputs) }
     }
 
-    pub fn inputs(&self) -> Vec<Input> {
-        let mut v: Vec<Input> = self.inputs.iter().cloned().collect();
-        v.sort();
-        v
+    pub fn inputs(&self) -> Inputs<Input> {
+        self.inputs.clone()
     }
 
-    pub fn outputs(&self) -> Vec<Output> {
-        self.outputs.outputs.clone()
+    pub fn outputs(&self) -> Outputs<Output> {
+        self.outputs.clone()
     }
 
     pub fn coinbase(owner: PublicKeyHash, value: Amount) -> Tx {
-        Tx::new(vec![], vec![Output::new(owner, value)])
+        Tx::from_vecs(vec![], vec![Output::new(owner, value)])
     }
 
     pub fn spend(
@@ -107,7 +109,7 @@ impl Tx {
             vec![main_output]
         };
 
-        Ok(Tx::new(inputs, outputs))
+        Ok(Tx::from_vecs(inputs, outputs))
     }
 
     pub fn stake(&self, keypair: &Keypair, change: PublicKeyHash, amount: Amount) -> Result<Tx> {
@@ -143,7 +145,7 @@ impl Tx {
             vec![]
         };
 
-        Ok(Tx::new(inputs, outputs))
+        Ok(Tx::from_vecs(inputs, outputs))
     }
 
     pub fn sum(&self) -> u64 {
@@ -186,7 +188,7 @@ mod test {
     async fn test_spend_with_three_outputs() {
         let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-        let tx1 = Tx::new(
+        let tx1 = Tx::from_vecs(
             vec![],
             vec![
                 Output::new(pkh1.clone(), 700),
