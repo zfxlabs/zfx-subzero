@@ -1,5 +1,5 @@
 mod dag;
-mod hypergraph;
+mod utxo_graph;
 
 pub use dag::*;
 
@@ -15,7 +15,7 @@ pub enum Error {
     DuplicateUTXO,
     DuplicateInputs,
     InvalidTxHash(TxHash),
-    EmptyHypergraph,
+    EmptyUTXOGraph,
 }
 
 impl std::error::Error for Error {}
