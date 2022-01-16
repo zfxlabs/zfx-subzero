@@ -291,14 +291,8 @@ mod test {
         let input3 = Input::new(&kp2, genesis_tx.hash(), 2);
 
         // A transaction that spends `genesis` and produces a new output for `pkh2`.
-        let transfer_tx = TransferTx::new(
-            &kp2,
-            genesis_tx.hash(),
-            genesis_tx.inner(),
-            pkh2.clone(),
-            pkh1.clone(),
-            500,
-        );
+        let transfer_tx =
+            TransferTx::new(&kp2, genesis_tx.clone(), pkh2.clone(), pkh1.clone(), 500);
         let tx1 = Transaction::TransferTx(transfer_tx);
         dh.insert_tx(tx1.clone()).unwrap();
         let expected: HashSet<TxHash> = vec![tx1.hash()].iter().cloned().collect();
@@ -308,14 +302,8 @@ mod test {
         assert_eq!(c1.pref, tx1.hash());
 
         // A transaction that spends the same inputs but produces a distinct output should conflict.
-        let transfer_tx = TransferTx::new(
-            &kp2,
-            genesis_tx.hash(),
-            genesis_tx.inner(),
-            pkh2.clone(),
-            pkh1.clone(),
-            550,
-        );
+        let transfer_tx =
+            TransferTx::new(&kp2, genesis_tx.clone(), pkh2.clone(), pkh1.clone(), 550);
         let tx2 = Transaction::TransferTx(transfer_tx);
         dh.insert_tx(tx2.clone()).unwrap();
         let expected: HashSet<TxHash> = vec![tx1.hash(), tx2.hash()].iter().cloned().collect();
@@ -325,14 +313,8 @@ mod test {
         assert_eq!(c2.pref, tx1.hash());
 
         // A transaction that spends a distinct input should not conflict.
-        let transfer_tx = TransferTx::new(
-            &kp1,
-            genesis_tx.hash(),
-            genesis_tx.inner(),
-            pkh2.clone(),
-            pkh1.clone(),
-            550,
-        );
+        let transfer_tx =
+            TransferTx::new(&kp1, genesis_tx.clone(), pkh2.clone(), pkh1.clone(), 550);
         let tx3 = Transaction::TransferTx(transfer_tx);
         dh.insert_tx(tx3.clone()).unwrap();
         let expected: HashSet<TxHash> = vec![tx3.hash()].iter().cloned().collect();

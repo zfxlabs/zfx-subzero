@@ -38,7 +38,6 @@ mod integration_test {
             Request::GenerateTx(sleet::GenerateTx {
                 tx: Transaction::TransferTx(TransferTx::new(
                     &node_0.keypair,
-                    tx_hash,
                     tx,
                     node_0.public_key.clone(),
                     node_1.public_key.clone(),
@@ -59,12 +58,12 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn get_tx_from_hash(tx_hash: TxHash, node_address: SocketAddr) -> Result<Tx> {
+    async fn get_tx_from_hash(tx_hash: TxHash, node_address: SocketAddr) -> Result<Transaction> {
         if let Some(Response::TxAck(tx_ack)) =
             client::oneshot(node_address, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
                 .await?
         {
-            return Result::Ok(tx_ack.tx.expect("No transaction found for hash").inner());
+            return Result::Ok(tx_ack.tx.expect("No transaction found for hash"));
         } else {
             panic!("Invalid response for request GetTx")
         }

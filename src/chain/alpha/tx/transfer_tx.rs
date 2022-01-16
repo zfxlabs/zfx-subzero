@@ -1,4 +1,4 @@
-use super::{Input, Inputs, Output, Outputs, PublicKeyHash, Tx, TxHash};
+use super::{Input, Inputs, Output, Outputs, PublicKeyHash, Transaction, Tx, TxHash};
 
 use crate::colored::Colorize;
 
@@ -25,13 +25,14 @@ impl TransferTx {
     /// from the owner of `keypair` to some destination public key hash.
     pub fn new(
         keypair: &Keypair,
-        tx_hash: TxHash,
-        tx: Tx,
-        destination_address: PublicKeyHash,
+        tx: Transaction,
+        to_address: PublicKeyHash,
         change_address: PublicKeyHash,
         value: u64,
     ) -> Self {
-        let tx = tx.spend(keypair, tx_hash, destination_address, change_address, value).unwrap();
+        let tx_hash = tx.hash();
+        let inner_tx = tx.inner();
+        let tx = inner_tx.spend(keypair, tx.hash(), to_address, change_address, value).unwrap();
         TransferTx { tx }
     }
 
