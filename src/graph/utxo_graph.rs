@@ -125,25 +125,75 @@ impl UTXOGraph {
         Ok(())
     }
 
-    // pub fn accept_tx(&mut self, tx: Tx, beta1: usize, beta2: usize) -> Result<bool> {
-    // 	let is_singleton = self.is_singleton(tx.hash())?;
-    // 	let confidence = self.get_confidence(tx.hash())?;
-    // 	if is_singleton && confidence >= beta2 || confidence >= beta2 {
-    // 	    // Once a transaction is accepted we wish to remove all the conflicts from the graph
-    // 	    // in order to free up space for future entries.
-    // 	    match self.conflicting_txs(tx.clone()) {
-    // 		Some(conflict_set) => {
-    // 		    // TODO
-    // 		    Ok(())
-    // 		},
-    // 		None =>
-    // 		    // If the transaction does not conflict then we are done.
-    // 		    Ok(()),
-    // 	    }
-    // 	} else {
-    // 	    Err(Error::UnacceptableTx)
-    // 	}
-    // }
+    pub fn accept_tx(&mut self, tx: Tx) -> Result<()> {
+        // Once a transaction is accepted we wish to remove all the conflicts from the graph
+        // in order to free up space for future entries.
+        match self.conflicting_txs(tx.clone()) {
+            Some(conflict_set) => {
+                // If the transaction does not conflict then we are done.
+                if conflict_set.is_singleton() {
+                    return Ok(());
+                }
+
+                // First fetch all the conflicting utxo ids produced by the conflicting txs,
+                // excluding the `tx` being accepted.
+                let mut conflicting_utxo_ids = vec![];
+                for conflicting_tx in conflict_set.conflicts.iter() {
+                    if tx.hash() == conflicting_tx.hash() {
+                        continue;
+                    }
+                    let utxo_ids = UTXOIds::from_outputs(tx.hash(), tx.outputs.clone());
+                    conflicting_utxo_ids.push(utxo_ids);
+                }
+
+                // Next remove each vertex from the graph which is a conflicting `utxo_id`.
+                for conflicting_utxo_id in conflicting_utxo_ids.iter() {
+                    self.dh.remove(&conflicting_utxo_id).unwrap();
+                }
+
+                // Next remove each arc which point to the conflicting transactions (which no
+                // longer exist).
+                for (_, arcs) in self.dh.iter_mut() {
+                    for i in 0..arcs.len() {
+                        if arcs[i].clone() == tx.clone() {
+                            continue;
+                        }
+                        if conflict_set.conflicts.contains(&arcs[i]) {
+                            arcs.remove(i);
+                        }
+                    }
+                }
+
+                // Next remove the conflicting transactions from the conflict sets, preserving
+                // the ordering.
+                let mut cs = vec![];
+                for i in 0..self.cs.len() {
+                    if self.cs[i].0 == tx.hash() {
+                        cs.push((tx.hash(), ConflictSet::new(tx.clone())));
+                    }
+                    let mut conflicts = false;
+                    for conflicting_tx in conflict_set.conflicts.iter() {
+                        if self.cs[i].0 == conflicting_tx.hash() {
+                            conflicts = true;
+                            break;
+                        }
+                    }
+                    if conflicts {
+                        continue;
+                    } else {
+                        // TODO: Remove the conflicting transactions the existing preserved
+                        // conflict sets.
+                        cs.push((self.cs[i].0, self.cs[i].1.clone()));
+                    }
+                }
+                self.cs = cs;
+
+                Ok(())
+            }
+            // If the transaction has no conflict set then it is invalid.
+            None => Err(Error::UndefinedUTXO),
+        }
+    }
 
     pub fn conflicting_txs(&self, tx: Tx) -> Option<ConflictSet<Tx>> {
         if self.cs.len() > 0 {
