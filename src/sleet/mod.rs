@@ -1,7 +1,5 @@
-mod conflict_map;
 mod sleet;
 mod sleet_tx;
-mod spend_map;
 
 pub mod conflict_set;
 

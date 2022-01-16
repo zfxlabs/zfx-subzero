@@ -2,13 +2,12 @@ use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
 use crate::chain::alpha::state::Weight;
-use crate::chain::alpha::{self, Transaction, TxHash};
+use crate::chain::alpha::{self, Transaction, TxHash, UTXOIds};
 use crate::client::Fanout;
-use crate::graph::DAG;
+use crate::graph::{UTXOGraph, DAG};
 use crate::protocol::{Request, Response};
 use crate::util;
 
-use super::conflict_map::ConflictMap;
 use super::sleet_tx::SleetTx;
 use super::{Error, Result};
 
@@ -42,8 +41,8 @@ pub struct Sleet {
     known_txs: sled::Db,
     /// The set of all queried transactions.
     queried_txs: sled::Db,
-    /// The map of conflicting transactions (potentially multi-input).
-    conflict_map: ConflictMap,
+    /// The graph of conflicting transactions (potentially multi-input).
+    conflict_graph: UTXOGraph,
     /// A vector containing the transactions of the last accepted block.
     txs: HashMap<TxHash, Transaction>,
     /// The consensus graph.
@@ -52,14 +51,14 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
+    pub fn new(sender: Recipient<Fanout>, node_id: Id, genesis_utxos: UTXOIds) -> Self {
         Sleet {
             sender,
             node_id,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
             queried_txs: sled::Config::new().temporary(true).open().unwrap(),
-            conflict_map: ConflictMap::new(),
+            conflict_graph: UTXOGraph::new(genesis_utxos),
             txs: HashMap::default(),
             dag: DAG::new(),
         }
@@ -93,7 +92,7 @@ impl Sleet {
 
     pub fn insert(&mut self, tx: SleetTx) -> Result<()> {
         let inner_tx = tx.inner.clone();
-        self.conflict_map.insert_tx(inner_tx.clone())?;
+        self.conflict_graph.insert_tx(inner_tx.clone())?;
         self.dag.insert_vx(inner_tx.hash(), tx.parents.clone())?;
         Ok(())
     }
@@ -105,7 +104,7 @@ impl Sleet {
     /// preferred).
     pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
         for ancestor in self.dag.dfs(&tx) {
-            if !self.conflict_map.is_preferred(ancestor.clone())? {
+            if !self.conflict_graph.is_preferred(ancestor)? {
                 return Ok(false);
             }
         }
@@ -147,11 +146,11 @@ impl Sleet {
     pub fn update_ancestral_preference(&mut self, root_txhash: TxHash) -> Result<()> {
         for tx_hash in self.dag.dfs(&root_txhash) {
             // conviction of T vs Pt.pref
-            let pref = self.conflict_map.get_preferred(&tx_hash)?;
+            let pref = self.conflict_graph.get_preferred(&tx_hash)?;
             let d1 = self.dag.conviction(tx_hash.clone())?;
             let d2 = self.dag.conviction(pref)?;
             // update the conflict set at this tx
-            self.conflict_map.update_conflict_set(tx_hash.clone(), d1, d2)?;
+            self.conflict_graph.update_conflict_set(tx_hash, d1, d2)?;
         }
         Ok(())
     }
@@ -160,12 +159,12 @@ impl Sleet {
 
     /// Checks whether the transaction `TxHash` is accepted as final.
     pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> Result<bool> {
-        if self.conflict_map.is_singleton(tx_hash)?
-            && self.conflict_map.get_confidence(tx_hash)? >= BETA1
+        if self.conflict_graph.is_singleton(tx_hash)?
+            && self.conflict_graph.get_confidence(tx_hash)? >= BETA1
         {
             Ok(true)
         } else {
-            if self.conflict_map.get_confidence(tx_hash)? >= BETA2 {
+            if self.conflict_graph.get_confidence(tx_hash)? >= BETA2 {
                 Ok(true)
             } else {
                 Ok(false)
@@ -526,15 +525,31 @@ impl Handler<GetTransactions> for Sleet {
 #[cfg(test)]
 mod test {
     use super::*;
-    use alpha::tx::{CoinbaseTx, Transaction, Tx};
+    use alpha::tx::{CoinbaseTx, Output, Outputs, Transaction, TransferTx, Tx};
     use ed25519_dalek::Keypair;
     use rand::{rngs::OsRng, CryptoRng};
 
     fn generate_coinbase(keypair: &Keypair, amount: u64) -> alpha::Transaction {
         let enc = bincode::serialize(&keypair.public).unwrap();
-        let pkh = blake3::hash(&enc);
-        let tx = Tx::coinbase(pkh.as_bytes().clone(), amount);
-        Transaction::CoinbaseTx(CoinbaseTx { tx })
+        let pkh = blake3::hash(&enc).as_bytes().clone();
+        Transaction::CoinbaseTx(CoinbaseTx::new(Outputs::new(vec![
+            Output::new(pkh.clone(), amount),
+            Output::new(pkh.clone(), amount + 1),
+            Output::new(pkh.clone(), amount + 2),
+        ])))
+    }
+
+    fn generate_transfer(keypair: &Keypair, from: Transaction, amount: u64) -> alpha::Transaction {
+        let enc = bincode::serialize(&keypair.public).unwrap();
+        let pkh = blake3::hash(&enc).as_bytes().clone();
+        Transaction::TransferTx(TransferTx::new(
+            &keypair,
+            from.hash(),
+            from.inner(),
+            pkh.clone(),
+            pkh.clone(),
+            amount,
+        ))
     }
 
     struct DummyClient;
@@ -555,15 +570,18 @@ mod test {
     #[actix_rt::test]
     async fn test_strongly_preferred() {
         let sender = DummyClient.start();
-        let mut sleet = Sleet::new(sender.recipient(), Id::zero());
 
         let mut csprng = OsRng {};
         let root_kp = Keypair::generate(&mut csprng);
 
+        let genesis_tx = generate_coinbase(&root_kp, 1000);
+        let genesis_utxo_ids = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs());
+        let mut sleet = Sleet::new(sender.recipient(), Id::zero(), genesis_utxo_ids);
+
         // Generate a genesis set of coins
-        let stx1 = SleetTx::new(vec![], generate_coinbase(&root_kp, 1000));
-        let stx2 = SleetTx::new(vec![], generate_coinbase(&root_kp, 1001));
-        let stx3 = SleetTx::new(vec![], generate_coinbase(&root_kp, 1002));
+        let stx1 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1000));
+        let stx2 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1001));
+        let stx3 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1002));
 
         // Check that parent selection works with an empty DAG.
         let v_empty: Vec<alpha::TxHash> = vec![];
