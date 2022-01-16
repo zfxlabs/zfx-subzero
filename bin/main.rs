@@ -128,9 +128,9 @@ fn main() -> Result<()> {
         // Create the `sleet` actor
         let client = Client::new();
         let client_addr = client.start();
+
         // FIXME: Sleet has to be initialised with the genesis utxo ids.
-        let sleet =
-            Sleet::new(client_addr.clone().recipient(), node_id, UTXOIds { inner: HashSet::new() });
+        let sleet = Sleet::new(client_addr.clone().recipient(), node_id);
         let sleet_addr = sleet.start();
 
         // Create the `hail` actor

@@ -51,14 +51,14 @@ pub struct Sleet {
 
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
-    pub fn new(sender: Recipient<Fanout>, node_id: Id, genesis_utxos: UTXOIds) -> Self {
+    pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
         Sleet {
             sender,
             node_id,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
             queried_txs: sled::Config::new().temporary(true).open().unwrap(),
-            conflict_graph: UTXOGraph::new(genesis_utxos),
+            conflict_graph: UTXOGraph::new(UTXOIds::empty()),
             txs: HashMap::default(),
             dag: DAG::new(),
         }
@@ -280,11 +280,15 @@ impl Handler<LiveCommittee> for Sleet {
             "[sleet]".cyan(),
             txs_len.cyan()
         );
-        for (_tx_hash, tx) in msg.txs.clone() {
+        let mut utxo_ids_set: UTXOIds = UTXOIds::empty();
+        for (tx_hash, tx) in msg.txs.clone() {
             info!("{}", tx.clone());
+            let utxo_ids = UTXOIds::from_outputs(tx_hash.clone(), tx.outputs());
+            utxo_ids_set = utxo_ids_set.union(&utxo_ids).cloned().collect();
         }
         info!("");
         self.txs = msg.txs.clone();
+        self.conflict_graph = UTXOGraph::new(utxo_ids_set);
 
         let mut s: String = format!("<<{}>>\n", "sleet".cyan());
         for (id, (_, w)) in msg.validators.clone() {
@@ -448,7 +452,7 @@ impl Handler<GenerateTx> for Sleet {
             Ok(false) => GenerateTxAck { tx_hash: None },
 
             Err(e) => {
-                error!("[{}] Couldn't insert new transaction {}: {}", "sleet".cyan(), msg.tx, e);
+                error!("[{}] Couldn't insert new transaction {}:\n {}", "sleet".cyan(), msg.tx, e);
                 GenerateTxAck { tx_hash: None }
             }
         }

@@ -14,6 +14,16 @@ pub struct UTXOIds {
     pub inner: HashSet<UTXOId>,
 }
 
+impl std::iter::FromIterator<[u8; 32]> for UTXOIds {
+    fn from_iter<I: IntoIterator<Item = [u8; 32]>>(iter: I) -> Self {
+        let mut hs = HashSet::new();
+        for i in iter {
+            hs.insert(i);
+        }
+        UTXOIds { inner: hs }
+    }
+}
+
 impl std::ops::Deref for UTXOIds {
     type Target = HashSet<UTXOId>;
 
@@ -69,6 +79,14 @@ impl std::cmp::PartialOrd for UTXOIds {
 }
 
 impl UTXOIds {
+    pub fn new(hs: HashSet<UTXOId>) -> Self {
+        UTXOIds { inner: hs }
+    }
+
+    pub fn empty() -> Self {
+        UTXOIds { inner: HashSet::new() }
+    }
+
     pub fn from_inputs(inputs: Inputs<Input>) -> Self {
         let mut utxo_ids = HashSet::new();
         for input in inputs.iter() {
