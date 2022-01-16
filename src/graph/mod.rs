@@ -2,6 +2,7 @@ mod dag;
 mod utxo_graph;
 
 pub use dag::*;
+pub use utxo_graph::*;
 
 use crate::chain::alpha::tx::TxHash;
 
