@@ -579,7 +579,7 @@ mod test {
 
         let genesis_tx = generate_coinbase(&root_kp, 1000);
         let genesis_utxo_ids = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs());
-        let mut sleet = Sleet::new(sender.recipient(), Id::zero(), genesis_utxo_ids);
+        let mut sleet = Sleet::new(sender.recipient(), Id::zero());
 
         // Generate a genesis set of coins
         let stx1 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1000));

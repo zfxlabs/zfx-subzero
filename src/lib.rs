@@ -4,6 +4,7 @@ extern crate serde_derive;
 extern crate actix_derive;
 extern crate colored;
 
+pub mod cell;
 pub mod chain;
 pub mod channel;
 pub mod client;
