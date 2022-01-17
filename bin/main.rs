@@ -1,5 +1,6 @@
 use zfx_subzero::chain::alpha::Alpha;
 use zfx_subzero::hail::Hail;
+use zfx_subzero::ice::dissemination::DisseminationComponent;
 use zfx_subzero::ice::{self, Ice, Reservoir};
 use zfx_subzero::server::{Router, Server};
 use zfx_subzero::sleet::Sleet;
@@ -117,6 +118,10 @@ fn main() -> Result<()> {
         view.init(bootstrap_ips);
         let view_addr = view.start();
 
+        // Create the `dissemination_component` actor
+        let dc = DisseminationComponent::new();
+        let dc_addr = dc.start();
+
         // Create the `ice` actor
         let reservoir = Reservoir::new();
         let ice = Ice::new(node_id, listener_ip, reservoir);
@@ -152,7 +157,7 @@ fn main() -> Result<()> {
             let ice_addr_clone = ice_addr_clone.clone();
             let ice_execution = async move {
                 // Setup `ice` consensus for establishing the liveness of peers
-                ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone).await;
+                ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone, dc_addr).await;
             };
             let arbiter = Arbiter::new();
             arbiter.spawn(ice_execution);

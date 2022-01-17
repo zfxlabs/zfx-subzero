@@ -1,10 +1,11 @@
 mod choice;
 mod constants;
-mod dissemination;
 mod ice;
 mod query;
 mod quorum;
 mod reservoir;
+
+pub mod dissemination;
 
 pub use choice::Choice;
 pub use constants::*;

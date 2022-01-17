@@ -9,9 +9,10 @@ use crate::view::{self, View};
 use crate::{Error, Result};
 
 use super::choice::Choice;
-use super::constants::*;
+use super::dissemination::{DisseminationComponent, Gossip, GossipQuery};
 use super::query::{Outcome, Query};
 use super::reservoir::Reservoir;
+use super::{constants::*, dissemination};
 
 use tracing::{debug, error, info};
 
@@ -48,6 +49,7 @@ impl Actor for Ice {
 pub struct Ping {
     pub id: Id,
     pub queries: Vec<Query>,
+    pub rumours: Vec<Gossip>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -294,8 +296,28 @@ impl Handler<PrintReservoir> for Ice {
     }
 }
 
-pub async fn ping(self_id: Id, ip: SocketAddr, queries: Vec<Query>) -> Result<Ack> {
-    match client::oneshot(ip.clone(), Request::Ping(Ping { id: self_id, queries })).await {
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "usize")]
+pub struct ReservoirSize;
+
+impl Handler<ReservoirSize> for Ice {
+    type Result = usize;
+
+    fn handle(&mut self, msg: ReservoirSize, ctx: &mut Context<Self>) -> Self::Result {
+        self.reservoir.len()
+    }
+}
+
+pub async fn ping(
+    self_id: Id,
+    ip: SocketAddr,
+    queries: Vec<Query>,
+    dc: &Addr<DisseminationComponent>,
+    network_size: usize,
+) -> Result<Ack> {
+    //FIXME: network size
+    let rumours = dissemination::pull_rumours(dc, network_size).await;
+    match client::oneshot(ip.clone(), Request::Ping(Ping { id: self_id, queries, rumours })).await {
         // Success -> Ack
         Ok(Some(Response::Ack(ack))) => Ok(ack.clone()),
         // Failure (byzantine)
@@ -329,9 +351,16 @@ pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: S
     }
 }
 
-pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alpha>) {
+pub async fn run(
+    self_id: Id,
+    ice: Addr<Ice>,
+    view: Addr<View>,
+    alpha: Addr<Alpha>,
+    dc_addr: Addr<DisseminationComponent>,
+) {
     loop {
         let () = ice.send(PrintReservoir).await.unwrap();
+        let network_size = ice.send(ReservoirSize).await.unwrap();
 
         // Sample a random peer from the view
         let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
@@ -342,7 +371,7 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
 
             // Ping the designated peer
-            match ping(self_id, ip.clone(), queries).await {
+            match ping(self_id, ip.clone(), queries, &dc_addr, network_size).await {
                 Ok(ack) => {
                     send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
                         .await
