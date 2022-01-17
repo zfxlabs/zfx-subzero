@@ -1,12 +1,14 @@
 use crate::zfx_id::Id;
 
+use crate::colored::Colorize;
+
 use actix::{Actor, Addr, Context, Handler};
 use blake2::digest::{Update, VariableOutput}; // for hash function
 use blake2::Blake2bVar;
 // for hash function
 use priority_queue::double_priority_queue::DoublePriorityQueue;
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, info};
 
 const GOSSIP_LIMIT: usize = 3; // Amount of gossip allowed to be passed
 
@@ -40,7 +42,7 @@ pub struct Rumours {
 struct PriorityMap {
     c: GossipId, // Counter can be pretty simple, since this only DC calls this struct
     h: HashMap<GossipId, Gossip>,
-    q: DoublePriorityQueue<GossipId, u64>,
+    q: DoublePriorityQueue<GossipId, usize>,
 }
 
 impl PriorityMap {
@@ -54,14 +56,17 @@ impl PriorityMap {
         self.c += 1;
     }
 
-    fn cleanup(&mut self, limit: u64) {
+    fn cleanup(&mut self, limit: usize) -> usize {
+        let mut deleted = 0;
         while self.has_over_limit(&limit) {
             let (i, _p) = self.q.pop_max().unwrap();
             self.h.remove(&i);
+            deleted += 1;
         }
+        deleted
     }
 
-    fn has_over_limit(&self, limit: &u64) -> bool {
+    fn has_over_limit(&self, limit: &usize) -> bool {
         match self.q.peek_max() {
             None => false,
             Some((_i, p)) => p >= limit,
@@ -69,7 +74,7 @@ impl PriorityMap {
     }
 
     fn take_n(&mut self, n: usize) -> Vec<Gossip> {
-        let mut v: Vec<(GossipId, u64)> = vec![];
+        let mut v: Vec<(GossipId, usize)> = vec![];
 
         // Take `n` at the most
         for _ in 0..n {
@@ -128,9 +133,13 @@ impl Handler<GossipQuery> for DisseminationComponent {
     type Result = Rumours;
 
     fn handle(&mut self, msg: GossipQuery, _ctx: &mut Context<Self>) -> Self::Result {
-        let rumours_limit = ((msg.network_size as f64).log2()).ceil() as u64;
+        let rumours_limit = ((msg.network_size as f64).log2()).ceil() as usize;
         let r = Rumours { rumours: self.rumours.take_n(GOSSIP_LIMIT) };
-        self.rumours.cleanup(rumours_limit);
+        let deleted = self.rumours.cleanup(rumours_limit);
+        info!(
+            "{}",
+            format!("<<{} {}>>", deleted.to_string().green(), "rumours disseminated".cyan())
+        );
         r
     }
 }
