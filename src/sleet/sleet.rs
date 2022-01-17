@@ -85,13 +85,9 @@ impl Sleet {
             Err(Error::InvalidCoinbaseTransaction(tx))
         } else {
             if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                if self.spends_valid_utxos(tx.clone()) {
-                    self.insert(sleet_tx.clone())?;
-                    let _ = alpha::insert_tx(&self.known_txs, tx.clone());
-                    Ok(true)
-                } else {
-                    Err(Error::SpendsInvalidUTXOs(tx))
-                }
+                self.insert(sleet_tx.clone())?;
+                let _ = alpha::insert_tx(&self.known_txs, tx.clone());
+                Ok(true)
             } else {
                 // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
                 Ok(false)
@@ -247,29 +243,6 @@ impl Sleet {
             validators.push((id.clone(), ip.clone(), w.clone()));
         }
         util::sample_weighted(minimum_weight, validators).ok_or(Error::InsufficientWeight)
-    }
-
-    /// Checks whether a transactions inputs spends valid outputs. If two transactions
-    /// spend the same outputs in the mempool, this is resolved via the conflict map -
-    /// it is not an error to receive two conflicting transactions.
-    pub fn spends_valid_utxos(&self, tx: Transaction) -> bool {
-        for input in tx.inputs().iter() {
-            match self.txs.get(&input.source) {
-                Some(unspent_tx) => {
-                    // FIXME: Better verification.
-                    let utxos = unspent_tx.outputs();
-                    if input.i as usize >= utxos.len() {
-                        error!("invalid transaction index");
-                        return false;
-                    }
-                }
-                None => {
-                    error!("invalid input source");
-                    return false;
-                }
-            }
-        }
-        true
     }
 }
 
