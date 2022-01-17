@@ -1,3 +1,5 @@
+pub const FEE: u64 = 100;
+
 // The capacity of a particular cell (size in bytes).
 pub type Capacity = u64;
 

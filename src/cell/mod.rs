@@ -1,6 +1,7 @@
 
 mod cell;
 mod cell_id;
+mod cell_ids;
 mod cell_type;
 mod cell_unlock_script;
 mod input;
@@ -10,11 +11,20 @@ mod output_index;
 mod outputs;
 mod types;
 
+// alpha
+mod coinbase;
+mod stake;
+mod transfer;
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     Hex(String),
     Bincode(String),
     Dalek(String),
+    ExceedsAvailableFunds,
+    ZeroTransfer,
+    ZeroStake,
+    InvalidCoinbase,
 }
 
 impl std::error::Error for Error {}
