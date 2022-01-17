@@ -627,16 +627,32 @@ mod test {
         }
     }
 
+    struct HailMock;
+    impl Actor for HailMock {
+        type Context = Context<Self>;
+
+        fn started(&mut self, _ctx: &mut Context<Self>) {}
+    }
+
+    impl Handler<AcceptedTransactions> for HailMock {
+        type Result = ();
+
+        fn handle(&mut self, msg: AcceptedTransactions, ctx: &mut Context<Self>) -> Self::Result {
+            ()
+        }
+    }
+
     #[actix_rt::test]
     async fn test_strongly_preferred() {
         let sender = DummyClient.start();
+        let receiver = HailMock.start();
 
         let mut csprng = OsRng {};
         let root_kp = Keypair::generate(&mut csprng);
 
         let genesis_tx = generate_coinbase(&root_kp, 1000);
         let genesis_utxo_ids = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs());
-        let mut sleet = Sleet::new(sender.recipient(), Id::zero(), genesis_utxo_ids);
+        let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero());
 
         // Generate a genesis set of coins
         let stx1 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1000));
