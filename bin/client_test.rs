@@ -74,34 +74,32 @@ async fn main() -> Result<()> {
     }
 
     for amount in 1..9 {
-        if let Some(Response::TxAck(sleet::TxAck { tx: Some(inner_tx) })) =
+        if let Some(Response::TxAck(sleet::TxAck { tx: Some(tx_in) })) =
             client::oneshot(peer_ip, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
                 .await?
         {
-            info!("spendable: {:?}", inner_tx);
+            //info!("spendable: {:?}", tx_in);
+            info!("Spendable tx hash: {}", hex::encode(tx_in.hash()));
+
             // Construct a new tx and send it to the mempool. Note that we use the `tx_hash` of
             // the `Transaction` rather than the inner `Tx` (maybe FIXME needs to be looked at).
-            let transfer_tx = TransferTx::new(&keypair, inner_tx, pkh.clone(), pkh.clone(), amount);
+            let transfer_tx = TransferTx::new(&keypair, tx_in, pkh.clone(), pkh.clone(), amount);
+            info!("inner tx_hash: {}", hex::encode(&transfer_tx.tx.hash()));
+            info!("transfer_tx tx_hash: {}", hex::encode(&transfer_tx.hash()));
             let tx = Transaction::TransferTx(transfer_tx);
             tx_hash = tx.hash();
-            let _ = send_tx_get_next_hash(peer_ip, tx_hash.clone(), tx.clone()).await?;
-            info!("sent tx:\n{:?}", tx);
+            match client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { tx })).await? {
+                Some(Response::GenerateTxAck(GenerateTxAck { tx_hash: Some(hash) })) => {
+                    info!("Ack hash: {}", hex::encode(hash))
+                }
+                other => panic!("Unexpected: {:?}", other),
+            }
+            //info!("sent tx:\n{:?}", tx.clone());
             info!("new tx_hash: {}", hex::encode(&tx_hash));
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(10)).await;
         } else {
             panic!("tx doesn't exist: {}", hex::encode(&tx_hash));
         }
     }
     Ok(())
-}
-
-async fn send_tx_get_next_hash(
-    peer_ip: SocketAddr,
-    tx_hash: TxHash,
-    tx: Transaction,
-) -> Result<()> {
-    match client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { tx })).await? {
-        Some(Response::GenerateTxAck(GenerateTxAck { tx_hash: Some(tx_hash) })) => Ok(()),
-        other => panic!("Unexpected: {:?}", other),
-    }
 }
