@@ -63,6 +63,17 @@ pub async fn get_tx(
     get_tx_with_min_amount(min_amount, node_address, &tx_hashes).await
 }
 
+pub async fn get_tx_in_range(
+    min_amount: u64,
+    max_amount: u64,
+    context: &mut IntegrationTestContext,
+    node_address: SocketAddr,
+) -> Result<Option<(TxHash, Tx)>> {
+    let tx_hashes = context.get_latest_txs_of(get_tx_hashes(node_address).await?);
+
+    get_tx_in_amount_range(min_amount, max_amount, node_address, &tx_hashes).await
+}
+
 pub async fn get_not_spendable_tx(
     min_amount: u64,
     context: &mut IntegrationTestContext,
@@ -81,11 +92,20 @@ pub async fn get_tx_with_min_amount(
     node_address: SocketAddr,
     tx_hashes: &HashSet<TxHash>,
 ) -> Result<Option<(TxHash, Tx)>> {
+    get_tx_in_amount_range(min_amount, u64::MAX, node_address, tx_hashes).await
+}
+
+pub async fn get_tx_in_amount_range(
+    min_amount: u64,
+    max_amount: u64,
+    node_address: SocketAddr,
+    tx_hashes: &HashSet<TxHash>,
+) -> Result<Option<(TxHash, Tx)>> {
     for tx_hash in tx_hashes {
         if let Ok(tx_option) = get_tx_from_hash(tx_hash.clone(), node_address).await {
             if tx_option.is_some() {
                 let tx = tx_option.unwrap();
-                if tx.sum() > min_amount {
+                if tx.sum() > min_amount && tx.sum() < max_amount {
                     // return the first match transaction
                     return Ok(Some((tx_hash.clone(), tx)));
                 }
