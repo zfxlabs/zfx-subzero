@@ -3,7 +3,7 @@ use crate::colored::Colorize;
 use crate::chain::alpha::Amount;
 use crate::zfx_id::Id;
 
-use super::{Input, Output, Tx};
+use super::{Input, Inputs, Output, Outputs, Tx};
 
 use ed25519_dalek::Keypair;
 
@@ -42,12 +42,12 @@ impl StakeTx {
         StakeTx { node_id, tx, value }
     }
 
-    pub fn inputs(&self) -> Vec<Input> {
-        self.tx.inputs.clone()
+    pub fn inputs(&self) -> Inputs<Input> {
+        self.tx.inputs()
     }
 
-    pub fn outputs(&self) -> Vec<Output> {
-        self.tx.outputs.clone()
+    pub fn outputs(&self) -> Outputs<Output> {
+        self.tx.outputs()
     }
 
     pub fn hash(&self) -> [u8; 32] {

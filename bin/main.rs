@@ -1,3 +1,4 @@
+use zfx_subzero::chain::alpha::tx::UTXOIds;
 use zfx_subzero::chain::alpha::Alpha;
 use zfx_subzero::client::Client;
 use zfx_subzero::hail::Hail;
@@ -19,6 +20,7 @@ use clap::{value_t, values_t, App, Arg};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 
+use std::collections::HashSet;
 use std::io::{BufReader, Read, Write};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -132,6 +134,7 @@ fn main() -> Result<()> {
         let hail_addr = hail.start();
 
         // Create the `sleet` actor
+        // FIXME: Sleet has to be initialised with the genesis utxo ids.
         let sleet =
             Sleet::new(client_addr.clone().recipient(), hail_addr.clone().recipient(), node_id);
         let sleet_addr = sleet.start();

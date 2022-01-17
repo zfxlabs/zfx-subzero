@@ -1,4 +1,4 @@
-use super::{Input, Output, PublicKeyHash, Tx};
+use super::{Input, Inputs, Output, Outputs, PublicKeyHash, Tx};
 
 use crate::colored::Colorize;
 
@@ -20,18 +20,21 @@ impl std::fmt::Display for CoinbaseTx {
 }
 
 impl CoinbaseTx {
-    /// Creates a new coinbase transaction.
-    pub fn new(owner: PublicKeyHash, value: u64) -> Self {
+    pub fn new(outputs: Outputs<Output>) -> Self {
+        CoinbaseTx { tx: Tx::new(Inputs::new(vec![]), outputs) }
+    }
+
+    pub fn from_output(owner: PublicKeyHash, value: u64) -> Self {
         let output = Output::new(owner, value.clone());
-        CoinbaseTx { tx: Tx::new(vec![], vec![output]) }
+        CoinbaseTx { tx: Tx::from_vecs(vec![], vec![output]) }
     }
 
-    pub fn inputs(&self) -> Vec<Input> {
-        self.tx.inputs.clone()
+    pub fn inputs(&self) -> Inputs<Input> {
+        self.tx.inputs()
     }
 
-    pub fn outputs(&self) -> Vec<Output> {
-        self.tx.outputs.clone()
+    pub fn outputs(&self) -> Outputs<Output> {
+        self.tx.outputs()
     }
 
     pub fn hash(&self) -> [u8; 32] {

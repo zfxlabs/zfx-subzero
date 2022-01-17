@@ -1,3 +1,6 @@
+use std::cmp::{Ord, Ordering};
+use std::hash::{Hash, Hasher};
+
 pub type Amount = u64;
 pub type PublicKeyHash = [u8; 32];
 
@@ -13,6 +16,33 @@ impl std::fmt::Debug for Output {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let owner = format!("{}", hex::encode(self.owner_hash));
         write!(f, "{{owner={},value={:?}}}", owner, self.value)
+    }
+}
+
+// FIXME: Error prone serialization / comparisons
+
+impl Ord for Output {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.owner_hash.cmp(&other.owner_hash) {
+            Ordering::Equal => self.value.cmp(&other.value),
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for Output {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.owner_hash.cmp(&other.owner_hash) {
+            Ordering::Equal => Some(self.value.cmp(&other.value)),
+            ord => Some(ord),
+        }
+    }
+}
+
+impl Hash for Output {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.owner_hash.hash(state);
+        self.value.hash(state);
     }
 }
 

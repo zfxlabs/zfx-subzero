@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-#[derive(Clone)]
-pub struct ConflictSet<T> {
-    conflicts: HashSet<T>,
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct ConflictSet<T: Eq + std::hash::Hash> {
+    pub conflicts: HashSet<T>,
     pub pref: T,
     pub last: T,
     pub cnt: u8,

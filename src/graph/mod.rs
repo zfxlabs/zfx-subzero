@@ -1,13 +1,22 @@
 mod dag;
+mod utxo_graph;
 
 pub use dag::*;
+pub use utxo_graph::*;
+
+use crate::chain::alpha::tx::TxHash;
 
 #[derive(Debug)]
 pub enum Error {
     VertexExists,
     VacantEntry,
     UndefinedChit,
+    UndefinedUTXO,
     ChitReplace,
+    DuplicateUTXO,
+    DuplicateInputs,
+    InvalidTxHash(TxHash),
+    EmptyUTXOGraph,
 }
 
 impl std::error::Error for Error {}

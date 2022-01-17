@@ -74,16 +74,15 @@ async fn main() -> Result<()> {
     }
 
     for amount in 1..9 {
-        if let Some(Response::TxAck(sleet::TxAck { tx: Some(tx_ack) })) =
+        if let Some(Response::TxAck(sleet::TxAck { tx: Some(inner_tx) })) =
             client::oneshot(peer_ip, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
                 .await?
         {
-            let inner_tx = tx_ack.inner();
             info!("spendable: {:?}", inner_tx);
             // Construct a new tx and send it to the mempool. Note that we use the `tx_hash` of
             // the `Transaction` rather than the inner `Tx` (maybe FIXME needs to be looked at).
             let transfer_tx =
-                TransferTx::new(&keypair, tx_hash, inner_tx, pkh.clone(), pkh.clone(), amount);
+                TransferTx::new(&keypair, inner_tx, pkh.clone(), pkh.clone(), amount);
             let tx = Transaction::TransferTx(transfer_tx);
             tx_hash = tx.hash();
             let _ = send_tx_get_next_hash(peer_ip, tx_hash.clone(), tx.clone()).await?;

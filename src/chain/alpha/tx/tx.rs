@@ -1,6 +1,11 @@
 use super::input::Input;
+use super::inputs::Inputs;
 use super::output::{Amount, Output, PublicKeyHash};
+use super::outputs::Outputs;
 use super::{Error, Result};
+
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 use ed25519_dalek::Keypair;
 
@@ -10,17 +15,54 @@ pub const FEE: u64 = 100;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
-    pub inputs: Vec<Input>,
-    pub outputs: Vec<Output>,
+    pub inputs: Inputs<Input>,
+    pub outputs: Outputs<Output>,
+}
+
+impl Hash for Tx {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inputs.hash(state);
+        self.outputs.hash(state);
+    }
+}
+
+impl Ord for Tx {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.inputs.cmp(&other.inputs) {
+            Ordering::Equal => self.outputs.cmp(&other.outputs),
+            ord => ord,
+        }
+    }
+}
+
+impl PartialOrd for Tx {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.inputs.cmp(&other.inputs) {
+            Ordering::Equal => Some(self.outputs.cmp(&other.outputs)),
+            ord => Some(ord),
+        }
+    }
 }
 
 impl Tx {
-    pub fn new(inputs: Vec<Input>, outputs: Vec<Output>) -> Tx {
+    pub fn new(inputs: Inputs<Input>, outputs: Outputs<Output>) -> Self {
         Tx { inputs, outputs }
     }
 
+    pub fn from_vecs(inputs: Vec<Input>, outputs: Vec<Output>) -> Tx {
+        Tx { inputs: Inputs::new(inputs), outputs: Outputs::new(outputs) }
+    }
+
+    pub fn inputs(&self) -> Inputs<Input> {
+        self.inputs.clone()
+    }
+
+    pub fn outputs(&self) -> Outputs<Output> {
+        self.outputs.clone()
+    }
+
     pub fn coinbase(owner: PublicKeyHash, value: Amount) -> Tx {
-        Tx::new(vec![], vec![Output::new(owner, value)])
+        Tx::from_vecs(vec![], vec![Output::new(owner, value)])
     }
 
     pub fn spend(
@@ -41,7 +83,7 @@ impl Tx {
         let mut consumed = 0;
         let mut inputs = vec![];
 
-        for output in self.outputs.iter() {
+        for output in self.outputs().iter() {
             if consumed < amount {
                 inputs.push(Input::new(keypair, tx_hash.clone(), i.clone()));
 
@@ -67,7 +109,7 @@ impl Tx {
             vec![main_output]
         };
 
-        Ok(Tx::new(inputs, outputs))
+        Ok(Tx::from_vecs(inputs, outputs))
     }
 
     pub fn stake(&self, keypair: &Keypair, change: PublicKeyHash, amount: Amount) -> Result<Tx> {
@@ -81,7 +123,7 @@ impl Tx {
         let mut change_amount = 0;
         let mut inputs = vec![];
         let mut i = 0;
-        for output in self.outputs.iter() {
+        for output in self.outputs().iter() {
             let input = Input::new(keypair, tx_hash.clone(), i.clone());
             inputs.push(input);
             if amount_to_stake > output.value {
@@ -103,12 +145,12 @@ impl Tx {
             vec![]
         };
 
-        Ok(Tx::new(inputs, outputs))
+        Ok(Tx::from_vecs(inputs, outputs))
     }
 
     pub fn sum(&self) -> u64 {
         let mut total = 0;
-        for output in self.outputs.iter() {
+        for output in self.outputs().iter() {
             total += output.value;
         }
         total
@@ -141,13 +183,12 @@ mod test {
     use super::*;
 
     use ed25519_dalek::Keypair;
-    use rand::{rngs::OsRng, CryptoRng};
 
     #[actix_rt::test]
     async fn test_spend_with_three_outputs() {
         let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-        let tx1 = Tx::new(
+        let tx1 = Tx::from_vecs(
             vec![],
             vec![
                 Output::new(pkh1.clone(), 700),
@@ -158,8 +199,8 @@ mod test {
         let tx2 = tx1.spend(&kp1, pkh2, pkh1, tx1.hash(), 1800).unwrap();
 
         assert_eq!(tx2.inputs.len(), 3);
-        assert_eq!(tx2.outputs[0].value, 1800); // total spent - fee
-        assert_eq!(tx2.outputs[1].value, 100); // remaining spendable amount
+        assert_eq!(tx2.outputs()[0].value, 1800); // total spent - fee
+        assert_eq!(tx2.outputs()[1].value, 100); // remaining spendable amount
     }
 
     #[actix_rt::test]
@@ -255,9 +296,11 @@ mod test {
     }
 
     fn generate_keys() -> (Keypair, Keypair, [u8; 32], [u8; 32]) {
-        let mut csprng = OsRng {};
-        let kp1 = Keypair::generate(&mut csprng);
-        let kp2 = Keypair::generate(&mut csprng);
+        let kp1_hex = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned();
+        let kp2_hex = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned();
+
+        let kp1 = Keypair::from_bytes(&hex::decode(kp1_hex).unwrap()).unwrap();
+        let kp2 = Keypair::from_bytes(&hex::decode(kp2_hex).unwrap()).unwrap();
 
         let pkh1 = hash_public(&kp1);
         let pkh2 = hash_public(&kp2);
