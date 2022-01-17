@@ -81,8 +81,7 @@ async fn main() -> Result<()> {
             info!("spendable: {:?}", inner_tx);
             // Construct a new tx and send it to the mempool. Note that we use the `tx_hash` of
             // the `Transaction` rather than the inner `Tx` (maybe FIXME needs to be looked at).
-            let transfer_tx =
-                TransferTx::new(&keypair, inner_tx, pkh.clone(), pkh.clone(), amount);
+            let transfer_tx = TransferTx::new(&keypair, inner_tx, pkh.clone(), pkh.clone(), amount);
             let tx = Transaction::TransferTx(transfer_tx);
             tx_hash = tx.hash();
             let _ = send_tx_get_next_hash(peer_ip, tx_hash.clone(), tx.clone()).await?;
