@@ -1,3 +1,4 @@
+use super::cell_id::CellId;
 use super::cell_unlock_script::CellUnlockScript;
 use super::output_index::OutputIndex;
 use super::types::*;
@@ -24,5 +25,9 @@ impl Input {
             output_index,
             unlock,
         })
+    }
+
+    pub fn cell_id(&self) -> Result<CellId> {
+	self.output_index.cell_id()
     }
 }
