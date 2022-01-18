@@ -13,11 +13,16 @@ mod types;
 // alpha
 mod coinbase;
 mod stake;
+mod state;
 mod transfer;
 
 // graph
 mod conflict_graph;
 mod dependency_graph;
+
+// block
+mod block;
+mod initial_staker;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
@@ -28,11 +33,16 @@ pub enum Error {
     ZeroTransfer,
     ZeroStake,
     InvalidCoinbase,
+    InvalidStake,
     // cell graphs
     EmptyConflictGraph,
     DuplicateCell,
     UndefinedCell,
     UndefinedCellHash(types::CellHash),
+    // state
+    UndefinedCellIds,
+    ExistingCellIds,
+    ExceedsCapacity,
 }
 
 impl std::error::Error for Error {}
