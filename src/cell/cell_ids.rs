@@ -1,9 +1,7 @@
 use super::cell::Cell;
 use super::cell_id::CellId;
-use super::input::Input;
-use super::inputs::Inputs;
-use super::output::Output;
-use super::outputs::Outputs;
+use super::inputs::{Input, Inputs};
+use super::outputs::{Output, Outputs};
 use super::types::CellHash;
 use super::Result;
 
@@ -12,9 +10,19 @@ use std::collections::HashSet;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CellIds {
     pub inner: HashSet<CellId>,
+}
+
+impl std::fmt::Debug for CellIds {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
+        let mut s = "\n".to_owned();
+        for cell_id in self.iter() {
+            s = format!("{}{:?}\n", s, cell_id);
+        }
+        write!(fmt, "{}", s)
+    }
 }
 
 impl std::iter::FromIterator<[u8; 32]> for CellIds {
@@ -22,6 +30,16 @@ impl std::iter::FromIterator<[u8; 32]> for CellIds {
         let mut hs = HashSet::new();
         for bytes in iter {
             hs.insert(CellId::new(bytes));
+        }
+        CellIds { inner: hs }
+    }
+}
+
+impl std::iter::FromIterator<CellId> for CellIds {
+    fn from_iter<I: IntoIterator<Item = CellId>>(iter: I) -> Self {
+        let mut hs = HashSet::new();
+        for cell_id in iter {
+            hs.insert(cell_id.clone());
         }
         CellIds { inner: hs }
     }
@@ -90,7 +108,7 @@ impl CellIds {
         CellIds { inner: HashSet::new() }
     }
 
-    pub fn from_inputs(inputs: Inputs<Input>) -> Result<Self> {
+    pub fn from_inputs(inputs: Inputs) -> Result<Self> {
         let mut cell_ids = HashSet::new();
         for input in inputs.iter() {
             cell_ids.insert(input.cell_id()?);
@@ -98,7 +116,7 @@ impl CellIds {
         Ok(CellIds { inner: cell_ids })
     }
 
-    pub fn from_outputs(cell_hash: CellHash, outputs: Outputs<Output>) -> Result<Self> {
+    pub fn from_outputs(cell_hash: CellHash, outputs: Outputs) -> Result<Self> {
         let mut cell_ids = HashSet::new();
         for i in 0..outputs.len() {
             cell_ids.insert(CellId::from_output(cell_hash.clone(), i as u8, outputs[i].clone())?);
@@ -115,7 +133,7 @@ impl CellIds {
         CellIds { inner: self.intersection(other).cloned().collect() }
     }
 
-    pub fn left_difference(&mut self, other: &CellIds) -> CellIds {
+    pub fn left_difference(&self, other: &CellIds) -> CellIds {
         CellIds { inner: self.difference(other).cloned().collect() }
     }
 }

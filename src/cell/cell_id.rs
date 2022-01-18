@@ -5,8 +5,14 @@ use super::Result;
 use std::ops::{Deref, DerefMut};
 
 // The hash of a cells output index.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct CellId([u8; 32]);
+
+impl std::fmt::Debug for CellId {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
+        write!(fmt, "{}", hex::encode(self.0))
+    }
+}
 
 impl Deref for CellId {
     type Target = [u8; 32];
