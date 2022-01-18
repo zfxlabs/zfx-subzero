@@ -12,7 +12,10 @@ mod integration_test {
     use tracing::info;
     use tracing_subscriber;
 
-    use crate::chain::alpha::{Transaction, TransferTx, Tx, TxHash};
+    use crate::cell::transfer::TransferOperation;
+    use crate::cell::types::CellHash;
+    use crate::cell::Cell;
+
     use crate::protocol::Response;
     use crate::version;
     use crate::zfx_id::Id;
@@ -24,33 +27,34 @@ mod integration_test {
     pub const KEYPAIR_NODE_2 : &str = "6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b";
 
     #[actix_rt::test]
-    async fn test_send_tx() -> Result<()> {
+    async fn test_generate_tx() -> Result<()> {
         let nodes = TestNodes::new();
         let node_0 = nodes.get_node(0).unwrap();
         let node_1 = nodes.get_node(1).unwrap();
 
-        let tx_hash = get_tx_hashes(node_0.address).await?[2];
-        let tx = get_tx_from_hash(tx_hash.clone(), node_0.address).await?;
+        let cell_hash = get_cell_hashes(node_0.address).await?[2];
+        let cell = get_cell_from_hash(cell_hash.clone(), node_0.address).await?;
 
         let spend_amount = 5;
+
+        let transfer_op = TransferOperation::new(
+            cell,
+            node_0.public_key.clone(),
+            node_1.public_key.clone(),
+            spend_amount,
+        );
+        let transfer_tx = transfer_op.transfer(&node_0.keypair).unwrap();
+
         if let Some(Response::GenerateTxAck(ack)) = client::oneshot(
             node_0.address,
-            Request::GenerateTx(sleet::GenerateTx {
-                tx: Transaction::TransferTx(TransferTx::new(
-                    &node_0.keypair,
-                    tx,
-                    node_0.public_key.clone(),
-                    node_1.public_key.clone(),
-                    spend_amount,
-                )),
-            }),
+            Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx }),
         )
         .await?
         {
             sleep(Duration::from_secs(2));
-            let tx = get_tx_from_hash(ack.tx_hash.unwrap().clone(), node_0.address).await?;
-            println!("value = {}", tx.outputs()[0].value);
-            assert_eq!(spend_amount, tx.outputs()[0].value)
+            let tx = get_cell_from_hash(ack.cell_hash.unwrap().clone(), node_0.address).await?;
+            println!("value = {}", tx.outputs()[0].capacity);
+            assert_eq!(spend_amount, tx.outputs()[0].capacity)
         } else {
             panic!("No acknowledgment received from sending the transaction");
         }
@@ -58,22 +62,24 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn get_tx_from_hash(tx_hash: TxHash, node_address: SocketAddr) -> Result<Transaction> {
-        if let Some(Response::TxAck(tx_ack)) =
-            client::oneshot(node_address, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
-                .await?
+    async fn get_cell_from_hash(cell_hash: CellHash, node_address: SocketAddr) -> Result<Cell> {
+        if let Some(Response::CellAck(cell_ack)) = client::oneshot(
+            node_address,
+            Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
+        )
+        .await?
         {
-            return Result::Ok(tx_ack.tx.expect("No transaction found for hash"));
+            return Result::Ok(cell_ack.cell.expect("No transaction found for hash"));
         } else {
-            panic!("Invalid response for request GetTx")
+            panic!("Invalid response for request GetCell")
         }
     }
 
-    async fn get_tx_hashes(node_address: SocketAddr) -> Result<Vec<TxHash>> {
-        if let Some(Response::Transactions(txs)) =
-            client::oneshot(node_address, Request::GetTransactions).await?
+    async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
+        if let Some(Response::CellHashes(cell_hashes)) =
+            client::oneshot(node_address, Request::GetCellHashes).await?
         {
-            return Result::Ok(txs.ids);
+            return Result::Ok(cell_hashes.ids);
         } else {
             panic!("Invalid response for request GetTransactions")
         }
