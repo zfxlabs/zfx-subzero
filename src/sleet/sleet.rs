@@ -1,11 +1,15 @@
 use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
+use crate::cell::conflict_graph::ConflictGraph;
+use crate::cell::types::{CellHash, PublicKeyHash};
+use crate::cell::{Cell, CellIds};
 use crate::chain::alpha::state::Weight;
-use crate::chain::alpha::{self, Transaction, TxHash, UTXOIds};
+use crate::chain::alpha::TxHash;
 use crate::client::Fanout;
-use crate::graph::{UTXOGraph, DAG};
+use crate::graph::DAG;
 use crate::protocol::{Request, Response};
+use crate::storage::cell as cell_storage;
 use crate::util;
 
 use super::sleet_tx::SleetTx;
@@ -37,14 +41,14 @@ pub struct Sleet {
     node_id: Id,
     /// The weighted validator set.
     committee: HashMap<Id, (SocketAddr, Weight)>,
-    /// The set of all known transactions.
-    known_txs: sled::Db,
-    /// The set of all queried transactions.
-    queried_txs: sled::Db,
+    /// The set of all known cells in storage.
+    known_cells: sled::Db,
+    /// The set of all queried cells in storage.
+    queried_cells: sled::Db,
     /// The graph of conflicting transactions (potentially multi-input).
-    conflict_graph: UTXOGraph,
-    /// A vector containing the transactions of the last accepted block.
-    txs: HashMap<TxHash, Transaction>,
+    conflict_graph: ConflictGraph,
+    /// A mapping of a cell ids (inputs) to unspent cell outputs.
+    live_cells: HashMap<CellHash, Cell>,
     /// The consensus graph.
     dag: DAG<TxHash>,
 }
@@ -56,10 +60,10 @@ impl Sleet {
             sender,
             node_id,
             committee: HashMap::default(),
-            known_txs: sled::Config::new().temporary(true).open().unwrap(),
-            queried_txs: sled::Config::new().temporary(true).open().unwrap(),
-            conflict_graph: UTXOGraph::new(UTXOIds::empty()),
-            txs: HashMap::default(),
+            known_cells: sled::Config::new().temporary(true).open().unwrap(),
+            queried_cells: sled::Config::new().temporary(true).open().unwrap(),
+            conflict_graph: ConflictGraph::new(CellIds::empty()),
+            live_cells: HashMap::default(),
             dag: DAG::new(),
         }
     }
@@ -67,33 +71,23 @@ impl Sleet {
     /// Called for all newly discovered transactions.
     /// Returns `true` if the transaction haven't been encountered before
     fn on_receive_tx(&mut self, sleet_tx: SleetTx) -> Result<bool> {
-        let tx = sleet_tx.inner.clone();
-        // Skip adding coinbase transactions (block rewards / initial allocations) to the
-        // mempool.
-        if tx.is_coinbase() {
-            Err(Error::InvalidCoinbaseTransaction(tx))
+        let cell = sleet_tx.inner.clone();
+        if !cell_storage::is_known_cell(&self.known_cells, cell.hash()).unwrap() {
+            self.insert(sleet_tx.clone())?;
+            let _ = cell_storage::insert_cell(&self.known_cells, cell.clone());
+            Ok(true)
         } else {
-            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                if self.spends_valid_utxos(tx.clone()) {
-                    self.insert(sleet_tx.clone())?;
-                    let _ = alpha::insert_tx(&self.known_txs, tx.clone());
-                    Ok(true)
-                } else {
-                    Err(Error::SpendsInvalidUTXOs(tx))
-                }
-            } else {
-                // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
-                Ok(false)
-            }
+            // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
+            Ok(false)
         }
     }
 
     // Vertices
 
     pub fn insert(&mut self, tx: SleetTx) -> Result<()> {
-        let inner_tx = tx.inner.clone();
-        self.conflict_graph.insert_tx(inner_tx.clone())?;
-        self.dag.insert_vx(inner_tx.hash(), tx.parents.clone())?;
+        let cell = tx.inner.clone();
+        self.conflict_graph.insert_cell(cell.clone())?;
+        self.dag.insert_vx(cell.hash(), tx.parents.clone())?;
         Ok(())
     }
 
@@ -225,29 +219,6 @@ impl Sleet {
         }
         util::sample_weighted(minimum_weight, validators).ok_or(Error::InsufficientWeight)
     }
-
-    /// Checks whether a transactions inputs spends valid outputs. If two transactions
-    /// spend the same outputs in the mempool, this is resolved via the conflict map -
-    /// it is not an error to receive two conflicting transactions.
-    pub fn spends_valid_utxos(&self, tx: Transaction) -> bool {
-        for input in tx.inputs().iter() {
-            match self.txs.get(&input.source) {
-                Some(unspent_tx) => {
-                    // FIXME: Better verification.
-                    let utxos = unspent_tx.outputs();
-                    if input.i as usize >= utxos.len() {
-                        error!("invalid transaction index");
-                        return false;
-                    }
-                }
-                None => {
-                    error!("invalid input source");
-                    return false;
-                }
-            }
-        }
-        true
-    }
 }
 
 impl Actor for Sleet {
@@ -266,7 +237,7 @@ impl Actor for Sleet {
 #[rtype(result = "()")]
 pub struct LiveCommittee {
     pub validators: HashMap<Id, (SocketAddr, f64)>,
-    pub txs: HashMap<TxHash, Transaction>,
+    pub live_cells: HashMap<CellHash, Cell>,
 }
 
 impl Handler<LiveCommittee> for Sleet {
@@ -274,21 +245,21 @@ impl Handler<LiveCommittee> for Sleet {
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
         // Build the list of available UTXOs
-        let txs_len = format!("{:?}", msg.txs.len());
+        let txs_len = format!("{:?}", msg.live_cells.len());
         info!(
             "\n{} received {} transactions containing spendable outputs",
             "[sleet]".cyan(),
             txs_len.cyan()
         );
-        let mut utxo_ids_set: UTXOIds = UTXOIds::empty();
-        for (tx_hash, tx) in msg.txs.clone() {
-            info!("{}", tx.clone());
-            let utxo_ids = UTXOIds::from_outputs(tx_hash.clone(), tx.outputs());
-            utxo_ids_set = utxo_ids_set.union(&utxo_ids).cloned().collect();
+        let mut cell_ids_set: CellIds = CellIds::empty();
+        for (cell_hash, cell) in msg.live_cells.clone() {
+            info!("{:?}", cell.clone());
+            let cell_ids = CellIds::from_outputs(cell_hash.clone(), cell.outputs()).unwrap();
+            cell_ids_set = cell_ids_set.union(&cell_ids).cloned().collect();
         }
         info!("");
-        self.txs = msg.txs.clone();
-        self.conflict_graph = UTXOGraph::new(utxo_ids_set);
+        self.live_cells = msg.live_cells.clone();
+        self.conflict_graph = ConflictGraph::new(cell_ids_set);
 
         let mut s: String = format!("<<{}>>\n", "sleet".cyan());
         for (id, (_, w)) in msg.validators.clone() {
@@ -346,10 +317,10 @@ impl Handler<QueryComplete> for Sleet {
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
-            let _ = self.txs.insert(msg.tx.hash(), msg.tx.inner.clone());
+            let _ = self.live_cells.insert(msg.tx.hash(), msg.tx.inner.clone());
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        alpha::insert_tx(&self.queried_txs, msg.tx.inner.clone()).unwrap();
+        cell_storage::insert_cell(&self.queried_cells, msg.tx.inner.clone()).unwrap();
     }
 }
 
@@ -406,54 +377,59 @@ impl Handler<FreshTx> for Sleet {
 // Allow clients to fetch transactions for testing.
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "TxAck")]
-pub struct GetTx {
-    pub tx_hash: TxHash,
+#[rtype(result = "CellAck")]
+pub struct GetCell {
+    pub cell_hash: CellHash,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct TxAck {
-    pub tx: Option<Transaction>,
+pub struct CellAck {
+    pub cell: Option<Cell>,
 }
 
-impl Handler<GetTx> for Sleet {
-    type Result = TxAck;
+impl Handler<GetCell> for Sleet {
+    type Result = CellAck;
 
-    fn handle(&mut self, msg: GetTx, _ctx: &mut Context<Self>) -> Self::Result {
-        TxAck { tx: self.txs.get(&msg.tx_hash).map(|x| x.clone()) }
+    fn handle(&mut self, msg: GetCell, _ctx: &mut Context<Self>) -> Self::Result {
+        CellAck { cell: self.live_cells.get(&msg.cell_hash).map(|x| x.clone()) }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "GenerateTxAck")]
 pub struct GenerateTx {
-    pub tx: Transaction,
+    pub cell: Cell,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct GenerateTxAck {
     /// hash of applied transaction
-    pub tx_hash: Option<TxHash>,
+    pub cell_hash: Option<CellHash>,
 }
 
 impl Handler<GenerateTx> for Sleet {
     type Result = GenerateTxAck;
 
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] Generating new transaction\n{}", "sleet".cyan(), msg.tx.clone());
+        info!("[{}] Generating new transaction\n{:?}", "sleet".cyan(), msg.cell.clone());
         let parents = self.select_parents(NPARENTS).unwrap();
-        let sleet_tx = SleetTx::new(parents, msg.tx.clone());
+        let sleet_tx = SleetTx::new(parents, msg.cell.clone());
 
         match self.on_receive_tx(sleet_tx.clone()) {
             Ok(true) => {
                 ctx.notify(FreshTx { tx: sleet_tx });
-                GenerateTxAck { tx_hash: Some(msg.tx.hash()) }
+                GenerateTxAck { cell_hash: Some(msg.cell.hash()) }
             }
-            Ok(false) => GenerateTxAck { tx_hash: None },
+            Ok(false) => GenerateTxAck { cell_hash: None },
 
             Err(e) => {
-                error!("[{}] Couldn't insert new transaction {}:\n {}", "sleet".cyan(), msg.tx, e);
-                GenerateTxAck { tx_hash: None }
+                error!(
+                    "[{}] Couldn't insert new transaction {:?}:\n {}",
+                    "sleet".cyan(),
+                    msg.cell,
+                    e
+                );
+                GenerateTxAck { cell_hash: None }
             }
         }
     }
@@ -489,7 +465,7 @@ impl Handler<QueryTx> for Sleet {
             Ok(false) => (),
             Err(e) => {
                 error!(
-                    "[{}] Couldn't insert queried transaction {}: {}",
+                    "[{}] Couldn't insert queried transaction {:?}: {}",
                     "sleet".cyan(),
                     msg.tx.inner,
                     e
@@ -501,7 +477,7 @@ impl Handler<QueryTx> for Sleet {
         match self.is_strongly_preferred(msg.tx.hash()) {
             Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome },
             Err(e) => {
-                error!("[{}] Missing ancestor of {}: {}", "sleet".cyan(), msg.tx.inner, e);
+                error!("[{}] Missing ancestor of {:?}: {}", "sleet".cyan(), msg.tx.inner, e);
                 // FIXME We're voting against the tx w/o having enough information
                 QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome: false }
             }
@@ -510,49 +486,51 @@ impl Handler<QueryTx> for Sleet {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Transactions")]
-pub struct GetTransactions;
+#[rtype(result = "CellHashes")]
+pub struct GetCellHashes;
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Transactions {
-    pub ids: Vec<TxHash>,
+pub struct CellHashes {
+    pub ids: Vec<CellHash>,
 }
 
-impl Handler<GetTransactions> for Sleet {
-    type Result = Transactions;
+impl Handler<GetCellHashes> for Sleet {
+    type Result = CellHashes;
 
-    fn handle(&mut self, _msg: GetTransactions, _ctx: &mut Context<Self>) -> Self::Result {
-        return Transactions { ids: self.txs.keys().cloned().collect::<Vec<TxHash>>() };
+    fn handle(&mut self, _msg: GetCellHashes, _ctx: &mut Context<Self>) -> Self::Result {
+        return CellHashes { ids: self.live_cells.keys().cloned().collect::<Vec<CellHash>>() };
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use alpha::tx::{CoinbaseTx, Output, Outputs, Transaction, TransferTx, Tx};
+
+    use crate::cell::coinbase::CoinbaseOperation;
+    use crate::cell::transfer::TransferOperation;
+    use crate::cell::Cell;
+
     use ed25519_dalek::Keypair;
     use rand::{rngs::OsRng, CryptoRng};
 
-    fn generate_coinbase(keypair: &Keypair, amount: u64) -> alpha::Transaction {
+    use std::convert::TryInto;
+
+    fn generate_coinbase(keypair: &Keypair, amount: u64) -> Cell {
         let enc = bincode::serialize(&keypair.public).unwrap();
         let pkh = blake3::hash(&enc).as_bytes().clone();
-        Transaction::CoinbaseTx(CoinbaseTx::new(Outputs::new(vec![
-            Output::new(pkh.clone(), amount),
-            Output::new(pkh.clone(), amount + 1),
-            Output::new(pkh.clone(), amount + 2),
-        ])))
+        let coinbase_op = CoinbaseOperation::new(vec![
+            (pkh.clone(), amount),
+            (pkh.clone(), amount + 1),
+            (pkh.clone(), amount + 2),
+        ]);
+        coinbase_op.try_into().unwrap()
     }
 
-    fn generate_transfer(keypair: &Keypair, from: Transaction, amount: u64) -> alpha::Transaction {
+    fn generate_transfer(keypair: &Keypair, from: Cell, amount: u64) -> Cell {
         let enc = bincode::serialize(&keypair.public).unwrap();
         let pkh = blake3::hash(&enc).as_bytes().clone();
-        Transaction::TransferTx(TransferTx::new(
-            &keypair,
-            from.clone(),
-            pkh.clone(),
-            pkh.clone(),
-            amount,
-        ))
+        let transfer_op = TransferOperation::new(from, pkh.clone(), pkh, amount);
+        transfer_op.transfer(&keypair).unwrap()
     }
 
     struct DummyClient;
@@ -578,9 +556,10 @@ mod test {
         let root_kp = Keypair::generate(&mut csprng);
 
         let genesis_tx = generate_coinbase(&root_kp, 1000);
-        let genesis_utxo_ids = UTXOIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs());
+        let genesis_cell_ids =
+            CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
         let mut sleet = Sleet::new(sender.recipient(), Id::zero());
-        sleet.conflict_graph = UTXOGraph::new(genesis_utxo_ids);
+        sleet.conflict_graph = ConflictGraph::new(genesis_cell_ids);
 
         // Generate a genesis set of coins
         let stx1 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1000));
@@ -588,7 +567,7 @@ mod test {
         let stx3 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1002));
 
         // Check that parent selection works with an empty DAG.
-        let v_empty: Vec<alpha::TxHash> = vec![];
+        let v_empty: Vec<TxHash> = vec![];
         assert_eq!(sleet.select_parents(3).unwrap(), v_empty.clone());
 
         // Insert new vertices into the DAG.
