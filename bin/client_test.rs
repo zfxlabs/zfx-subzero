@@ -1,14 +1,18 @@
+use zfx_subzero::chain::alpha::TxHash;
 use zfx_subzero::chain::alpha::{Transaction, TransferTx};
 use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
+use zfx_subzero::sleet::GenerateTxAck;
 use zfx_subzero::version;
 use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
 use std::net::SocketAddr;
+use std::time::Duration;
 
+use tokio;
 use tracing::info;
 use tracing_subscriber;
 
@@ -47,6 +51,7 @@ async fn main() -> Result<()> {
                 .value_name("TX_HASH")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("loop").short("l").long("loop").value_name("N").takes_value(true))
         .get_matches();
 
     // The peer to be contacted
@@ -55,6 +60,8 @@ async fn main() -> Result<()> {
     let keypair = value_t!(matches.value_of("keypair"), String).unwrap_or_else(|e| e.exit());
     // The root `txhash` to spend
     let txhash = value_t!(matches.value_of("txhash"), String).unwrap_or_else(|e| e.exit());
+    // How many times to loop
+    let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
 
     // Reconstruct the keypair
     let keypair_bytes = hex::decode(keypair).unwrap();
@@ -69,17 +76,28 @@ async fn main() -> Result<()> {
         tx_hash[i] = tx_hash_vec[i];
     }
 
-    if let Some(Response::TxAck(tx_ack)) =
-        client::oneshot(peer_ip, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() })).await?
-    {
-        let tx = tx_ack.tx.unwrap();
-        info!("spendable: {:?}", tx.clone());
-        // Construct a new tx and send it to the mempool. Note that we use the `tx_hash` of
-        // the `Transaction` rather than the inner `Tx` (maybe FIXME needs to be looked at).
-        let transfer_tx = TransferTx::new(&keypair, tx, pkh.clone(), pkh.clone(), 1);
-        let tx = Transaction::TransferTx(transfer_tx);
-        let _ = client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { tx })).await?;
+    for amount in 0..n {
+        if let Some(Response::TxAck(sleet::TxAck { tx: Some(tx_in) })) =
+            client::oneshot(peer_ip, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
+                .await?
+        {
+            info!("spendable: {:?}\n", tx_in);
+            let transfer_tx =
+                TransferTx::new(&keypair, tx_in, pkh.clone(), pkh.clone(), amount + 1);
+            let tx = Transaction::TransferTx(transfer_tx);
+            tx_hash = tx.hash();
+            match client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { tx })).await? {
+                Some(Response::GenerateTxAck(GenerateTxAck { tx_hash: Some(hash) })) => {
+                    // info!("Ack hash: {}", hex::encode(hash))
+                }
+                other => panic!("Unexpected: {:?}", other),
+            }
+            // info!("sent tx:\n{:?}\n", tx.clone());
+            info!("new tx_hash: {}", hex::encode(&tx_hash));
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        } else {
+            panic!("tx doesn't exist: {}", hex::encode(&tx_hash));
+        }
     }
-
     Ok(())
 }

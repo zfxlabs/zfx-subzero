@@ -24,3 +24,13 @@ pub fn insert_tx(db: &sled::Db, tx: Transaction) -> Result<Option<sled::IVec>> {
         Err(err) => Err(Error::Sled(err)),
     }
 }
+
+// Get a transaction by its hash
+pub fn get_tx(db: &sled::Db, tx_hash: &TxHash) -> Result<Option<Transaction>> {
+    let key = Key::new(tx_hash.clone());
+    match db.get(key.as_bytes()) {
+        Ok(Some(t)) => Ok(Some(bincode::deserialize(t.as_bytes()).unwrap())),
+        Ok(None) => Ok(None),
+        Err(e) => Err(Error::Sled(e)),
+    }
+}
