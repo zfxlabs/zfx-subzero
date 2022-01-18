@@ -75,7 +75,7 @@ impl DependencyGraph {
             let root = roots.pop().unwrap();
             sorted.push_front(root.clone());
 
-            // Remove edges from root to nodes point
+            // Remove edges poining from a root to other vertices
             let mut removed_edges = CellIds::empty();
             match graph.entry(root.clone()) {
                 Entry::Occupied(mut o) => {
@@ -96,6 +96,20 @@ impl DependencyGraph {
             }
         }
         Ok(sorted.iter().cloned().collect())
+    }
+
+    pub fn topological_cells(&self, cells: Vec<Cell>) -> Result<Vec<Cell>> {
+        let sorted_cell_ids = self.topological()?;
+        let mut sorted_cells = vec![];
+        for cell_ids in sorted_cell_ids.iter() {
+            for cell in cells.iter() {
+                let output_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
+                if output_cell_ids.eq(cell_ids) {
+                    sorted_cells.push(cell.clone());
+                }
+            }
+        }
+        Ok(sorted_cells)
     }
 }
 
