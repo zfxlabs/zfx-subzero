@@ -57,16 +57,16 @@ impl Handler<Request> for Router {
                     let last_accepted = alpha.send(alpha::GetLastAccepted).await.unwrap();
                     Response::LastAccepted(last_accepted)
                 }
-                Request::GetTransactions => {
-                    debug!("routing GetTransactions -> Alpha");
-                    let transactions = sleet.send(sleet::GetTransactions).await.unwrap();
-                    Response::Transactions(transactions)
+                Request::GetCellHashes => {
+                    debug!("routing GetCellHashes -> Alpha");
+                    let cell_hashes = sleet.send(sleet::GetCellHashes).await.unwrap();
+                    Response::CellHashes(cell_hashes)
                 }
                 // Sleet external requests
-                Request::GetTx(get_tx) => {
-                    debug!("routing GetTx -> Sleet");
-                    let tx_ack = sleet.send(get_tx).await.unwrap();
-                    Response::TxAck(tx_ack)
+                Request::GetCell(get_cell) => {
+                    debug!("routing GetCell -> Sleet");
+                    let cell_ack = sleet.send(get_cell).await.unwrap();
+                    Response::CellAck(cell_ack)
                 }
                 Request::GenerateTx(generate_tx) => {
                     debug!("routing GenerateTx -> Sleet");

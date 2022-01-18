@@ -16,9 +16,9 @@ pub enum Request {
     GetLastAccepted,
     GetAncestors,
     // State
-    GetTransactions,
+    GetCellHashes,
     // Sleet
-    GetTx(sleet::GetTx),
+    GetCell(sleet::GetCell),
     GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     // Hail
@@ -34,9 +34,9 @@ pub enum Response {
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,
-    Transactions(sleet::Transactions),
+    CellHashes(sleet::CellHashes),
     // Sleet
-    TxAck(sleet::TxAck),
+    CellAck(sleet::CellAck),
     GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     // Hail

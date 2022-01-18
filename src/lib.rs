@@ -15,6 +15,7 @@ pub mod integration_test;
 pub mod protocol;
 pub mod server;
 pub mod sleet;
+pub mod storage;
 pub mod util;
 pub mod version;
 pub mod view;
