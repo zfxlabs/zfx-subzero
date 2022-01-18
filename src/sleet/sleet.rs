@@ -223,7 +223,7 @@ impl Sleet {
     }
 
     /// Check if a transaction or one of its ancestors have become accepted
-    pub fn calculate_accepted_txs(&mut self, tx_hash: &TxHash) -> Result<Vec<TxHash>> {
+    pub fn compute_accepted_txs(&mut self, tx_hash: &TxHash) -> Result<Vec<TxHash>> {
         let mut new = vec![];
         for t in self.dag.dfs(tx_hash) {
             if !self.accepted_txs.contains(t) && self.is_accepted(t)? {
@@ -345,7 +345,7 @@ impl Handler<QueryComplete> for Sleet {
 
             // The transaction or some of its ancestors may have become
             // accepted. Check this.
-            let new_accepted = self.calculate_accepted_txs(&msg.tx.hash());
+            let new_accepted = self.compute_accepted_txs(&msg.tx.hash());
             match new_accepted {
                 Ok(new_accepted) => {
                     if !new_accepted.is_empty() {
