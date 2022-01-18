@@ -82,16 +82,15 @@ impl Sleet {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
         if tx.is_coinbase() {
-            Err(Error::InvalidCoinbaseTransaction(tx))
+            return Err(Error::InvalidCoinbaseTransaction(tx));
+        }
+        if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
+            self.insert(sleet_tx.clone())?;
+            let _ = alpha::insert_tx(&self.known_txs, tx.clone());
+            Ok(true)
         } else {
-            if !alpha::is_known_tx(&self.known_txs, tx.hash()).unwrap() {
-                self.insert(sleet_tx.clone())?;
-                let _ = alpha::insert_tx(&self.known_txs, tx.clone());
-                Ok(true)
-            } else {
-                // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
-                Ok(false)
-            }
+            // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
+            Ok(false)
         }
     }
 
@@ -399,6 +398,7 @@ impl Handler<FreshTx> for Sleet {
 
     fn handle(&mut self, msg: FreshTx, _ctx: &mut Context<Self>) -> Self::Result {
         let validators = self.sample(ALPHA).unwrap();
+        info!("[{}] Querying\n{}", "sleet".cyan(), msg.tx.clone());
         info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
         let mut validator_ips = vec![];
         for (_, ip) in validators.iter() {
@@ -513,7 +513,7 @@ impl Handler<QueryTx> for Sleet {
     type Result = QueryTxAck;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
-        // info!("[{}] Received query for transaction\n{}", "sleet".cyan(), msg.tx.inner.clone());
+        info!("[{}] Received query for transaction {}", "sleet".cyan(), hex::encode(msg.tx.hash()));
         match self.on_receive_tx(msg.tx.clone()) {
             Ok(true) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
             Ok(false) => (),
@@ -521,7 +521,7 @@ impl Handler<QueryTx> for Sleet {
                 error!(
                     "[{}] Couldn't insert queried transaction {}: {}",
                     "sleet".cyan(),
-                    msg.tx.inner,
+                    msg.tx,
                     e
                 );
             }
