@@ -86,9 +86,9 @@ impl StakeOperation {
         // Create a change output.
         let main_output = stake_output(self.address.clone(), consumed)?;
         let outputs = if change_capacity > 0 {
-            vec![transfer::transfer_output(self.address.clone(), change_capacity)?]
+            vec![main_output, transfer::transfer_output(self.address.clone(), change_capacity)?]
         } else {
-            vec![]
+            vec![main_output]
         };
 
         Ok(Cell::new(Inputs::new(inputs), Outputs::new(outputs)))
