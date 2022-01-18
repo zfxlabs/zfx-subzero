@@ -1,3 +1,5 @@
+use crate::zfx_id::Id;
+
 use super::block::Block;
 use super::cell::Cell;
 use super::cell_id::CellId;
@@ -8,6 +10,8 @@ use super::output::Output;
 use super::outputs::Outputs;
 use super::types::{Capacity, PublicKeyHash};
 use super::{Error, Result};
+
+use crate::colored::Colorize;
 
 use std::collections::HashMap;
 
@@ -20,7 +24,7 @@ pub struct State {
     /// The total capacity currently staked in the network.
     pub total_staking_capacity: Capacity,
     /// The current validator set.
-    pub validators: Vec<(PublicKeyHash, Capacity)>,
+    pub validators: Vec<(Id, Capacity)>,
     /// A mapping of a cell ids (inputs) to unspent cell outputs.
     pub live_cells: HashMap<CellIds, Cell>,
 }
@@ -52,6 +56,7 @@ impl State {
             let input_cell_ids = CellIds::from_inputs(cell.inputs())?;
             let mut consumed_cell_ids = CellIds::empty();
             let mut consumed_cell_outputs = vec![];
+            let mut consumed_capacity = 0u64;
             let mut intersecting_cell_ids = CellIds::empty();
             for (live_cell_ids, live_cell) in state.live_cells.iter() {
                 println!("live_cell_ids = {:?}", live_cell_ids.clone());
@@ -70,6 +75,7 @@ impl State {
                         if intersection.contains(&cell_id) {
                             consumed_cell_ids.insert(cell_id.clone());
                             consumed_cell_outputs.push(live_cell_outputs[i].clone());
+                            consumed_capacity += live_cell_outputs[i].capacity;
                         }
                     }
                 }
@@ -97,7 +103,8 @@ impl State {
             // Remove consumed output cells from the live cell map.
             state.remove_intersection(consumed_cell_ids);
 
-            // Check for `stake` cell outputs.
+            // Apply the primitive cell types which change the `alpha` state.
+            let mut coinbase_capacity = 0u64;
             let mut produced_staking_capacity = 0u64;
             let mut produced_capacity = 0u64;
             let cell_outputs = cell.outputs();
@@ -106,7 +113,8 @@ impl State {
                 // If the cell output is a coinbase at genesis then add the produced capacity.
                 if cell_output.cell_type == CellType::Coinbase {
                     if state.height == 0 {
-                        produced_capacity += cell_output.capacity;
+                        // The coinbase generates capacity without consuming it.
+                        coinbase_capacity += cell_output.capacity;
                     } else {
                         return Err(Error::InvalidCoinbase);
                     }
@@ -127,13 +135,28 @@ impl State {
                 return Err(Error::ExistingCellIds);
             }
 
-            // // Subtract the consumed capacity and add the produced capacity.
-            // if consumed_capacity + consumed_staking_capacity >= produced_capacity {
-            // 	state.total_spending_capacity -= consumed_capacity + consumed_staking_capacity;
-            // 	state.total_spending_capacity += produced_capacity;
-            // } else {
-            // 	return Err(Error::ExceedsCapacity);
-            // }
+            // Subtract the consumed capacity and add the produced capacity.
+            if consumed_capacity >= produced_capacity + produced_staking_capacity
+                && consumed_capacity > 0
+                && coinbase_capacity == 0
+            {
+                println!("consumed capacity = {:?}", consumed_capacity);
+                println!("total_spending_capacity = {:?}", state.total_spending_capacity);
+                println!("produced_capaciy = {:?}", produced_capacity);
+                println!("produced_staking_capacity = {:?}", produced_staking_capacity);
+                state.total_spending_capacity -= consumed_capacity;
+                state.total_spending_capacity += produced_capacity;
+                state.total_staking_capacity += produced_staking_capacity;
+            } else if state.height == 0
+                && coinbase_capacity > 0
+                && produced_capacity == 0
+                && produced_staking_capacity == 0
+            {
+                println!("coinbase capacity = {:?}", coinbase_capacity);
+                state.total_spending_capacity += coinbase_capacity;
+            } else {
+                return Err(Error::ExceedsCapacity);
+            }
         }
         Ok(state)
     }
@@ -155,6 +178,17 @@ impl State {
         }
         Ok(live_cells)
     }
+
+    pub fn format(&self) -> String {
+        let total_spending_capacity = format!("Σ = {:?}", self.total_spending_capacity).cyan();
+        let mut s: String = format!("{}\n", total_spending_capacity);
+        for (id, w) in self.validators.clone() {
+            let id_s = format!("{:?}", id).yellow();
+            let w_s = format!("{:?}", w).magenta();
+            s = format!("{} ν = {} {} | {} {}\n", s, "⦑".cyan(), id_s, w_s, "⦒".cyan());
+        }
+        s
+    }
 }
 
 #[cfg(test)]
@@ -175,10 +209,10 @@ mod test {
     #[actix_rt::test]
     async fn test_apply_genesis() {
         let state = State::new();
-        let block = block::genesis(initial_stakers()).unwrap();
+        let block = block::build_genesis().unwrap();
         let produced_state = state.apply(block).unwrap();
-        assert_eq!(produced_state.total_spending_capacity, 1000);
-        assert_eq!(produced_state.total_staking_capacity, 1000);
+        assert_eq!(produced_state.total_spending_capacity, 3000);
+        assert_eq!(produced_state.total_staking_capacity, 3000);
     }
 
     fn initial_stakers() -> Vec<InitialStaker> {
