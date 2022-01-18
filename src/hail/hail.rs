@@ -3,6 +3,7 @@ use zfx_sortition::sortition;
 
 use crate::chain::alpha::block::{Block, BlockHash, Height, VrfOutput};
 use crate::chain::alpha::state::Weight;
+use crate::chain::alpha::Transaction;
 use crate::client::Fanout;
 use crate::colored::Colorize;
 use crate::graph::DAG;
@@ -324,5 +325,20 @@ impl Handler<QueryBlock> for Hail {
         // decision or a synchronous timebound is reached on attempts.
         // let outcome = self.is_strongly_preferred(msg.block.hash()).unwrap();
         QueryBlockAck { id: self.node_id, block_hash: msg.block.hash(), outcome: false }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct AcceptedTransactions {
+    pub txs: Vec<Transaction>,
+}
+
+impl Handler<AcceptedTransactions> for Hail {
+    type Result = ();
+
+    fn handle(&mut self, msg: AcceptedTransactions, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] received {} accepted transactions", "hail".cyan(), msg.txs.len());
+        // TODO ...
     }
 }

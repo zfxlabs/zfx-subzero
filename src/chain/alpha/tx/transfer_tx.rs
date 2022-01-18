@@ -32,7 +32,7 @@ impl TransferTx {
     ) -> Self {
         let tx_hash = tx.hash();
         let inner_tx = tx.inner();
-        let tx = inner_tx.spend(keypair, tx.hash(), to_address, change_address, value).unwrap();
+        let tx = inner_tx.spend(keypair, tx_hash, to_address, change_address, value).unwrap();
         TransferTx { tx }
     }
 
@@ -45,7 +45,7 @@ impl TransferTx {
     }
 
     pub fn hash(&self) -> [u8; 32] {
-        let encoded = bincode::serialize(self).unwrap();
-        blake3::hash(&encoded).as_bytes().clone()
+        // Assuming a transfer is fully identified by its inputs and outputs
+        self.tx.hash()
     }
 }

@@ -2,13 +2,16 @@ use zfx_subzero::cell::transfer::TransferOperation;
 use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
+use zfx_subzero::sleet::GenerateTxAck;
 use zfx_subzero::version;
 use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
 use std::net::SocketAddr;
+use std::time::Duration;
 
+use tokio;
 use tracing::info;
 use tracing_subscriber;
 
@@ -47,6 +50,7 @@ async fn main() -> Result<()> {
                 .value_name("CELL_HASH")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("loop").short("l").long("loop").value_name("N").takes_value(true))
         .get_matches();
 
     // The peer to be contacted
@@ -55,6 +59,7 @@ async fn main() -> Result<()> {
     let keypair = value_t!(matches.value_of("keypair"), String).unwrap_or_else(|e| e.exit());
     // The root `cell-hash` to spend
     let cell_hash = value_t!(matches.value_of("cell-hash"), String).unwrap_or_else(|e| e.exit());
+    let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
 
     // Reconstruct the keypair
     let keypair_bytes = hex::decode(keypair).unwrap();
@@ -69,22 +74,27 @@ async fn main() -> Result<()> {
         cell_hash_bytes[i] = cell_hash_vec[i];
     }
 
-    if let Some(Response::CellAck(cell_ack)) = client::oneshot(
-        peer_ip,
-        Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
-    )
-    .await?
-    {
-        let cell = cell_ack.cell.unwrap();
-        info!("spendable: {:?}", cell.clone());
-        // Construct a new tx and send it to the mempool. Note that we use the `tx_hash` of
-        // the `Transaction` rather than the inner `Tx` (maybe FIXME needs to be looked at).
-        let transfer_op = TransferOperation::new(cell, pkh.clone(), pkh.clone(), 1);
-        let transfer_tx = transfer_op.transfer(&keypair).unwrap();
-        let _ =
-            client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx }))
-                .await?;
+    for amount in 0..n {
+        if let Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) =
+            client::oneshot(peer_ip, Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }))
+                .await?
+        {
+            info!("spendable: {:?}\n", cell_in);
+            let transfer_op = TransferOperation::new(cell, pkh.clone(), pkh.clone(), amount + 1);
+            let transfer_tx = transfer_op.transfer(&keypair).unwrap();
+            cell_hash = transfer_tx.hash();
+            match client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() })).await? {
+                Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(hash) })) => {
+                    // info!("Ack hash: {}", hex::encode(hash))
+                }
+                other => panic!("Unexpected: {:?}", other),
+            }
+            // info!("sent tx:\n{:?}\n", tx.clone());
+            info!("new cell_hash: {}", hex::encode(&cell_hash));
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        } else {
+            panic!("tx doesn't exist: {}", hex::encode(&cell_hash));
+        }
     }
-
     Ok(())
 }
