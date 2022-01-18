@@ -1,19 +1,19 @@
 use super::cell::Cell;
 use super::coinbase::CoinbaseOperation;
-use super::initial_staker::InitialStaker;
+use super::initial_staker::genesis_stakers;
 use super::stake::StakeOperation;
 use super::Result;
 
 use std::convert::TryInto;
 
 pub type BlockHash = [u8; 32];
+pub type BlockHeight = u64;
 pub type VrfOutput = [u8; 32];
-pub type Height = u64;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Block {
     pub predecessor: Option<BlockHash>,
-    pub height: Height,
+    pub height: BlockHeight,
     pub vrf_out: VrfOutput,
     pub cells: Vec<Cell>,
 }
@@ -29,7 +29,8 @@ pub fn genesis_vrf_out() -> Result<[u8; 32]> {
     Ok(vrf_out)
 }
 
-pub fn genesis(initial_stakers: Vec<InitialStaker>) -> Result<Block> {
+pub fn build_genesis() -> Result<Block> {
+    let initial_stakers = genesis_stakers();
     // Aggregate the allocations into one coinbase output so that the conflict graph has one genesis
     // vertex.
     let mut allocations = vec![];
