@@ -38,12 +38,11 @@ pub fn register_tx_in_test_context(
 pub async fn send_tx(
     from: &TestNode,
     to: &TestNode,
-    tx_hash: TxHash,
-    tx: Tx,
+    tx: Transaction,
     amount: u64,
 ) -> Result<Option<TxHash>> {
     if let Some(Response::GenerateTxAck(ack)) =
-        client::oneshot(from.address, create_transfer_request(&from, &to, amount, tx_hash, tx))
+        client::oneshot(from.address, create_transfer_request(&from, &to, amount, tx))
             .await?
     {
         sleep(Duration::from_secs(2));
@@ -57,7 +56,7 @@ pub async fn get_tx(
     min_amount: u64,
     context: &mut IntegrationTestContext,
     node_address: SocketAddr,
-) -> Result<Option<(TxHash, Tx)>> {
+) -> Result<Option<Transaction>> {
     let tx_hashes = context.get_latest_txs_of(get_tx_hashes(node_address).await?);
 
     get_tx_with_min_amount(min_amount, node_address, &tx_hashes).await
@@ -68,7 +67,7 @@ pub async fn get_tx_in_range(
     max_amount: u64,
     context: &mut IntegrationTestContext,
     node_address: SocketAddr,
-) -> Result<Option<(TxHash, Tx)>> {
+) -> Result<Option<Transaction>> {
     let tx_hashes = context.get_latest_txs_of(get_tx_hashes(node_address).await?);
 
     get_tx_in_amount_range(min_amount, max_amount, node_address, &tx_hashes).await
@@ -78,7 +77,7 @@ pub async fn get_not_spendable_tx(
     min_amount: u64,
     context: &mut IntegrationTestContext,
     node_address: SocketAddr,
-) -> Result<Option<(TxHash, Tx)>> {
+) -> Result<Option<Transaction>> {
     let mut tx_hashes = get_tx_hashes(node_address).await?;
     let spendable_tx_hashes = context.get_latest_txs_of(tx_hashes.iter().cloned().collect());
     tx_hashes.retain(|tx_hash| !spendable_tx_hashes.contains(tx_hash)); // exclude all spendable transactions
@@ -91,7 +90,7 @@ pub async fn get_tx_with_min_amount(
     min_amount: u64,
     node_address: SocketAddr,
     tx_hashes: &HashSet<TxHash>,
-) -> Result<Option<(TxHash, Tx)>> {
+) -> Result<Option<Transaction>> {
     get_tx_in_amount_range(min_amount, u64::MAX, node_address, tx_hashes).await
 }
 
@@ -100,14 +99,15 @@ pub async fn get_tx_in_amount_range(
     max_amount: u64,
     node_address: SocketAddr,
     tx_hashes: &HashSet<TxHash>,
-) -> Result<Option<(TxHash, Tx)>> {
+) -> Result<Option<Transaction>> {
     for tx_hash in tx_hashes {
         if let Ok(tx_option) = get_tx_from_hash(tx_hash.clone(), node_address).await {
             if tx_option.is_some() {
                 let tx = tx_option.unwrap();
-                if tx.sum() > min_amount && tx.sum() < max_amount {
+                let balance = tx.inner().sum();
+                if balance > min_amount && balance < max_amount {
                     // return the first match transaction
-                    return Ok(Some((tx_hash.clone(), tx)));
+                    return Ok(Some(tx));
                 }
             }
         }
@@ -115,13 +115,13 @@ pub async fn get_tx_in_amount_range(
     Ok(None)
 }
 
-pub async fn get_tx_from_hash(tx_hash: TxHash, node_address: SocketAddr) -> Result<Option<Tx>> {
+pub async fn get_tx_from_hash(tx_hash: TxHash, node_address: SocketAddr) -> Result<Option<Transaction>> {
     if let Some(Response::TxAck(tx_ack)) =
         client::oneshot(node_address, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
             .await?
     {
         if let Some(tx) = tx_ack.tx {
-            return Result::Ok(Some(tx.inner()));
+            return Result::Ok(Some(tx));
         }
     }
     return Ok(None);
@@ -143,13 +143,11 @@ pub fn create_transfer_request(
     from: &TestNode,
     to: &TestNode,
     spend_amount: u64,
-    tx_hash: TxHash,
-    tx: Tx,
+    tx: Transaction,
 ) -> Request {
     Request::GenerateTx(sleet::GenerateTx {
         tx: Transaction::TransferTx(TransferTx::new(
             &from.keypair,
-            tx_hash,
             tx,
             to.public_key.clone(),
             from.public_key.clone(),
