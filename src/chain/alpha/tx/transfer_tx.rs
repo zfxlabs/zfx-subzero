@@ -32,7 +32,7 @@ impl TransferTx {
     ) -> Self {
         let tx_hash = tx.hash();
         let inner_tx = tx.inner();
-        let tx = inner_tx.spend(keypair, tx.hash(), to_address, change_address, value).unwrap();
+        let tx = inner_tx.spend(keypair, tx_hash, to_address, change_address, value).unwrap();
         TransferTx { tx }
     }
 
