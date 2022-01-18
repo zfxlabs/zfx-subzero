@@ -3,8 +3,7 @@ use crate::zfx_id::Id;
 use crate::colored::Colorize;
 
 use actix::{Actor, Addr, Context, Handler};
-use blake2::digest::{Update, VariableOutput}; // for hash function
-use blake2::Blake2bVar;
+
 // for hash function
 use priority_queue::double_priority_queue::DoublePriorityQueue;
 use std::collections::HashMap;
@@ -270,14 +269,4 @@ mod tests {
         let rumours = pull_rumours(&dc_addr, NETWORK_SIZE).await;
         assert_eq!(rumours.len(), 0);
     }
-}
-
-// FIXME: Copied from zfx_id
-// This function is the replacement for `zfx_crypto`s `hash!` macro
-pub fn hash(input: &[u8]) -> [u8; 32] {
-    let mut hasher = Blake2bVar::new(32).unwrap();
-    hasher.update(input);
-    let mut buf = [0u8; 32];
-    hasher.finalize_variable(&mut buf).unwrap();
-    buf
 }
