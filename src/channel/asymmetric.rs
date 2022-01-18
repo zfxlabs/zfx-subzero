@@ -69,8 +69,7 @@ where
         Ok(Channel { socket, ghost: Default::default() })
     }
 
-    pub async fn accept(listener: &TcpListener) -> Result<Channel<I, O>, Error<'a, I, O>> {
-        let (socket, _) = listener.accept().await.map_err(Error::IO)?;
+    pub fn wrap(socket: TcpStream) -> Result<Channel<I, O>, Error<'a, I, O>> {
         Ok(Channel { socket, ghost: Default::default() })
     }
 
@@ -110,8 +109,9 @@ mod tests {
             let address: SocketAddr =
                 "127.0.0.1:20000".parse().expect("failed to construct address");
             let listener = TcpListener::bind(&address).await.unwrap();
+            let (socket, address) = listener.accept().await.unwrap();
             let mut channel =
-                Channel::accept(&listener).await.expect("failed to accept connection");
+                Channel::wrap(socket).expect("failed to accept connection");
 
             let (mut sender, mut receiver) = channel.split();
 
