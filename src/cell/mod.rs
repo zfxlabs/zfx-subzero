@@ -4,24 +4,31 @@ mod cell_ids;
 mod cell_type;
 mod cell_unlock_script;
 mod input;
-mod inputs;
+pub mod inputs;
 mod output;
 mod output_index;
-mod outputs;
-mod types;
+pub mod outputs;
+pub mod types;
+
+pub use cell::*;
+pub use cell_id::*;
+pub use cell_ids::*;
+pub use cell_type::*;
+pub use cell_unlock_script::*;
 
 // alpha
-mod coinbase;
-mod stake;
-mod state;
-mod transfer;
+pub mod coinbase;
+pub mod stake;
+// fixme: should be in `alpha`
+pub mod state;
+pub mod transfer;
 
 // graph
-mod conflict_graph;
+pub mod conflict_graph;
 mod dependency_graph;
 
 // block
-mod block;
+pub mod block;
 mod initial_staker;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -47,6 +54,12 @@ pub enum Error {
 
 impl std::error::Error for Error {}
 
+impl std::convert::From<hex::FromHexError> for Error {
+    fn from(error: hex::FromHexError) -> Self {
+        Error::Hex(format!("{:?}", error))
+    }
+}
+
 impl std::convert::From<Box<bincode::ErrorKind>> for Error {
     fn from(error: Box<bincode::ErrorKind>) -> Self {
         Error::Bincode(format!("{:?}", error))
@@ -56,12 +69,6 @@ impl std::convert::From<Box<bincode::ErrorKind>> for Error {
 impl std::convert::From<ed25519_dalek::ed25519::Error> for Error {
     fn from(error: ed25519_dalek::ed25519::Error) -> Self {
         Error::Dalek(format!("{:?}", error))
-    }
-}
-
-impl std::convert::From<hex::FromHexError> for Error {
-    fn from(error: hex::FromHexError) -> Self {
-        Error::Hex(format!("{:?}", error))
     }
 }
 
