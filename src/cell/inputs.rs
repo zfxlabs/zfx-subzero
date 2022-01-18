@@ -69,8 +69,6 @@ impl<I: Eq + Hash + Ord + Clone> PartialOrd for Inputs<I> {
 
 impl<I: Eq + Hash + Ord + Clone> Inputs<I> {
     pub fn new(inputs: Vec<I>) -> Self {
-        Inputs {
-            inputs: inputs.iter().cloned().collect(),
-        }
+        Inputs { inputs: inputs.iter().cloned().collect() }
     }
 }

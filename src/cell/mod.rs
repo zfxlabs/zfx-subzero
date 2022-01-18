@@ -1,4 +1,3 @@
-
 mod cell;
 mod cell_id;
 mod cell_ids;
@@ -16,6 +15,10 @@ mod coinbase;
 mod stake;
 mod transfer;
 
+// graph
+mod conflict_graph;
+mod dependency_graph;
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     Hex(String),
@@ -25,6 +28,11 @@ pub enum Error {
     ZeroTransfer,
     ZeroStake,
     InvalidCoinbase,
+    // cell graphs
+    EmptyConflictGraph,
+    DuplicateCell,
+    UndefinedCell,
+    UndefinedCellHash(types::CellHash),
 }
 
 impl std::error::Error for Error {}

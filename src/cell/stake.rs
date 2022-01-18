@@ -16,12 +16,7 @@ pub struct StakeState;
 /// the time expires.
 pub fn stake_output(pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&StakeState {})?;
-    Ok(Output {
-        capacity,
-        cell_type: CellType::Stake,
-        data,
-        lock: pkh,
-    })
+    Ok(Output { capacity, cell_type: CellType::Stake, data, lock: pkh })
 }
 
 /// Checks that the output has the right form.
@@ -56,11 +51,7 @@ pub struct StakeOperation {
 
 impl StakeOperation {
     pub fn new(cell: Cell, address: PublicKeyHash, capacity: Capacity) -> Self {
-        StakeOperation {
-            cell,
-            address,
-            capacity,
-        }
+        StakeOperation { cell, address, capacity }
     }
 
     pub fn stake(&self, keypair: &Keypair) -> Result<Cell> {
@@ -95,10 +86,7 @@ impl StakeOperation {
         // Create a change output.
         let main_output = stake_output(self.address.clone(), consumed)?;
         let outputs = if change_capacity > 0 {
-            vec![transfer::transfer_output(
-                self.address.clone(),
-                change_capacity,
-            )?]
+            vec![transfer::transfer_output(self.address.clone(), change_capacity)?]
         } else {
             vec![]
         };

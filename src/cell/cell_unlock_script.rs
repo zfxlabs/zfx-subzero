@@ -12,10 +12,7 @@ pub struct CellUnlockScript {
 
 impl CellUnlockScript {
     pub fn new(public_key: PublicKey, signature: Signature) -> Self {
-        CellUnlockScript {
-            public_key,
-            signature,
-        }
+        CellUnlockScript { public_key, signature }
     }
 }
 

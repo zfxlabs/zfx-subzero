@@ -1,11 +1,11 @@
-use super::Result;
-use super::types::CellHash;
-use super::cell_id::CellId;
 use super::cell::Cell;
+use super::cell_id::CellId;
 use super::input::Input;
 use super::inputs::Inputs;
 use super::output::Output;
 use super::outputs::Outputs;
+use super::types::CellHash;
+use super::Result;
 
 use std::collections::HashSet;
 
@@ -18,12 +18,12 @@ pub struct CellIds {
 }
 
 impl std::iter::FromIterator<[u8; 32]> for CellIds {
-    fn from_iter<I: IntoIterator<Item=[u8; 32]>>(iter: I) -> Self {
-	let mut hs = HashSet::new();
-	for bytes in iter {
-	    hs.insert(CellId::new(bytes));
-	}
-	CellIds { inner: hs }
+    fn from_iter<I: IntoIterator<Item = [u8; 32]>>(iter: I) -> Self {
+        let mut hs = HashSet::new();
+        for bytes in iter {
+            hs.insert(CellId::new(bytes));
+        }
+        CellIds { inner: hs }
     }
 }
 
@@ -83,11 +83,11 @@ impl std::cmp::PartialOrd for CellIds {
 
 impl CellIds {
     pub fn new(hs: HashSet<CellId>) -> Self {
-	CellIds { inner: hs }
+        CellIds { inner: hs }
     }
 
     pub fn empty() -> Self {
-	CellIds { inner: HashSet::new() }
+        CellIds { inner: HashSet::new() }
     }
 
     pub fn from_inputs(inputs: Inputs<Input>) -> Result<Self> {
@@ -101,7 +101,7 @@ impl CellIds {
     pub fn from_outputs(cell_hash: CellHash, outputs: Outputs<Output>) -> Result<Self> {
         let mut cell_ids = HashSet::new();
         for i in 0..outputs.len() {
-	    cell_ids.insert(CellId::from_output(cell_hash.clone(), i as u8, outputs[i].clone())?);
+            cell_ids.insert(CellId::from_output(cell_hash.clone(), i as u8, outputs[i].clone())?);
         }
         Ok(CellIds { inner: cell_ids })
     }
@@ -135,16 +135,13 @@ mod test {
     async fn test_cell_ids() {
         let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-	let genesis_op = CoinbaseOperation::new(vec![
-	    (pkh1.clone(), 1000),
-	    (pkh1.clone(), 1000),
-	]);
-	let genesis_tx: Cell = genesis_op.try_into().unwrap();
+        let genesis_op = CoinbaseOperation::new(vec![(pkh1.clone(), 1000), (pkh1.clone(), 1000)]);
+        let genesis_tx: Cell = genesis_op.try_into().unwrap();
         let genesis_output_cell_ids =
             CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
 
-	let transfer_op = TransferOperation::new(genesis_tx, pkh2.clone(), pkh1.clone(), 1100);
-	let transfer_tx = transfer_op.transfer(&kp1).unwrap();
+        let transfer_op = TransferOperation::new(genesis_tx, pkh2.clone(), pkh1.clone(), 1100);
+        let transfer_tx = transfer_op.transfer(&kp1).unwrap();
         let transfer_tx_input_cell_ids = CellIds::from_inputs(transfer_tx.inputs()).unwrap();
         assert_eq!(genesis_output_cell_ids.clone(), transfer_tx_input_cell_ids.clone());
     }

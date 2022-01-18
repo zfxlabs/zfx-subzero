@@ -18,12 +18,7 @@ pub struct TransferState;
 /// A transfer output transfers tokens to the designated public key hash.
 pub fn transfer_output(pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&TransferState {})?;
-    Ok(Output {
-        capacity,
-        cell_type: CellType::Transfer,
-        data,
-        lock: pkh,
-    })
+    Ok(Output { capacity, cell_type: CellType::Transfer, data, lock: pkh })
 }
 
 /// Checks that the output has the right form.
@@ -66,12 +61,7 @@ impl TransferOperation {
         change_address: PublicKeyHash,
         capacity: Capacity,
     ) -> Self {
-        TransferOperation {
-            cell,
-            recipient_address,
-            change_address,
-            capacity,
-        }
+        TransferOperation { cell, recipient_address, change_address, capacity }
     }
 
     /// Create a new set of transfer outputs from the supplied transfer operation.
@@ -106,10 +96,7 @@ impl TransferOperation {
 
         let main_output = transfer_output(self.recipient_address, consumed)?;
         let outputs = if change_capacity > FEE && change_capacity - FEE > 0 {
-            vec![
-                main_output,
-                transfer_output(self.change_address, change_capacity - FEE)?,
-            ]
+            vec![main_output, transfer_output(self.change_address, change_capacity - FEE)?]
         } else {
             vec![main_output]
         };
@@ -175,15 +162,9 @@ mod test {
             TransferOperation::new(coinbase_tx.clone(), pkh2.clone(), pkh1.clone(), 1000);
         let transfer_op2 =
             TransferOperation::new(coinbase_tx.clone(), pkh2.clone(), pkh1.clone(), 1001 - FEE);
-        assert_eq!(
-            transfer_op1.transfer(&kp1),
-            Err(Error::ExceedsAvailableFunds)
-        );
+        assert_eq!(transfer_op1.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
         // Should fail due to fee inclusion
-        assert_eq!(
-            transfer_op2.transfer(&kp1),
-            Err(Error::ExceedsAvailableFunds)
-        );
+        assert_eq!(transfer_op2.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
     }
 
     #[actix_rt::test]

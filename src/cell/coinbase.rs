@@ -13,12 +13,7 @@ pub struct CoinbaseState;
 
 pub fn coinbase_output(recipient_address: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&CoinbaseState {})?;
-    Ok(Output {
-        capacity,
-        cell_type: CellType::Coinbase,
-        data,
-        lock: recipient_address,
-    })
+    Ok(Output { capacity, cell_type: CellType::Coinbase, data, lock: recipient_address })
 }
 
 pub struct CoinbaseOperation {

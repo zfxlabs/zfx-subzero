@@ -21,13 +21,10 @@ impl Input {
         let cell_id: [u8; 32] = output_index.cell_id()?.into();
         let signature = keypair.sign(&cell_id);
         let unlock = CellUnlockScript::new(keypair.public.clone(), signature);
-        Ok(Input {
-            output_index,
-            unlock,
-        })
+        Ok(Input { output_index, unlock })
     }
 
     pub fn cell_id(&self) -> Result<CellId> {
-	self.output_index.cell_id()
+        self.output_index.cell_id()
     }
 }
