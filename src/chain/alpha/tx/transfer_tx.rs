@@ -45,7 +45,7 @@ impl TransferTx {
     }
 
     pub fn hash(&self) -> [u8; 32] {
-        let encoded = bincode::serialize(self).unwrap();
-        blake3::hash(&encoded).as_bytes().clone()
+        // Assuming a transfer is fully identified by its inputs and outputs
+        self.tx.hash()
     }
 }

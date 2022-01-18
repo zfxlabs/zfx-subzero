@@ -156,8 +156,17 @@ impl Tx {
         total
     }
 
+    fn as_sorted_vecs(&self) -> (Vec<Input>, Vec<Output>) {
+        let mut i: Vec<Input> = self.inputs.iter().cloned().collect();
+        let mut o: Vec<Output> = self.outputs.iter().cloned().collect();
+        i.sort();
+        o.sort();
+        (i, o)
+    }
+
     pub fn hash(&self) -> [u8; 32] {
-        let encoded = bincode::serialize(self).unwrap();
+        let sorted = self.as_sorted_vecs();
+        let encoded = bincode::serialize(&sorted).unwrap();
         blake3::hash(&encoded).as_bytes().clone()
     }
 
