@@ -23,7 +23,7 @@ impl Server {
         Server { ip, router }
     }
 
-    // Starts an actix server that listens fori ncoming connections.
+    // Starts an actix server that listens for incoming connections.
     // Default thread count is the number of logical cpus
     pub async fn listen(&self) -> Result<()> {
         let ip = self.ip.clone();
