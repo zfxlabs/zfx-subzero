@@ -1,12 +1,12 @@
 use super::router::Router;
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
-use crate::{Result, Error};
+use crate::{Error, Result};
 use tracing::{debug, error, info};
 
 use actix::Addr;
-use actix_service::{fn_service, ServiceFactoryExt as _};
 use actix_rt::net::TcpStream;
+use actix_service::{fn_service, ServiceFactoryExt as _};
 
 use std::net::SocketAddr;
 
@@ -23,36 +23,38 @@ impl Server {
         Server { ip, router }
     }
 
-	pub async fn listen(&self) -> Result<()> {
-		let ip = self.ip.clone();
-		let router = self.router.clone();
-		info!("listening on {:?}", ip);
+    pub async fn listen(&self) -> Result<()> {
+        let ip = self.ip.clone();
+        let router = self.router.clone();
+        info!("listening on {:?}", ip);
 
-		actix_server::Server::build()
-		.bind("listener", ip, move || {
-			let router = router.clone();
+        actix_server::Server::build()
+            .bind("listener", ip, move || {
+                let router = router.clone();
 
-			fn_service(move |stream: TcpStream| {
-				let router = router.clone();
+                fn_service(move |stream: TcpStream| {
+                    let router = router.clone();
 
-                async move {
-					let mut channel: Channel<Response, Request> = Channel::wrap(stream).unwrap();
-					let (mut sender, mut receiver) = channel.split();
-					let request = receiver.recv().await.unwrap();
-					match request.clone() {
-						Some(request) => {
-							let response = router.send(request.clone()).await.unwrap();
-							//debug!("sending response = {:?}", response);
-							sender.send(response).await.unwrap();
-						}
-						None => error!("received None"),
-					}
-					Ok(())
-                }
-			})
-			.map_err(|err| Error::IO(err))
-		})?		
-		.run()
-		.await.map_err(|err| Error::IO(err))
-	}
+                    async move {
+                        let mut channel: Channel<Response, Request> =
+                            Channel::wrap(stream).unwrap();
+                        let (mut sender, mut receiver) = channel.split();
+                        let request = receiver.recv().await.unwrap();
+                        match request.clone() {
+                            Some(request) => {
+                                let response = router.send(request.clone()).await.unwrap();
+                                //debug!("sending response = {:?}", response);
+                                sender.send(response).await.unwrap();
+                            }
+                            None => error!("received None"),
+                        }
+                        Ok(())
+                    }
+                })
+                .map_err(|err| Error::IO(err))
+            })?
+            .run()
+            .await
+            .map_err(|err| Error::IO(err))
+    }
 }
