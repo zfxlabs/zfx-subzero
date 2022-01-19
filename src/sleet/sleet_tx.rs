@@ -1,4 +1,4 @@
-use crate::cell::types::CellHash;
+use crate::alpha::TxHash;
 use crate::cell::Cell;
 
 use crate::colored::Colorize;
@@ -7,17 +7,18 @@ use crate::colored::Colorize;
 /// chain specific transaction as its `cell` field.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
-    pub parents: Vec<CellHash>,
+    pub parents: Vec<TxHash>,
     pub cell: Cell,
 }
 
 impl Tx {
-    pub fn new(parents: Vec<CellHash>, cell: Cell) -> Self {
+    pub fn new(parents: Vec<TxHash>, cell: Cell) -> Self {
         Tx { parents, cell }
     }
 
     /// Returns the hash of the inner cell.
-    pub fn hash(&self) -> [u8; 32] {
+    /// Note, that we rely on the fact that both `CellHash` and `TxHash` are type synonyms for `[u8; 32]`
+    pub fn hash(&self) -> TxHash {
         self.cell.hash()
     }
 }
