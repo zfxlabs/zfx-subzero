@@ -75,25 +75,33 @@ async fn main() -> Result<()> {
     }
 
     for amount in 0..n {
-        if let Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) =
-            client::oneshot(peer_ip, Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }))
-                .await?
+        if let Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) = client::oneshot(
+            peer_ip,
+            Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
+        )
+        .await?
         {
-            info!("spendable: {:?}\n", cell_in);
-            let transfer_op = TransferOperation::new(cell, pkh.clone(), pkh.clone(), amount + 1);
+            info!("spendable: {:?}\n", cell_in.clone());
+            let transfer_op =
+                TransferOperation::new(cell_in.clone(), pkh.clone(), pkh.clone(), amount + 1);
             let transfer_tx = transfer_op.transfer(&keypair).unwrap();
-            cell_hash = transfer_tx.hash();
-            match client::oneshot(peer_ip, Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() })).await? {
+            cell_hash_bytes = transfer_tx.hash();
+            match client::oneshot(
+                peer_ip,
+                Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
+            )
+            .await?
+            {
                 Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(hash) })) => {
                     // info!("Ack hash: {}", hex::encode(hash))
                 }
                 other => panic!("Unexpected: {:?}", other),
             }
             // info!("sent tx:\n{:?}\n", tx.clone());
-            info!("new cell_hash: {}", hex::encode(&cell_hash));
+            info!("new cell_hash: {}", hex::encode(&cell_hash_bytes));
             tokio::time::sleep(Duration::from_secs(10)).await;
         } else {
-            panic!("tx doesn't exist: {}", hex::encode(&cell_hash));
+            panic!("cell doesn't exist: {}", hex::encode(&cell_hash_bytes));
         }
     }
     Ok(())
