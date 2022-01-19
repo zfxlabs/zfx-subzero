@@ -59,6 +59,9 @@ impl StakeOperation {
     }
 
     pub fn stake(&self, keypair: &Keypair) -> Result<Cell> {
+        let encoded_public = bincode::serialize(&keypair.public)?;
+        let pkh = blake3::hash(&encoded_public).as_bytes().clone();
+
         self.validate_capacity(self.capacity.clone())?;
 
         // Consume outputs and construct inputs - the remaining inputs should be reflected in the
@@ -72,18 +75,23 @@ impl StakeOperation {
             // Validate the output to make sure it has the right form.
             let () = output.validate_capacity()?;
             let () = validate_output(output.clone())?;
-            if consumed < self.capacity {
-                inputs.push(Input::new(keypair, self.cell.hash(), i)?);
-                if spending_capacity >= output.capacity {
-                    spending_capacity -= output.capacity;
-                    consumed += output.capacity;
+            if output.lock == pkh.clone() {
+                if consumed < self.capacity {
+                    inputs.push(Input::new(keypair, self.cell.hash(), i)?);
+                    if spending_capacity >= output.capacity {
+                        spending_capacity -= output.capacity;
+                        consumed += output.capacity;
+                    } else {
+                        consumed += spending_capacity;
+                        change_capacity = output.capacity - spending_capacity;
+                    }
+                    i += 1;
                 } else {
-                    consumed += spending_capacity;
-                    change_capacity = output.capacity - spending_capacity;
+                    break;
                 }
-                i += 1;
             } else {
-                break;
+                i += 1;
+                continue;
             }
         }
 
