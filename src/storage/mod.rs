@@ -3,6 +3,7 @@ use crate::cell as inner_cell;
 
 pub mod block;
 pub mod cell;
+pub mod tx;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
@@ -16,6 +17,7 @@ pub enum Error {
     InvalidPredecessor,
     InvalidLast,
     InvalidCell,
+    InvalidTx,
 }
 
 impl std::convert::From<Box<bincode::ErrorKind>> for Error {
