@@ -1,9 +1,9 @@
 use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
+use crate::cell::Cell;
 use crate::chain::alpha::block::{Block, BlockHash, Height, VrfOutput};
 use crate::chain::alpha::state::Weight;
-use crate::chain::alpha::Transaction;
 use crate::client::Fanout;
 use crate::colored::Colorize;
 use crate::graph::DAG;
@@ -330,15 +330,15 @@ impl Handler<QueryBlock> for Hail {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
-pub struct AcceptedTransactions {
-    pub txs: Vec<Transaction>,
+pub struct AcceptedCells {
+    pub cells: Vec<Cell>,
 }
 
-impl Handler<AcceptedTransactions> for Hail {
+impl Handler<AcceptedCells> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: AcceptedTransactions, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] received {} accepted transactions", "hail".cyan(), msg.txs.len());
+    fn handle(&mut self, msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
         // TODO ...
     }
 }
