@@ -46,6 +46,7 @@ pub fn build_genesis() -> Result<Block> {
         let pkh = staker.public_key_hash()?;
         let stake_op = StakeOperation::new(
             allocations_tx.clone(),
+            staker.node_id.clone(),
             pkh.clone(),
             staker.staked_allocation.clone(),
         );

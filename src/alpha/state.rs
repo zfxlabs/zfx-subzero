@@ -1,6 +1,7 @@
 use crate::zfx_id::Id;
 
 use super::block::Block;
+use super::stake::StakeState;
 use super::{Error, Result};
 
 use crate::cell::outputs::{Output, Outputs};
@@ -56,11 +57,11 @@ impl State {
             let mut consumed_capacity = 0u64;
             let mut intersecting_cell_ids = CellIds::empty();
             for (live_cell_ids, live_cell) in state.live_cells.iter() {
-                println!("live_cell_ids = {:?}", live_cell_ids.clone());
+                // println!("live_cell_ids = {:?}", live_cell_ids.clone());
                 if input_cell_ids.intersects_with(live_cell_ids) {
                     // Fetch the intersecting cell ids.
                     let intersection = input_cell_ids.intersect(&live_cell_ids);
-                    println!("intersection = {:?}", intersection.clone());
+                    // println!("intersection = {:?}", intersection.clone());
                     // Fetch the outputs corresponding to the intersection.
                     let live_cell_outputs = live_cell.outputs();
                     for i in 0..live_cell_outputs.len() {
@@ -78,8 +79,8 @@ impl State {
                 }
             }
             if consumed_cell_ids.clone() != input_cell_ids.clone() {
-                println!("consumed {:?}", consumed_cell_ids.clone());
-                println!("inputs {:?}", input_cell_ids.clone());
+                // println!("consumed {:?}", consumed_cell_ids.clone());
+                // println!("inputs {:?}", input_cell_ids.clone());
                 return Err(Error::UndefinedCellIds);
             }
 
@@ -118,6 +119,8 @@ impl State {
                 } else if cell_output.cell_type == CellType::Stake {
                     // If the cell output is a `Stake` cell then add the validator to the list of
                     // validators.
+                    let stake_state: StakeState = bincode::deserialize(&cell_output.data)?;
+                    state.validators.push((stake_state.node_id, cell_output.capacity));
                     produced_staking_capacity += cell_output.capacity;
                 } else {
                     // Otherwise treat it normally.
@@ -127,7 +130,7 @@ impl State {
 
             // Add newly produced output cells to live cell map.
             let produced_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
-            println!("inserting {:?}", produced_cell_ids);
+            // println!("inserting {:?}", produced_cell_ids);
             if let Some(_) = state.live_cells.insert(produced_cell_ids, cell.clone()) {
                 return Err(Error::ExistingCellIds);
             }
@@ -137,10 +140,10 @@ impl State {
                 && consumed_capacity > 0
                 && coinbase_capacity == 0
             {
-                println!("consumed capacity = {:?}", consumed_capacity);
-                println!("total_spending_capacity = {:?}", state.total_spending_capacity);
-                println!("produced_capaciy = {:?}", produced_capacity);
-                println!("produced_staking_capacity = {:?}", produced_staking_capacity);
+                // println!("consumed capacity = {:?}", consumed_capacity);
+                // println!("total_spending_capacity = {:?}", state.total_spending_capacity);
+                // println!("produced_capaciy = {:?}", produced_capacity);
+                // println!("produced_staking_capacity = {:?}", produced_staking_capacity);
                 state.total_spending_capacity -= consumed_capacity;
                 state.total_spending_capacity += produced_capacity;
                 state.total_staking_capacity += produced_staking_capacity;
@@ -149,7 +152,7 @@ impl State {
                 && produced_capacity == 0
                 && produced_staking_capacity == 0
             {
-                println!("coinbase capacity = {:?}", coinbase_capacity);
+                // println!("coinbase capacity = {:?}", coinbase_capacity);
                 state.total_spending_capacity += coinbase_capacity;
             } else {
                 return Err(Error::ExceedsCapacity);
