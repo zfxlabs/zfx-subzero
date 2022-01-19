@@ -364,7 +364,7 @@ impl Handler<QueryComplete> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
-    pub cell_hashes: Vec<TxHash>,
+    pub cell_hashes: Vec<CellHash>,
 }
 impl Handler<NewAccepted> for Sleet {
     type Result = ();
