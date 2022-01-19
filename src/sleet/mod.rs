@@ -1,5 +1,5 @@
 mod sleet;
-mod sleet_tx;
+mod tx;
 
 pub mod conflict_set;
 

@@ -12,7 +12,7 @@ use crate::protocol::{Request, Response};
 use crate::storage::cell as cell_storage;
 use crate::util;
 
-use super::sleet_tx::Tx;
+use super::tx::Tx;
 use super::{Error, Result};
 
 use tracing::{debug, error, info};
