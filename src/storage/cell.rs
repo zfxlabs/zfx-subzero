@@ -36,3 +36,16 @@ pub fn insert_cell(db: &sled::Db, cell: Cell) -> Result<Option<sled::IVec>> {
         Err(err) => Err(Error::Sled(err)),
     }
 }
+
+/// Fetches the genesis block (the first block in the database).
+pub fn get_cell(db: &sled::Db, cell_hash: CellHash) -> Result<(CellHash, Cell)> {
+    let key = Key::new(cell_hash);
+    match db.get(key.as_bytes()) {
+        Ok(Some(v)) => {
+            let cell: Cell = bincode::deserialize(v.as_bytes())?;
+            Ok((key.hash.clone(), cell))
+        }
+        Ok(None) => Err(Error::InvalidCell),
+        Err(err) => Err(Error::Sled(err)),
+    }
+}

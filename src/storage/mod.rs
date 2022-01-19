@@ -13,6 +13,7 @@ pub enum Error {
     InvalidHeight,
     InvalidPredecessor,
     InvalidLast,
+    InvalidCell,
 }
 
 impl std::convert::From<Box<bincode::ErrorKind>> for Error {
