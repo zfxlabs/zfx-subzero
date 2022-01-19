@@ -1,10 +1,8 @@
 use super::{Error, Result};
 
-use super::cell::Cell;
-use super::cell_ids::CellIds;
-use super::input::Input;
-use super::inputs::Inputs;
-use super::types::CellHash;
+use crate::cell::inputs::{Input, Inputs};
+use crate::cell::types::CellHash;
+use crate::cell::{Cell, CellIds};
 
 use crate::sleet::conflict_set::ConflictSet;
 
@@ -265,15 +263,13 @@ impl ConflictGraph {
 mod test {
     use super::ConflictGraph;
 
-    use crate::cell::cell::Cell;
-    use crate::cell::cell_ids::CellIds;
-    use crate::cell::coinbase::CoinbaseOperation;
-    use crate::cell::input::Input;
-    use crate::cell::inputs::Inputs;
-    use crate::cell::output::Output;
-    use crate::cell::outputs::Outputs;
-    use crate::cell::transfer;
+    use crate::alpha::coinbase::CoinbaseOperation;
+    use crate::alpha::transfer;
+
+    use crate::cell::inputs::{Input, Inputs};
+    use crate::cell::outputs::{Output, Outputs};
     use crate::cell::types::CellHash;
+    use crate::cell::{Cell, CellIds};
 
     use crate::sleet::conflict_set::ConflictSet;
 

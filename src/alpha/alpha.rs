@@ -9,10 +9,10 @@ use crate::sleet::{self, Sleet};
 use crate::Result;
 use crate::{ice, ice::Ice};
 
-use crate::cell::block::{build_genesis, BlockHash};
-use crate::cell::state::State;
-
 use crate::storage::block;
+
+use super::block::{build_genesis, BlockHash};
+use super::state::State;
 
 use tracing::{debug, info};
 

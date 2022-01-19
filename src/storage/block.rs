@@ -1,5 +1,5 @@
 use super::{Error, Result};
-use crate::cell::block::{Block, BlockHash, BlockHeight};
+use crate::alpha::block::{Block, BlockHash, BlockHeight};
 
 use byteorder::BigEndian;
 use zerocopy::{byteorder::U64, AsBytes, FromBytes, Unaligned};
@@ -154,7 +154,7 @@ pub fn get_blocks_in_range(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chain::alpha::block::{genesis, Block};
+    use crate::alpha::block::{build_genesis, Block};
 
     #[actix_rt::test]
     async fn test_block_height_prefix() {
@@ -164,12 +164,12 @@ mod tests {
         let vout = [0u8; 32];
 
         // Construct test blocks
-        let block0 = genesis(vec![]);
-        let hash0 = block0.hash();
+        let block0 = build_genesis().unwrap();
+        let hash0 = block0.hash().unwrap();
         let encoded0 = bincode::serialize(&block0).unwrap();
 
         let block1 = Block::new(hash0.clone(), 1u64, vout, vec![]);
-        let hash1 = block1.hash();
+        let hash1 = block1.hash().unwrap();
         let encoded1 = bincode::serialize(&block1).unwrap();
 
         let key0 = Key::new(block0.height, hash0);
@@ -205,14 +205,14 @@ mod tests {
         let vout = [0u8; 32];
 
         // Construct and insert test blocks
-        let block0 = genesis(vec![]);
-        let hash0 = block0.hash();
+        let block0 = build_genesis().unwrap();
+        let hash0 = block0.hash().unwrap();
         let encoded0 = bincode::serialize(&block0).unwrap();
         let block1 = Block::new(hash0.clone(), 1u64, vout, vec![]);
-        let hash1 = block1.hash();
+        let hash1 = block1.hash().unwrap();
         let encoded1 = bincode::serialize(&block1).unwrap();
         let block2 = Block::new(hash1.clone(), 2u64, vout, vec![]);
-        let hash2 = block2.hash();
+        let hash2 = block2.hash().unwrap();
         let encoded2 = bincode::serialize(&block2).unwrap();
 
         let key0 = Key::new(block0.height, hash0);

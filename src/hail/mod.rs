@@ -4,7 +4,7 @@ mod hail;
 
 pub use hail::*;
 
-use crate::chain::alpha::block::{Block, BlockHash, Height};
+use crate::alpha::block::{Block, BlockHash, BlockHeight};
 use crate::graph;
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub enum Error {
     Sled(sled::Error),
     InvalidBlock(Block),
     InvalidBlockHash(BlockHash),
-    InvalidHeight(Height),
+    InvalidBlockHeight(BlockHeight),
     InvalidConflictSet,
     Graph(graph::Error),
     InsufficientWeight,

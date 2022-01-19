@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod integration_test {
+    use crate::alpha::stake::StakeOperation;
     use crate::cell::inputs::Input;
-    use crate::cell::stake::StakeOperation;
     use crate::cell::types::{CellHash, FEE};
     use crate::cell::Cell;
     use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};

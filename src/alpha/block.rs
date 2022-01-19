@@ -1,8 +1,8 @@
-use super::cell::Cell;
 use super::coinbase::CoinbaseOperation;
 use super::initial_staker::genesis_stakers;
 use super::stake::StakeOperation;
 use super::Result;
+use crate::cell::Cell;
 
 use std::convert::TryInto;
 

@@ -1,12 +1,11 @@
 use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
-use crate::cell::conflict_graph::ConflictGraph;
+use crate::alpha::{TxHash, Weight};
 use crate::cell::types::{CellHash, PublicKeyHash};
 use crate::cell::{Cell, CellIds};
-use crate::chain::alpha::state::Weight;
-use crate::chain::alpha::TxHash;
 use crate::client::Fanout;
+use crate::graph::conflict_graph::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
 use crate::protocol::{Request, Response};
@@ -191,7 +190,7 @@ impl Sleet {
                     }
                 }
             }
-            None => return Err(Error::InvalidTransactionHash(initial_tx_hash.clone())),
+            None => return Err(Error::InvalidTxHash(initial_tx_hash.clone())),
         }
         if parent_accepted {
             self.is_accepted_tx(initial_tx_hash)
@@ -564,8 +563,8 @@ impl Handler<GetCellHashes> for Sleet {
 mod test {
     use super::*;
 
-    use crate::cell::coinbase::CoinbaseOperation;
-    use crate::cell::transfer::TransferOperation;
+    use crate::alpha::coinbase::CoinbaseOperation;
+    use crate::alpha::transfer::TransferOperation;
     use crate::cell::Cell;
 
     use ed25519_dalek::Keypair;

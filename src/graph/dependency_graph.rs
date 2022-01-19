@@ -1,6 +1,5 @@
-use super::cell::Cell;
-use super::cell_ids::CellIds;
 use super::{Error, Result};
+use crate::cell::{Cell, CellIds};
 
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
@@ -117,8 +116,8 @@ impl DependencyGraph {
 mod test {
     use super::*;
 
-    use crate::cell::coinbase::CoinbaseOperation;
-    use crate::cell::transfer::TransferOperation;
+    use crate::alpha::coinbase::CoinbaseOperation;
+    use crate::alpha::transfer::TransferOperation;
 
     use std::convert::TryInto;
 

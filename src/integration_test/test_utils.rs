@@ -7,7 +7,7 @@ use ed25519_dalek::Keypair;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-use crate::cell::transfer::TransferOperation;
+use crate::alpha::transfer::TransferOperation;
 use crate::cell::types::{CellHash, FEE};
 use crate::cell::Cell;
 use crate::channel::Error;

@@ -1,3 +1,4 @@
+use crate::alpha;
 use crate::cell as inner_cell;
 
 pub mod block;
@@ -8,6 +9,7 @@ pub enum Error {
     Bincode(String),
     Sled(sled::Error),
     Cell(inner_cell::Error),
+    Alpha(alpha::Error),
     InvalidGenesis,
     UndefinedGenesis,
     InvalidHeight,
@@ -31,6 +33,12 @@ impl std::convert::From<sled::Error> for Error {
 impl std::convert::From<inner_cell::Error> for Error {
     fn from(error: inner_cell::Error) -> Self {
         Error::Cell(error)
+    }
+}
+
+impl std::convert::From<alpha::Error> for Error {
+    fn from(error: alpha::Error) -> Self {
+        Error::Alpha(error)
     }
 }
 

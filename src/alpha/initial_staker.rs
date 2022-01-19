@@ -1,7 +1,7 @@
 use crate::zfx_id::Id;
 
-use super::types::{Capacity, PublicKeyHash};
 use super::Result;
+use crate::cell::types::{Capacity, PublicKeyHash};
 
 use ed25519_dalek::Keypair;
 

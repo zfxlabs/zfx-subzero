@@ -1,17 +1,14 @@
 use crate::zfx_id::Id;
 
 use super::block::Block;
-use super::cell::Cell;
-use super::cell_id::CellId;
-use super::cell_ids::CellIds;
-use super::cell_type::CellType;
-use super::dependency_graph::DependencyGraph;
-use super::output::Output;
-use super::outputs::Outputs;
-use super::types::{Capacity, PublicKeyHash};
 use super::{Error, Result};
 
+use crate::cell::outputs::{Output, Outputs};
+use crate::cell::types::{Capacity, PublicKeyHash};
+use crate::cell::{Cell, CellId, CellIds, CellType};
+
 use crate::colored::Colorize;
+use crate::graph::dependency_graph::DependencyGraph;
 
 use std::collections::HashMap;
 
@@ -195,10 +192,11 @@ impl State {
 mod test {
     use super::*;
 
-    use crate::cell::block;
-    use crate::cell::coinbase::CoinbaseOperation;
-    use crate::cell::initial_staker::InitialStaker;
-    use crate::cell::transfer::TransferOperation;
+    use crate::alpha::block;
+    use crate::alpha::coinbase::CoinbaseOperation;
+    use crate::alpha::initial_staker::InitialStaker;
+    use crate::alpha::transfer::TransferOperation;
+
     use crate::zfx_id::Id;
 
     use std::convert::TryInto;

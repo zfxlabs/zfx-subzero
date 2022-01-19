@@ -142,8 +142,8 @@ impl CellIds {
 mod test {
     use super::*;
 
-    use crate::cell::coinbase::CoinbaseOperation;
-    use crate::cell::transfer::TransferOperation;
+    use crate::alpha::coinbase::CoinbaseOperation;
+    use crate::alpha::transfer::TransferOperation;
 
     use std::convert::TryInto;
 

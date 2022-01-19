@@ -5,20 +5,16 @@ pub mod conflict_set;
 
 pub use sleet::*;
 
-use crate::cell as inner_cell;
-use crate::chain::alpha::tx::{Transaction, TxHash};
+use crate::alpha::TxHash;
+use crate::cell;
 use crate::graph;
 
 #[derive(Debug)]
 pub enum Error {
     Actix(actix::MailboxError),
     Sled(sled::Error),
-    Cell(inner_cell::Error),
-    /// Coinbase transactions cannot be sent to the mempool
-    InvalidCoinbaseTransaction(Transaction),
-    /// Tx is trying to spend invalid UTXOs
-    SpendsInvalidUTXOs(Transaction),
-    InvalidTransactionHash(TxHash),
+    Cell(cell::Error),
+    InvalidTxHash(TxHash),
     InvalidConflictSet,
     Graph(graph::Error),
     InsufficientWeight,
@@ -32,8 +28,8 @@ impl std::convert::From<sled::Error> for Error {
     }
 }
 
-impl std::convert::From<inner_cell::Error> for Error {
-    fn from(error: inner_cell::Error) -> Self {
+impl std::convert::From<cell::Error> for Error {
+    fn from(error: cell::Error) -> Self {
         Error::Cell(error)
     }
 }

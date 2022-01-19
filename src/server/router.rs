@@ -1,8 +1,8 @@
-use crate::chain::{alpha, alpha::Alpha};
 use crate::ice::Ice;
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
 use crate::view::View;
+use crate::{alpha, alpha::Alpha};
 
 use tracing::{debug, error, info};
 

@@ -1,9 +1,8 @@
-use super::cell::Cell;
-use super::cell_type::CellType;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
-use super::types::*;
 use super::{Error, Result};
+use crate::cell::inputs::{Input, Inputs};
+use crate::cell::outputs::{Output, Outputs};
+use crate::cell::types::*;
+use crate::cell::{Cell, CellType};
 
 use std::convert::TryInto;
 

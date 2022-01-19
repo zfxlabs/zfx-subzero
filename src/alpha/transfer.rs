@@ -1,11 +1,10 @@
-use super::cell::Cell;
-use super::cell_type::CellType;
-use super::coinbase::CoinbaseState;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
-use super::stake::StakeState;
-use super::types::*;
 use super::{Error, Result};
+use crate::alpha::coinbase::CoinbaseState;
+use crate::alpha::stake::StakeState;
+use crate::cell::inputs::{Input, Inputs};
+use crate::cell::outputs::{Output, Outputs};
+use crate::cell::types::*;
+use crate::cell::{Cell, CellType};
 
 use std::convert::TryInto;
 
@@ -121,7 +120,7 @@ impl TransferOperation {
 mod test {
     use super::*;
 
-    use crate::cell::coinbase::CoinbaseOperation;
+    use crate::alpha::coinbase::CoinbaseOperation;
 
     use ed25519_dalek::Keypair;
 

@@ -1,6 +1,7 @@
 use crate::zfx_id::Id;
 
-use crate::chain::alpha::{self, block::VrfOutput, Alpha};
+use crate::alpha::block::VrfOutput;
+use crate::alpha::{self, Alpha};
 use crate::client;
 use crate::colored::Colorize;
 use crate::protocol::{Request, Response};

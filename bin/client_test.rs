@@ -1,4 +1,4 @@
-use zfx_subzero::cell::transfer::TransferOperation;
+use zfx_subzero::alpha::transfer::TransferOperation;
 use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
