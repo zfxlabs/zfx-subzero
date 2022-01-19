@@ -3,14 +3,12 @@ use std::net::SocketAddr;
 use std::thread::sleep;
 use std::time::Duration;
 
-use ed25519_dalek::Keypair;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 use crate::alpha::transfer::TransferOperation;
-use crate::cell::types::{CellHash, FEE};
+use crate::cell::types::{CellHash};
 use crate::cell::Cell;
-use crate::channel::Error;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode};
 use crate::protocol::Response;
 use crate::Result;
@@ -61,17 +59,6 @@ pub async fn get_cell(
     let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node_address).await?);
 
     get_cell_with_min_amount(min_amount, node_address, &cell_hashes).await
-}
-
-pub async fn get_cell_in_range(
-    min_amount: u64,
-    max_amount: u64,
-    context: &mut IntegrationTestContext,
-    node_address: SocketAddr,
-) -> Result<Option<Cell>> {
-    let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node_address).await?);
-
-    get_cell_in_amount_range(min_amount, max_amount, node_address, &cell_hashes).await
 }
 
 pub async fn get_not_spendable_cell(
