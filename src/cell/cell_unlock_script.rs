@@ -6,8 +6,8 @@ use ed25519_dalek::{PublicKey, Signature};
 /// A cells unlocking script (simple).
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CellUnlockScript {
-    public_key: PublicKey,
-    signature: Signature,
+    pub public_key: PublicKey,
+    pub signature: Signature,
 }
 
 impl CellUnlockScript {

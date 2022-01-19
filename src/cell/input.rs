@@ -11,8 +11,8 @@ use ed25519_dalek::{Keypair, Signer};
 /// A cell input (reference to a spent cell).
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Input {
-    output_index: OutputIndex,
-    unlock: CellUnlockScript,
+    pub output_index: OutputIndex,
+    pub unlock: CellUnlockScript,
 }
 
 impl Input {
