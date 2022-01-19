@@ -8,15 +8,26 @@ mod integration_test {
     use crate::integration_test::test_utils::*;
     use crate::zfx_id::Id;
     use crate::Result;
+    use std::borrow::BorrowMut;
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    const TRANSFER_RUN_TIMES: i32 = 5;
 
     #[actix_rt::test]
     async fn run_integration_test_suite() -> Result<()> {
         let mut context = IntegrationTestContext::new();
 
-        test_send_cell(&mut context).await?;
-        test_send_cell(&mut context).await?;
-        test_send_cell(&mut context).await?;
-        test_send_cell(&mut context).await?;
+        run_nodes(&mut context.test_nodes.nodes);
+
+        sleep(Duration::from_secs(10));
+        test_get_txs_when_quorum_not_reached_yet(&mut context).await?;
+
+        sleep(Duration::from_secs(40));
+
+        for _ in 0..TRANSFER_RUN_TIMES {
+            test_send_cell(&mut context).await?;
+        }
 
         test_send_cell_with_invalid_hash(&mut context).await?;
         test_send_cell_to_non_existing_recipient(&mut context).await?;
@@ -25,6 +36,8 @@ mod integration_test {
         test_send_same_cell_twice(&mut context).await?;
 
         test_multi_spend_same_cell(&mut context).await?;
+
+        test_get_txs_from_faulty_node(&mut context).await?;
 
         Result::Ok(())
     }
@@ -122,11 +135,41 @@ mod integration_test {
         let nodes = TestNodes::new();
         let from = nodes.get_node(0).unwrap();
         let to = nodes.get_non_existing_node();
-        let spend_amount = 15 as u64;
+        let spend_amount = 65 as u64;
         let cell = get_cell(spend_amount, context, from.address).await?.unwrap();
 
         let spent_cell_hash = send_cell(&from, &to, cell, spend_amount).await?;
         assert!(spent_cell_hash.is_none());
+
+        context.count_test_run();
+
+        Result::Ok(())
+    }
+
+    async fn test_get_txs_when_quorum_not_reached_yet(
+        context: &mut IntegrationTestContext,
+    ) -> Result<()> {
+        let nodes = TestNodes::new();
+        let from = nodes.get_node(0).unwrap();
+
+        let tx_hashes = get_cell_hashes(from.address).await?;
+        assert!(tx_hashes.is_empty());
+
+        context.count_test_run();
+
+        Result::Ok(())
+    }
+
+    async fn test_get_txs_from_faulty_node(context: &mut IntegrationTestContext) -> Result<()> {
+        let from = context.test_nodes.nodes[1].borrow_mut();
+        from.kill();
+
+        let err = get_cell_hashes(from.address).await.err();
+        assert!(err.is_some());
+
+        context.test_nodes.nodes[1].start();
+
+        wait_until_nodes_start();
 
         context.count_test_run();
 
@@ -147,10 +190,14 @@ mod integration_test {
         let spent_cell_hash = send_cell(from, to, cell, amount).await?;
         assert!(spent_cell_hash.is_some());
 
-        let spent_cell = get_cell_from_hash(spent_cell_hash.unwrap().clone(), from.address).await?;
-        assert!(spent_cell.is_some());
+        // check that same tx was registered in all nodes
+        let mut spent_cell: Option<Cell> = None;
+        for node in &context.test_nodes.nodes {
+            spent_cell = get_cell_from_hash(spent_cell_hash.unwrap().clone(), node.address).await?;
+            assert!(spent_cell.is_some());
+        }
 
-        let mut spent_cell_outputs = spent_cell.as_ref().unwrap().outputs();
+        let spent_cell_outputs = spent_cell.as_ref().unwrap().outputs();
         assert!(spent_cell_outputs.iter().find(|o| { o.capacity == amount }).is_some()); // check if transfer was successful
 
         register_cell_in_test_context(
@@ -242,5 +289,23 @@ mod integration_test {
         original_cell_output_len: usize,
         original_cell_hash: CellHash,
         spent_cell: Cell,
+    }
+
+    fn run_nodes(nodes: &mut Vec<TestNode>) {
+        tracing_subscriber::fmt()
+            .with_level(false)
+            .with_target(false)
+            .without_time()
+            .compact()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+
+        for node in nodes {
+            node.start()
+        }
+    }
+
+    fn wait_until_nodes_start() {
+        sleep(Duration::from_secs(40));
     }
 }
