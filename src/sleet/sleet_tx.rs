@@ -3,17 +3,17 @@ use crate::cell::Cell;
 
 use crate::colored::Colorize;
 
-/// The `SleetTx` is a consensus specific representation of a transaction, containing a
+/// The `Tx` is a consensus specific representation of a transaction, containing a
 /// chain specific transaction as its `cell` field.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SleetTx {
+pub struct Tx {
     pub parents: Vec<CellHash>,
     pub cell: Cell,
 }
 
-impl SleetTx {
+impl Tx {
     pub fn new(parents: Vec<CellHash>, cell: Cell) -> Self {
-        SleetTx { parents, cell }
+        Tx { parents, cell }
     }
 
     /// Returns the hash of the inner cell.
@@ -22,7 +22,7 @@ impl SleetTx {
     }
 }
 
-impl std::fmt::Display for SleetTx {
+impl std::fmt::Display for Tx {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = format!("{}", self.cell);
         let mut ps = "".to_owned();
