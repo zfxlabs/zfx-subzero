@@ -6,8 +6,6 @@ use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};
 
-use std::convert::TryInto;
-
 use ed25519_dalek::Keypair;
 
 /// Empty transfer state - capacity transfers do not need to store extra state.
@@ -70,6 +68,18 @@ impl TransferOperation {
 
         self.validate_capacity(self.capacity.clone())?;
 
+        let mut owned_outputs = vec![];
+        for output in self.cell.outputs().iter() {
+            // Validate the output to make sure it has the right form.
+            let () = output.validate_capacity()?;
+            let () = validate_output(output.clone())?;
+            if output.lock == pkh.clone() {
+                owned_outputs.push(output.clone());
+            } else {
+                continue;
+            }
+        }
+
         // Consume outputs and construct inputs - the remaining inputs should be reflected in the
         // change amount.
         let mut i = 0;
@@ -77,11 +87,8 @@ impl TransferOperation {
         let mut change_capacity = 0;
         let mut consumed = 0;
         let mut inputs = vec![];
-        for output in self.cell.outputs().iter() {
-            // Validate the output to make sure it has the right form.
-            let () = output.validate_capacity()?;
-            let () = validate_output(output.clone())?;
-            if output.lock == pkh.clone() {
+        if owned_outputs.len() > 0 {
+            for output in owned_outputs.iter() {
                 if consumed < self.capacity {
                     inputs.push(Input::new(keypair, self.cell.hash(), i)?);
                     if spending_capacity >= output.capacity {
@@ -95,10 +102,9 @@ impl TransferOperation {
                 } else {
                     break;
                 }
-            } else {
-                i += 1;
-                continue;
             }
+        } else {
+            return Err(Error::UnspendableCell);
         }
 
         let main_output = transfer_output(self.recipient_address, consumed)?;
@@ -131,6 +137,8 @@ mod test {
     use crate::alpha::coinbase::CoinbaseOperation;
 
     use ed25519_dalek::Keypair;
+
+    use std::convert::TryInto;
 
     #[actix_rt::test]
     async fn test_transfer_with_three_outputs() {
