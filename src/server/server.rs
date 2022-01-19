@@ -41,8 +41,8 @@ impl Server {
 					let request = receiver.recv().await.unwrap();
 					match request.clone() {
 						Some(request) => {
-							let response = router.clone().send(request.clone()).await.unwrap();
-							debug!("sending response = {:?}", response);
+							let response = router.send(request.clone()).await.unwrap();
+							//debug!("sending response = {:?}", response);
 							sender.send(response).await.unwrap();
 						}
 						None => error!("received None"),
