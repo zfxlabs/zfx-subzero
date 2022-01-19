@@ -104,7 +104,8 @@ mod integration_test {
         let spend_amount = 5 as u64;
 
         let cell = get_cell(spend_amount, context, node_0.address).await?.unwrap();
-        let odd_stake_op = StakeOperation::new(cell.clone(), Id::generate().bytes(), spend_amount);
+        let odd_stake_op =
+            StakeOperation::new(cell.clone(), Id::generate(), Id::generate().bytes(), spend_amount);
         let odd_stake_cell = odd_stake_op.stake(&node_0.keypair).unwrap();
 
         let spent_cell_hash = send_cell(&node_0, &node_1, odd_stake_cell, spend_amount).await?;
