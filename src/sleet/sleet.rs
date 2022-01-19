@@ -12,7 +12,7 @@ use crate::protocol::{Request, Response};
 use crate::storage::cell as cell_storage;
 use crate::util;
 
-use super::sleet_tx::SleetTx;
+use super::sleet_tx::Tx;
 use super::{Error, Result};
 
 use tracing::{debug, error, info};
@@ -80,7 +80,7 @@ impl Sleet {
 
     /// Called for all newly discovered transactions.
     /// Returns `true` if the transaction haven't been encountered before
-    fn on_receive_tx(&mut self, sleet_tx: SleetTx) -> Result<bool> {
+    fn on_receive_tx(&mut self, sleet_tx: Tx) -> Result<bool> {
         let cell = sleet_tx.cell.clone();
         if !cell_storage::is_known_cell(&self.known_cells, cell.hash()).unwrap() {
             self.insert(sleet_tx.clone())?;
@@ -94,7 +94,7 @@ impl Sleet {
 
     // Vertices
 
-    pub fn insert(&mut self, tx: SleetTx) -> Result<()> {
+    pub fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
         self.dag.insert_vx(cell.hash(), tx.parents.clone())?;
@@ -298,7 +298,7 @@ impl Handler<LiveCommittee> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
-    pub tx: SleetTx,
+    pub tx: Tx,
     pub acks: Vec<Response>,
 }
 
@@ -313,7 +313,7 @@ impl Handler<QueryIncomplete> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryComplete {
-    pub tx: SleetTx,
+    pub tx: Tx,
     pub acks: Vec<Response>,
 }
 
@@ -374,7 +374,7 @@ impl Handler<NewAccepted> for Sleet {
         for cell_hash in msg.cell_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
             let (_, cell) = cell_storage::get_cell(&self.known_cells, cell_hash).unwrap();
-            info!("[{}] transaction is accepted\n{:?}", "sleet".cyan(), cell);
+            info!("[{}] transaction is accepted\n{}", "sleet".cyan(), cell);
             cells.push(cell);
         }
         self.hail_recipient.do_send(AcceptedCells { cells });
@@ -388,7 +388,7 @@ impl Handler<NewAccepted> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 pub struct FreshTx {
-    pub tx: SleetTx,
+    pub tx: Tx,
 }
 
 impl Handler<FreshTx> for Sleet {
@@ -470,7 +470,7 @@ impl Handler<GenerateTx> for Sleet {
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] Generating new transaction\n{:?}", "sleet".cyan(), msg.cell.clone());
         let parents = self.select_parents(NPARENTS).unwrap();
-        let sleet_tx = SleetTx::new(parents, msg.cell.clone());
+        let sleet_tx = Tx::new(parents, msg.cell.clone());
 
         match self.on_receive_tx(sleet_tx.clone()) {
             Ok(true) => {
@@ -502,7 +502,7 @@ impl Handler<GenerateTx> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
 pub struct QueryTx {
-    pub tx: SleetTx,
+    pub tx: Tx,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -635,9 +635,9 @@ mod test {
         sleet.conflict_graph = ConflictGraph::new(genesis_cell_ids);
 
         // Generate a genesis set of coins
-        let stx1 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1000));
-        let stx2 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1001));
-        let stx3 = SleetTx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1002));
+        let stx1 = Tx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1000));
+        let stx2 = Tx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1001));
+        let stx3 = Tx::new(vec![], generate_transfer(&root_kp, genesis_tx.clone(), 1002));
 
         // Check that parent selection works with an empty DAG.
         let v_empty: Vec<TxHash> = vec![];
