@@ -1,9 +1,8 @@
-use super::cell::Cell;
-use super::cell_type::CellType;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
-use super::types::*;
 use super::{Error, Result};
+use crate::cell::inputs::{Input, Inputs};
+use crate::cell::outputs::{Output, Outputs};
+use crate::cell::types::*;
+use crate::cell::{Cell, CellType};
 
 use std::convert::TryInto;
 
@@ -13,12 +12,7 @@ pub struct CoinbaseState;
 
 pub fn coinbase_output(recipient_address: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&CoinbaseState {})?;
-    Ok(Output {
-        capacity,
-        cell_type: CellType::Coinbase,
-        data,
-        lock: recipient_address,
-    })
+    Ok(Output { capacity, cell_type: CellType::Coinbase, data, lock: recipient_address })
 }
 
 pub struct CoinbaseOperation {

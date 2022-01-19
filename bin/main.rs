@@ -1,5 +1,4 @@
-use zfx_subzero::chain::alpha::tx::UTXOIds;
-use zfx_subzero::chain::alpha::Alpha;
+use zfx_subzero::alpha::Alpha;
 use zfx_subzero::client::Client;
 use zfx_subzero::hail::Hail;
 use zfx_subzero::ice::{self, Ice, Reservoir};
@@ -27,7 +26,7 @@ use std::path::Path;
 
 fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
     let tmp_dir = vec!["/tmp/", &node_id].concat();
-    std::fs::create_dir_all(&tmp_dir).expect(&format!("Couldn't create directory: {}", tmp_dir));
+    std::fs::create_dir_all(&tmp_dir).expect(&format!("couldn't create directory: {}", tmp_dir));
     let keypair_path = vec![&tmp_dir[..], "/", &node_id, ".keypair"].concat();
     match std::fs::File::open(keypair_path.clone()) {
         Ok(mut file) => {

@@ -4,18 +4,23 @@ use std::hash::{Hash, Hasher};
 use ed25519_dalek::{PublicKey, Signature};
 
 /// A cells unlocking script (simple).
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CellUnlockScript {
-    public_key: PublicKey,
-    signature: Signature,
+    pub public_key: PublicKey,
+    pub signature: Signature,
+}
+
+impl std::fmt::Debug for CellUnlockScript {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let public_key = bincode::serialize(&self.public_key).unwrap();
+        let signature = bincode::serialize(&self.signature).unwrap();
+        write!(f, "⚿ {}:{}", hex::encode(public_key), hex::encode(signature))
+    }
 }
 
 impl CellUnlockScript {
     pub fn new(public_key: PublicKey, signature: Signature) -> Self {
-        CellUnlockScript {
-            public_key,
-            signature,
-        }
+        CellUnlockScript { public_key, signature }
     }
 }
 

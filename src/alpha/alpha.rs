@@ -2,7 +2,6 @@ use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
 
-use crate::chain::alpha::InitialStaker;
 use crate::client;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
@@ -10,7 +9,9 @@ use crate::sleet::{self, Sleet};
 use crate::Result;
 use crate::{ice, ice::Ice};
 
-use super::block::{self, BlockHash};
+use crate::storage::block;
+
+use super::block::{build_genesis, BlockHash};
 use super::state::State;
 
 use tracing::{debug, info};
@@ -45,37 +46,19 @@ impl Actor for Alpha {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
-        let stakers = vec![
-	    InitialStaker::from_hex(
-		"ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned(),
-		Id::from_ip(&"127.0.0.1:1234".parse().unwrap()),
-		2000, // 2000 allocated
-		1000, // half of it staked so that we can transfer funds later
-	    ),
-	    InitialStaker::from_hex(
-		"5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned(),
-		Id::from_ip(&"127.0.0.1:1235".parse().unwrap()),
-		2000,
-		1000,
-	    ),
-	    InitialStaker::from_hex(
-		"6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b".to_owned(),
-		Id::from_ip(&"127.0.0.1:1236".parse().unwrap()),
-		2000,
-		1000,
-	    ),
-	];
         // Check for the existence of `genesis` and write to the db if it is not present.
-        if !block::exists_first(&self.tree) {
-            let genesis = block::genesis(stakers);
-            let hash = block::accept_genesis(&self.tree, genesis.clone());
+        if !block::exists_genesis(&self.tree) {
+            let genesis = build_genesis().unwrap();
+            let hash = block::accept_genesis(&self.tree, genesis.clone()).unwrap();
             info!("accepted genesis => {:?}", hex::encode(hash));
-            self.state.apply(genesis).unwrap();
+            let genesis_state = self.state.apply(genesis).unwrap();
+            self.state = genesis_state;
             info!("{}", self.state.format());
         } else {
             let (hash, genesis) = block::get_genesis(&self.tree).unwrap();
             info!("existing genesis => {:?}", hex::encode(hash));
-            self.state.apply(genesis).unwrap();
+            let genesis_state = self.state.apply(genesis).unwrap();
+            self.state = genesis_state;
             info!("{}", self.state.format());
         }
     }
@@ -173,17 +156,23 @@ impl Handler<LiveNetwork> for Alpha {
                 // `uptime`.
                 let committee = ice_addr
                     .send(ice::LiveCommittee {
-                        total_stake: state.total_stake,
+                        total_staking_capacity: state.total_staking_capacity,
                         validators: state.validators.clone(),
                     })
                     .await
                     .unwrap();
 
+                // Convert the states live cells to a `CellHash` mapping for `sleet` (FIXME).
+                let mut map = HashMap::default();
+                for (_, cell) in state.live_cells.iter() {
+                    let _ = map.insert(cell.hash(), cell.clone());
+                }
+
                 // Send `sleet` the live committee information for querying transactions.
                 let () = sleet_addr
                     .send(sleet::LiveCommittee {
                         validators: committee.sleet_validators.clone(),
-                        txs: state.txs.clone(),
+                        live_cells: map,
                     })
                     .await
                     .unwrap();
@@ -193,7 +182,7 @@ impl Handler<LiveNetwork> for Alpha {
                     .send(hail::LiveCommittee {
                         self_id: self_id.clone(),
                         height: state.height,
-                        total_stake: state.total_stake,
+                        total_stake: state.total_staking_capacity,
                         validators: committee.hail_validators.clone(),
                         vrf_out,
                     })

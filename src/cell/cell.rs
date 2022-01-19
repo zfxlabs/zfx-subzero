@@ -6,20 +6,26 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Cell {
-    inputs: Inputs<Input>,
-    outputs: Outputs<Output>,
+    inputs: Inputs,
+    outputs: Outputs,
+}
+
+impl std::fmt::Display for Cell {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "inputs: {}\noutputs: {}\n", self.inputs, self.outputs)
+    }
 }
 
 impl Cell {
-    pub fn new(inputs: Inputs<Input>, outputs: Outputs<Output>) -> Self {
+    pub fn new(inputs: Inputs, outputs: Outputs) -> Self {
         Cell { inputs, outputs }
     }
 
-    pub fn inputs(&self) -> Inputs<Input> {
+    pub fn inputs(&self) -> Inputs {
         self.inputs.clone()
     }
 
-    pub fn outputs(&self) -> Outputs<Output> {
+    pub fn outputs(&self) -> Outputs {
         self.outputs.clone()
     }
 
@@ -30,11 +36,7 @@ impl Cell {
 
     /// Sums the output capacities.
     pub fn sum(&self) -> Capacity {
-        let mut total = 0;
-        for output in self.outputs().iter() {
-            total += output.capacity;
-        }
-        total
+        self.outputs().sum()
     }
 
     // pub fn semantic_verify(&self, cells: &HashMap<CellIds, Cell>) -> Result<()> {

@@ -3,10 +3,16 @@ use super::types::*;
 use super::Result;
 
 /// A reference to a the output contained in a cell.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct OutputIndex {
-    cell_hash: CellHash,
-    index: u8,
+    pub cell_hash: CellHash,
+    pub index: u8,
+}
+
+impl std::fmt::Debug for OutputIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "<{}:{}>", hex::encode(self.cell_hash), self.index)
+    }
 }
 
 impl OutputIndex {

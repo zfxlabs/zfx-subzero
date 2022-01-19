@@ -7,107 +7,112 @@ use ed25519_dalek::Keypair;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-use crate::chain::alpha::{Transaction, TransferTx, Tx, TxHash, FEE};
+use crate::alpha::transfer::TransferOperation;
+use crate::cell::types::{CellHash, FEE};
+use crate::cell::Cell;
 use crate::channel::Error;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode};
 use crate::protocol::Response;
 use crate::Result;
 use crate::{client, sleet, Request};
 
-/// Register tx and it's parent to identify later which tx can be spent
-pub fn register_tx_in_test_context(
-    original_tx_hash: TxHash,
-    spent_tx_hash: TxHash,
-    spent_tx_output_len: usize,
-    original_tx_output_len: usize,
+/// Register cell and it's parent to identify later which tx can be spent
+pub fn register_cell_in_test_context(
+    original_cell_hash: CellHash,
+    spent_cell_hash: CellHash,
+    spent_cell_output_len: usize,
+    original_cell_output_len: usize,
     context: &mut IntegrationTestContext,
 ) {
-    if spent_tx_output_len > 1 {
-        // make a parent original_tx_hash for spent_tx_hash,
-        // meaning that original_tx_hash won't be spendable anymore
-        context.register_tx_hash(original_tx_hash, spent_tx_hash);
-    } else if original_tx_output_len > 1 {
-        // if previous tx had more than 1 output, then more likely it can be spent
+    if spent_cell_output_len > 1 {
+        // make a parent original_cell_hash for spent_cell_hash,
+        // meaning that original_cell_hash won't be spendable anymore
+        context.register_cell_hash(original_cell_hash, spent_cell_hash);
+    } else if original_cell_output_len > 1 {
+        // if previous cell had more than 1 output, then more likely it can be spent
         // again as long as have enough balance,
         // thus we reference both transactions to themselves
-        context.register_tx_hash(original_tx_hash, original_tx_hash);
-        context.register_tx_hash(spent_tx_hash, spent_tx_hash);
+        context.register_cell_hash(original_cell_hash, original_cell_hash);
+        context.register_cell_hash(spent_cell_hash, spent_cell_hash);
     }
 }
 
-pub async fn send_tx(
+pub async fn send_cell(
     from: &TestNode,
     to: &TestNode,
-    tx: Transaction,
+    cell: Cell,
     amount: u64,
-) -> Result<Option<TxHash>> {
+) -> Result<Option<CellHash>> {
     if let Some(Response::GenerateTxAck(ack)) =
-        client::oneshot(from.address, create_transfer_request(&from, &to, amount, tx))
-            .await?
+        client::oneshot(from.address, create_transfer_request(&from, &to, amount, cell)).await?
     {
         sleep(Duration::from_secs(2));
-        return Ok(ack.tx_hash);
+        return Ok(ack.cell_hash);
     } else {
         Ok(None)
     }
 }
 
-pub async fn get_tx(
+pub async fn get_cell(
     min_amount: u64,
     context: &mut IntegrationTestContext,
     node_address: SocketAddr,
-) -> Result<Option<Transaction>> {
-    let tx_hashes = context.get_latest_txs_of(get_tx_hashes(node_address).await?);
+) -> Result<Option<Cell>> {
+    let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node_address).await?);
 
-    get_tx_with_min_amount(min_amount, node_address, &tx_hashes).await
+    get_cell_with_min_amount(min_amount, node_address, &cell_hashes).await
 }
 
-pub async fn get_tx_in_range(
+pub async fn get_cell_in_range(
     min_amount: u64,
     max_amount: u64,
     context: &mut IntegrationTestContext,
     node_address: SocketAddr,
-) -> Result<Option<Transaction>> {
-    let tx_hashes = context.get_latest_txs_of(get_tx_hashes(node_address).await?);
+) -> Result<Option<Cell>> {
+    let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node_address).await?);
 
-    get_tx_in_amount_range(min_amount, max_amount, node_address, &tx_hashes).await
+    get_cell_in_amount_range(min_amount, max_amount, node_address, &cell_hashes).await
 }
 
-pub async fn get_not_spendable_tx(
+pub async fn get_not_spendable_cell(
     min_amount: u64,
     context: &mut IntegrationTestContext,
     node_address: SocketAddr,
-) -> Result<Option<Transaction>> {
-    let mut tx_hashes = get_tx_hashes(node_address).await?;
-    let spendable_tx_hashes = context.get_latest_txs_of(tx_hashes.iter().cloned().collect());
-    tx_hashes.retain(|tx_hash| !spendable_tx_hashes.contains(tx_hash)); // exclude all spendable transactions
+) -> Result<Option<Cell>> {
+    let mut cell_hashes = get_cell_hashes(node_address).await?;
+    let spendable_cell_hashes = context.get_latest_cells_of(cell_hashes.iter().cloned().collect());
+    cell_hashes.retain(|cell_hash| !spendable_cell_hashes.contains(cell_hash)); // exclude all spendable transactions
 
-    get_tx_with_min_amount(min_amount, node_address, &tx_hashes.iter().cloned().collect::<HashSet<TxHash>>())
-        .await
+    get_cell_with_min_amount(
+        min_amount,
+        node_address,
+        &cell_hashes.iter().cloned().collect::<HashSet<CellHash>>(),
+    )
+    .await
 }
 
-pub async fn get_tx_with_min_amount(
+pub async fn get_cell_with_min_amount(
     min_amount: u64,
     node_address: SocketAddr,
-    tx_hashes: &HashSet<TxHash>,
-) -> Result<Option<Transaction>> {
-    get_tx_in_amount_range(min_amount, u64::MAX, node_address, tx_hashes).await
+    cell_hashes: &HashSet<CellHash>,
+) -> Result<Option<Cell>> {
+    get_cell_in_amount_range(min_amount, u64::MAX, node_address, cell_hashes).await
 }
 
-pub async fn get_tx_in_amount_range(
+pub async fn get_cell_in_amount_range(
     min_amount: u64,
     max_amount: u64,
     node_address: SocketAddr,
-    tx_hashes: &HashSet<TxHash>,
-) -> Result<Option<Transaction>> {
-    for tx_hash in tx_hashes {
-        if let Ok(tx_option) = get_tx_from_hash(tx_hash.clone(), node_address).await {
-            if tx_option.is_some() {
-                let tx = tx_option.unwrap();
-                let balance = tx.inner().sum();
+    cell_hashes: &HashSet<CellHash>,
+) -> Result<Option<Cell>> {
+    for cell_hash in cell_hashes {
+        if let Ok(cell_option) = get_cell_from_hash(cell_hash.clone(), node_address).await {
+            if cell_option.is_some() {
+                let cell = cell_option.unwrap();
+                let balance = cell.sum();
                 if balance > min_amount && balance < max_amount {
                     // return the first match transaction
-                    return Ok(Some(tx));
+                    return Ok(Some(cell));
                 }
             }
         }
@@ -115,25 +120,30 @@ pub async fn get_tx_in_amount_range(
     Ok(None)
 }
 
-pub async fn get_tx_from_hash(tx_hash: TxHash, node_address: SocketAddr) -> Result<Option<Transaction>> {
-    if let Some(Response::TxAck(tx_ack)) =
-        client::oneshot(node_address, Request::GetTx(sleet::GetTx { tx_hash: tx_hash.clone() }))
-            .await?
+pub async fn get_cell_from_hash(
+    cell_hash: CellHash,
+    node_address: SocketAddr,
+) -> Result<Option<Cell>> {
+    if let Some(Response::CellAck(cell_ack)) = client::oneshot(
+        node_address,
+        Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
+    )
+    .await?
     {
-        if let Some(tx) = tx_ack.tx {
-            return Result::Ok(Some(tx));
+        if let Some(cell) = cell_ack.cell {
+            return Result::Ok(Some(cell));
         }
     }
     return Ok(None);
 }
 
-pub async fn get_tx_hashes(node_address: SocketAddr) -> Result<Vec<TxHash>> {
-    if let Some(Response::Transactions(txs)) =
-        client::oneshot(node_address, Request::GetTransactions).await?
+pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
+    if let Some(Response::CellHashes(cell_hashes)) =
+        client::oneshot(node_address, Request::GetCellHashes).await?
     {
-        let mut txs_mut = txs.ids.iter().cloned().collect::<Vec<TxHash>>();
-        txs_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
-        Result::Ok(txs_mut)
+        let mut cell_hashes_mut = cell_hashes.ids.iter().cloned().collect::<Vec<CellHash>>();
+        cell_hashes_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
+        Result::Ok(cell_hashes_mut)
     } else {
         Result::Ok(vec![])
     }
@@ -143,15 +153,9 @@ pub fn create_transfer_request(
     from: &TestNode,
     to: &TestNode,
     spend_amount: u64,
-    tx: Transaction,
+    cell: Cell,
 ) -> Request {
-    Request::GenerateTx(sleet::GenerateTx {
-        tx: Transaction::TransferTx(TransferTx::new(
-            &from.keypair,
-            tx,
-            to.public_key.clone(),
-            from.public_key.clone(),
-            spend_amount,
-        )),
-    })
+    let transfer_op =
+        TransferOperation::new(cell, to.public_key.clone(), from.public_key.clone(), spend_amount);
+    Request::GenerateTx(sleet::GenerateTx { cell: transfer_op.transfer(&from.keypair).unwrap() })
 }

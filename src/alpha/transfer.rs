@@ -1,11 +1,10 @@
-use super::cell::Cell;
-use super::cell_type::CellType;
-use super::coinbase::CoinbaseState;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
-use super::stake::StakeState;
-use super::types::*;
 use super::{Error, Result};
+use crate::alpha::coinbase::CoinbaseState;
+use crate::alpha::stake::StakeState;
+use crate::cell::inputs::{Input, Inputs};
+use crate::cell::outputs::{Output, Outputs};
+use crate::cell::types::*;
+use crate::cell::{Cell, CellType};
 
 use std::convert::TryInto;
 
@@ -18,12 +17,7 @@ pub struct TransferState;
 /// A transfer output transfers tokens to the designated public key hash.
 pub fn transfer_output(pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&TransferState {})?;
-    Ok(Output {
-        capacity,
-        cell_type: CellType::Transfer,
-        data,
-        lock: pkh,
-    })
+    Ok(Output { capacity, cell_type: CellType::Transfer, data, lock: pkh })
 }
 
 /// Checks that the output has the right form.
@@ -66,16 +60,14 @@ impl TransferOperation {
         change_address: PublicKeyHash,
         capacity: Capacity,
     ) -> Self {
-        TransferOperation {
-            cell,
-            recipient_address,
-            change_address,
-            capacity,
-        }
+        TransferOperation { cell, recipient_address, change_address, capacity }
     }
 
     /// Create a new set of transfer outputs from the supplied transfer operation.
     pub fn transfer(&self, keypair: &Keypair) -> Result<Cell> {
+        let encoded_public = bincode::serialize(&keypair.public)?;
+        let pkh = blake3::hash(&encoded_public).as_bytes().clone();
+
         self.validate_capacity(self.capacity.clone())?;
 
         // Consume outputs and construct inputs - the remaining inputs should be reflected in the
@@ -89,27 +81,29 @@ impl TransferOperation {
             // Validate the output to make sure it has the right form.
             let () = output.validate_capacity()?;
             let () = validate_output(output.clone())?;
-            if consumed < self.capacity {
-                inputs.push(Input::new(keypair, self.cell.hash(), i)?);
-                if spending_capacity >= output.capacity {
-                    spending_capacity -= output.capacity;
-                    consumed += output.capacity;
+            if output.lock == pkh.clone() {
+                if consumed < self.capacity {
+                    inputs.push(Input::new(keypair, self.cell.hash(), i)?);
+                    if spending_capacity >= output.capacity {
+                        spending_capacity -= output.capacity;
+                        consumed += output.capacity;
+                    } else {
+                        consumed += spending_capacity;
+                        change_capacity = output.capacity - spending_capacity;
+                    }
+                    i += 1;
                 } else {
-                    consumed += spending_capacity;
-                    change_capacity = output.capacity - spending_capacity;
+                    break;
                 }
-                i += 1;
             } else {
-                break;
+                i += 1;
+                continue;
             }
         }
 
         let main_output = transfer_output(self.recipient_address, consumed)?;
         let outputs = if change_capacity > FEE && change_capacity - FEE > 0 {
-            vec![
-                main_output,
-                transfer_output(self.change_address, change_capacity - FEE)?,
-            ]
+            vec![main_output, transfer_output(self.change_address, change_capacity - FEE)?]
         } else {
             vec![main_output]
         };
@@ -134,7 +128,7 @@ impl TransferOperation {
 mod test {
     use super::*;
 
-    use crate::cell::coinbase::CoinbaseOperation;
+    use crate::alpha::coinbase::CoinbaseOperation;
 
     use ed25519_dalek::Keypair;
 
@@ -175,15 +169,9 @@ mod test {
             TransferOperation::new(coinbase_tx.clone(), pkh2.clone(), pkh1.clone(), 1000);
         let transfer_op2 =
             TransferOperation::new(coinbase_tx.clone(), pkh2.clone(), pkh1.clone(), 1001 - FEE);
-        assert_eq!(
-            transfer_op1.transfer(&kp1),
-            Err(Error::ExceedsAvailableFunds)
-        );
+        assert_eq!(transfer_op1.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
         // Should fail due to fee inclusion
-        assert_eq!(
-            transfer_op2.transfer(&kp1),
-            Err(Error::ExceedsAvailableFunds)
-        );
+        assert_eq!(transfer_op2.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
     }
 
     #[actix_rt::test]

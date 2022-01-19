@@ -1,9 +1,9 @@
 use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
-use crate::chain::alpha::block::{Block, BlockHash, Height, VrfOutput};
-use crate::chain::alpha::state::Weight;
-use crate::chain::alpha::Transaction;
+use crate::alpha::block::{Block, BlockHash, BlockHeight, VrfOutput};
+use crate::alpha::Weight;
+use crate::cell::Cell;
 use crate::client::Fanout;
 use crate::colored::Colorize;
 use crate::graph::DAG;
@@ -30,12 +30,12 @@ const BETA2: u8 = 20;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Vertex {
-    height: Height,
+    height: BlockHeight,
     block_hash: BlockHash,
 }
 
 impl Vertex {
-    pub fn new(height: Height, block_hash: BlockHash) -> Self {
+    pub fn new(height: BlockHeight, block_hash: BlockHash) -> Self {
         Vertex { height, block_hash }
     }
 }
@@ -213,7 +213,7 @@ impl Handler<QueryComplete> for Hail {
         }
         // if yes: set_chit(tx, 1), update ancestral preferences
         if util::sum_outcomes(outcomes) > ALPHA {
-            let vx = Vertex::new(msg.block.height, msg.block.hash());
+            let vx = Vertex::new(msg.block.height, msg.block.hash().unwrap());
             self.dag.set_chit(vx, 1).unwrap();
             // self.update_ancestral_preference(msg.block.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "hail".blue());
@@ -324,21 +324,21 @@ impl Handler<QueryBlock> for Hail {
         // FIXME: If we are in the middle of querying this transaction, wait until a
         // decision or a synchronous timebound is reached on attempts.
         // let outcome = self.is_strongly_preferred(msg.block.hash()).unwrap();
-        QueryBlockAck { id: self.node_id, block_hash: msg.block.hash(), outcome: false }
+        QueryBlockAck { id: self.node_id, block_hash: msg.block.hash().unwrap(), outcome: false }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
-pub struct AcceptedTransactions {
-    pub txs: Vec<Transaction>,
+pub struct AcceptedCells {
+    pub cells: Vec<Cell>,
 }
 
-impl Handler<AcceptedTransactions> for Hail {
+impl Handler<AcceptedCells> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: AcceptedTransactions, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] received {} accepted transactions", "hail".cyan(), msg.txs.len());
+    fn handle(&mut self, msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
         // TODO ...
     }
 }

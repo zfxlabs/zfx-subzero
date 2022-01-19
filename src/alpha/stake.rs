@@ -1,43 +1,40 @@
-use super::cell::Cell;
-use super::cell_type::CellType;
-use super::coinbase::CoinbaseState;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
-use super::transfer::{self, TransferState};
-use super::types::*;
+use crate::zfx_id::Id;
+
+use crate::alpha::coinbase::CoinbaseState;
+use crate::alpha::transfer::{self, TransferState};
+
+use crate::cell::inputs::{Input, Inputs};
+use crate::cell::outputs::{Output, Outputs};
+use crate::cell::types::*;
+use crate::cell::{Cell, CellType};
+
 use super::{Error, Result};
 
 use ed25519_dalek::Keypair;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct StakeState;
+pub struct StakeState {
+    pub node_id: Id,
+}
 
 /// A stake output locks tokens for a specific duration and can be used to stake on the network until
 /// the time expires.
-pub fn stake_output(pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
-    let data = bincode::serialize(&StakeState {})?;
-    Ok(Output {
-        capacity,
-        cell_type: CellType::Stake,
-        data,
-        lock: pkh,
-    })
+pub fn stake_output(node_id: Id, pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
+    let data = bincode::serialize(&StakeState { node_id })?;
+    Ok(Output { capacity, cell_type: CellType::Stake, data, lock: pkh })
 }
 
 /// Checks that the output has the right form.
 pub fn validate_output(output: Output) -> Result<()> {
     match output.cell_type {
-        // Constructing a transfer output from a coinbase output is allowed
         CellType::Coinbase => {
             let _: CoinbaseState = bincode::deserialize(&output.data)?;
             Ok(())
         }
-        // Constructing a transfer output from a transfer output is allowed
         CellType::Transfer => {
             let _: TransferState = bincode::deserialize(&output.data)?;
             Ok(())
         }
-        // Constructing a transfer output from a stake output is allowed
         CellType::Stake => {
             let _: StakeState = bincode::deserialize(&output.data)?;
             Ok(())
@@ -48,6 +45,8 @@ pub fn validate_output(output: Output) -> Result<()> {
 pub struct StakeOperation {
     /// The cell being staked in this staking operation.
     cell: Cell,
+    /// The node id of the validator (hash of the TLS certificate (trusted) / ip (untrusted)).
+    node_id: Id,
     /// The address which receives the unstaked capacity.
     address: PublicKeyHash,
     /// The amount of capacity to stake.
@@ -55,15 +54,14 @@ pub struct StakeOperation {
 }
 
 impl StakeOperation {
-    pub fn new(cell: Cell, address: PublicKeyHash, capacity: Capacity) -> Self {
-        StakeOperation {
-            cell,
-            address,
-            capacity,
-        }
+    pub fn new(cell: Cell, node_id: Id, address: PublicKeyHash, capacity: Capacity) -> Self {
+        StakeOperation { cell, node_id, address, capacity }
     }
 
     pub fn stake(&self, keypair: &Keypair) -> Result<Cell> {
+        let encoded_public = bincode::serialize(&keypair.public)?;
+        let pkh = blake3::hash(&encoded_public).as_bytes().clone();
+
         self.validate_capacity(self.capacity.clone())?;
 
         // Consume outputs and construct inputs - the remaining inputs should be reflected in the
@@ -77,30 +75,32 @@ impl StakeOperation {
             // Validate the output to make sure it has the right form.
             let () = output.validate_capacity()?;
             let () = validate_output(output.clone())?;
-            if consumed < self.capacity {
-                inputs.push(Input::new(keypair, self.cell.hash(), i)?);
-                if spending_capacity >= output.capacity {
-                    spending_capacity -= output.capacity;
-                    consumed += output.capacity;
+            if output.lock == pkh.clone() {
+                if consumed < self.capacity {
+                    inputs.push(Input::new(keypair, self.cell.hash(), i)?);
+                    if spending_capacity >= output.capacity {
+                        spending_capacity -= output.capacity;
+                        consumed += output.capacity;
+                    } else {
+                        consumed += spending_capacity;
+                        change_capacity = output.capacity - spending_capacity;
+                    }
+                    i += 1;
                 } else {
-                    consumed += spending_capacity;
-                    change_capacity = output.capacity - spending_capacity;
+                    break;
                 }
-                i += 1;
             } else {
-                break;
+                i += 1;
+                continue;
             }
         }
 
         // Create a change output.
-        let main_output = stake_output(self.address.clone(), consumed)?;
+        let main_output = stake_output(self.node_id.clone(), self.address.clone(), consumed)?;
         let outputs = if change_capacity > 0 {
-            vec![transfer::transfer_output(
-                self.address.clone(),
-                change_capacity,
-            )?]
+            vec![main_output, transfer::transfer_output(self.address.clone(), change_capacity)?]
         } else {
-            vec![]
+            vec![main_output]
         };
 
         Ok(Cell::new(Inputs::new(inputs), Outputs::new(outputs)))

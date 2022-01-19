@@ -1,25 +1,36 @@
 mod dag;
-mod utxo_graph;
+
+pub mod conflict_graph;
+pub mod dependency_graph;
 
 pub use dag::*;
-pub use utxo_graph::*;
 
-use crate::chain::alpha::tx::TxHash;
+use crate::alpha::TxHash;
+use crate::cell;
+use crate::cell::types::CellHash;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Error {
+    Cell(cell::Error),
     VertexExists,
     VacantEntry,
     UndefinedChit,
     UndefinedUTXO,
     ChitReplace,
-    DuplicateUTXO,
-    DuplicateInputs,
-    InvalidTxHash(TxHash),
-    EmptyUTXOGraph,
+    // Dependency graph
+    EmptyConflictGraph,
+    DuplicateCell,
+    UndefinedCell,
+    UndefinedCellHash(CellHash),
 }
 
 impl std::error::Error for Error {}
+
+impl std::convert::From<cell::Error> for Error {
+    fn from(error: cell::Error) -> Self {
+        Error::Cell(error)
+    }
+}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

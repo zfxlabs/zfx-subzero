@@ -1,31 +1,73 @@
 pub use super::output::*;
 
+use super::types::Capacity;
+
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct Outputs<O: Eq + Hash> {
-    pub outputs: Vec<O>,
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct Outputs {
+    pub outputs: Vec<Output>,
 }
 
-impl<O: Eq + Hash> Deref for Outputs<O> {
-    type Target = Vec<O>;
+impl std::fmt::Debug for Outputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.outputs.len() == 0 {
+            write!(f, "[]")
+        } else {
+            let mut comma_separated = String::new();
+            for output in &self.outputs[0..self.outputs.len() - 1] {
+                comma_separated.push_str(&format!("{:?}", output));
+                comma_separated.push_str(", ");
+            }
+            comma_separated.push_str(&format!("{:?}", &self.outputs[self.outputs.len() - 1]));
+            write!(f, "[{}]", comma_separated)
+        }
+    }
+}
+
+impl std::fmt::Display for Outputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.outputs.len() == 0 {
+            write!(f, "[]")
+        } else {
+            let mut comma_separated = String::new();
+            for output in &self.outputs[0..self.outputs.len() - 1] {
+                comma_separated.push_str(&format!("{}", output));
+                comma_separated.push_str(", ");
+            }
+            comma_separated.push_str(&format!("{}", &self.outputs[self.outputs.len() - 1]));
+            write!(f, "[{}]", comma_separated)
+        }
+    }
+}
+
+impl Deref for Outputs {
+    type Target = Vec<Output>;
 
     fn deref(&self) -> &'_ Self::Target {
         &self.outputs
     }
 }
 
-impl<O: Eq + Hash> DerefMut for Outputs<O> {
+impl DerefMut for Outputs {
     fn deref_mut(&mut self) -> &'_ mut Self::Target {
         &mut self.outputs
     }
 }
 
-impl<O: Eq + Hash + Ord + Clone> Outputs<O> {
-    pub fn new(outputs: Vec<O>) -> Self {
+impl Outputs {
+    pub fn new(outputs: Vec<Output>) -> Self {
         let mut sorted = outputs.clone();
         sorted.sort();
         Outputs { outputs: sorted }
+    }
+
+    pub fn sum(&self) -> Capacity {
+        let mut total = 0;
+        for output in self.iter() {
+            total += output.capacity;
+        }
+        total
     }
 }

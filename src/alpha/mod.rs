@@ -1,21 +1,20 @@
-mod cell;
-mod cell_id;
-mod cell_ids;
-mod cell_type;
-mod cell_unlock_script;
-mod input;
-pub mod inputs;
-mod output;
-mod output_index;
-pub mod outputs;
-pub mod types;
+mod alpha;
+mod types;
 
-pub use cell::*;
-pub use cell_id::*;
-pub use cell_ids::*;
-pub use cell_type::*;
-pub use cell_unlock_script::*;
+pub mod coinbase;
+pub mod stake;
+pub mod transfer;
 
+pub mod block;
+
+pub mod state;
+
+mod initial_staker;
+
+pub use alpha::*;
+pub use types::*;
+
+use crate::cell;
 use crate::graph;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -23,8 +22,18 @@ pub enum Error {
     Hex(String),
     Bincode(String),
     Dalek(String),
+    Cell(cell::Error),
+    Graph(graph::Error),
+    // Operations
+    ExceedsAvailableFunds,
+    ZeroTransfer,
+    ZeroStake,
     InvalidCoinbase,
     InvalidStake,
+    // State
+    UndefinedCellIds,
+    ExistingCellIds,
+    ExceedsCapacity,
 }
 
 impl std::error::Error for Error {}
@@ -44,6 +53,18 @@ impl std::convert::From<Box<bincode::ErrorKind>> for Error {
 impl std::convert::From<ed25519_dalek::ed25519::Error> for Error {
     fn from(error: ed25519_dalek::ed25519::Error) -> Self {
         Error::Dalek(format!("{:?}", error))
+    }
+}
+
+impl std::convert::From<cell::Error> for Error {
+    fn from(error: cell::Error) -> Self {
+        Error::Cell(error)
+    }
+}
+
+impl std::convert::From<graph::Error> for Error {
+    fn from(error: graph::Error) -> Self {
+        Error::Graph(error)
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::chain::alpha::block::{Block, BlockHash};
+use crate::alpha::block::{Block, BlockHash};
 
 use std::collections::HashSet;
 
