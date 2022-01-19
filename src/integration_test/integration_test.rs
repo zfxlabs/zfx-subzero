@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod integration_test {
-    use crate::chain::alpha::{Input, StakeTx, Transaction, Tx, TxHash, FEE};
+    use crate::cell::inputs::Input;
+    use crate::cell::stake::StakeOperation;
+    use crate::cell::types::{CellHash, FEE};
+    use crate::cell::Cell;
     use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
     use crate::integration_test::test_utils::*;
     use crate::zfx_id::Id;
@@ -10,35 +13,35 @@ mod integration_test {
     async fn run_integration_test_suite() -> Result<()> {
         let mut context = IntegrationTestContext::new();
 
-        test_send_tx(&mut context).await?;
-        test_send_tx(&mut context).await?;
-        test_send_tx(&mut context).await?;
-        test_send_tx(&mut context).await?;
+        test_send_cell(&mut context).await?;
+        test_send_cell(&mut context).await?;
+        test_send_cell(&mut context).await?;
+        test_send_cell(&mut context).await?;
 
-        test_send_tx_with_invalid_hash(&mut context).await?;
-        test_send_tx_to_non_existing_recipient(&mut context).await?;
+        test_send_cell_with_invalid_hash(&mut context).await?;
+        test_send_cell_to_non_existing_recipient(&mut context).await?;
 
-        test_send_same_tx_twice(&mut context).await?;
-        test_send_same_tx_twice(&mut context).await?;
+        test_send_same_cell_twice(&mut context).await?;
+        test_send_same_cell_twice(&mut context).await?;
 
-        test_multi_spend_same_tx(&mut context).await?;
+        test_multi_spend_same_cell(&mut context).await?;
 
         Result::Ok(())
     }
 
-    async fn test_send_tx(context: &mut IntegrationTestContext) -> Result<()> {
+    async fn test_send_cell(context: &mut IntegrationTestContext) -> Result<()> {
         let nodes = TestNodes::new();
         let node_0 = nodes.get_node(0).unwrap();
         let node_1 = nodes.get_node(1).unwrap();
         let spend_amount = 10 + context.test_run_counter as u64; // send diff amount to avoid duplicated txs
 
-        let result = send_tx_and_get_result(node_0, node_1, spend_amount, context).await?;
+        let result = send_cell_and_get_result(node_0, node_1, spend_amount, context).await?;
 
-        assert_tx(
-            result.spent_tx,
-            result.original_tx_hash,
-            result.original_tx_output_len,
-            result.original_tx_balance,
+        assert_cell(
+            result.spent_cell,
+            result.original_cell_hash,
+            result.original_cell_output_len,
+            result.original_cell_balance,
             spend_amount,
             node_0,
             node_1,
@@ -50,26 +53,26 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn test_multi_spend_same_tx(context: &mut IntegrationTestContext) -> Result<()> {
+    async fn test_multi_spend_same_cell(context: &mut IntegrationTestContext) -> Result<()> {
         let nodes = TestNodes::new();
         let node_0 = nodes.get_node(0).unwrap();
         let node_1 = nodes.get_node(1).unwrap();
         let spend_amount = 40;
 
-        send_tx_and_get_result(node_0, node_1, spend_amount, context).await?;
+        send_cell_and_get_result(node_0, node_1, spend_amount, context).await?;
 
-        // try to send different amount many times for the same origin tx
+        // try to send different amount many times for the same origin cell
         for i in 0..3 {
-            let tx =
-                get_not_spendable_tx(spend_amount + i, context, node_0.address).await?.unwrap();
+            let cell =
+                get_not_spendable_cell(spend_amount + i, context, node_0.address).await?.unwrap();
 
-            // change amount to avoid duplicated tx
-            let spent_tx_hash = send_tx(&node_0, &node_1, tx, spend_amount + i).await?;
+            // change amount to avoid duplicated cell
+            let spent_cell_hash = send_cell(&node_0, &node_1, cell, spend_amount + i).await?;
 
-            if spent_tx_hash.is_some() {
-                let spent_tx =
-                    get_tx_from_hash(spent_tx_hash.unwrap().clone(), node_0.address).await?;
-                assert!(spent_tx.is_none())
+            if spent_cell_hash.is_some() {
+                let spent_cell =
+                    get_cell_from_hash(spent_cell_hash.unwrap().clone(), node_0.address).await?;
+                assert!(spent_cell.is_none())
             }
         }
 
@@ -77,100 +80,97 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn test_send_same_tx_twice(context: &mut IntegrationTestContext) -> Result<()> {
+    async fn test_send_same_cell_twice(context: &mut IntegrationTestContext) -> Result<()> {
         let nodes = TestNodes::new();
         let node_0 = nodes.get_node(0).unwrap();
         let node_1 = nodes.get_node(1).unwrap();
         let spend_amount: u64 = 30;
 
-        let result = send_tx_and_get_result(node_0, node_1, spend_amount, context).await?;
+        let result = send_cell_and_get_result(node_0, node_1, spend_amount, context).await?;
 
-        let same_tx = get_tx_from_hash(result.original_tx_hash, node_0.address).await?.unwrap();
-        let duplicated_tx_hash = send_tx(&node_0, &node_1, same_tx, spend_amount).await?;
-        assert!(duplicated_tx_hash.is_none()); // check the duplicated tx was rejected
+        let same_cell =
+            get_cell_from_hash(result.original_cell_hash, node_0.address).await?.unwrap();
+        let duplicated_cell_hash = send_cell(&node_0, &node_1, same_cell, spend_amount).await?;
+        assert!(duplicated_cell_hash.is_none()); // check the duplicated cell was rejected
 
         context.count_test_run();
         Result::Ok(())
     }
 
-    async fn test_send_tx_with_invalid_hash(context: &mut IntegrationTestContext) -> Result<()> {
+    async fn test_send_cell_with_invalid_hash(context: &mut IntegrationTestContext) -> Result<()> {
         let nodes = TestNodes::new();
         let node_0 = nodes.get_node(0).unwrap();
         let node_1 = nodes.get_node(1).unwrap();
         let spend_amount = 5 as u64;
 
-        let tx = get_tx(spend_amount, context, node_0.address).await?.unwrap();
-        let odd_tx = Transaction::StakeTx(StakeTx::new(
-            &node_0.keypair,
-            Id::generate(),
-            Tx::new(tx.inputs(), tx.outputs()),
-            spend_amount,
-        ));
+        let cell = get_cell(spend_amount, context, node_0.address).await?.unwrap();
+        let odd_stake_op = StakeOperation::new(cell.clone(), Id::generate().bytes(), spend_amount);
+        let odd_stake_cell = odd_stake_op.stake(&node_0.keypair).unwrap();
 
-        let spent_tx_hash = send_tx(&node_0, &node_1, odd_tx, spend_amount).await?;
-        assert!(spent_tx_hash.is_none());
+        let spent_cell_hash = send_cell(&node_0, &node_1, odd_stake_cell, spend_amount).await?;
+        assert!(spent_cell_hash.is_none());
 
         context.count_test_run();
 
         Result::Ok(())
     }
 
-    async fn test_send_tx_to_non_existing_recipient(
+    async fn test_send_cell_to_non_existing_recipient(
         context: &mut IntegrationTestContext,
     ) -> Result<()> {
         let nodes = TestNodes::new();
         let from = nodes.get_node(0).unwrap();
         let to = nodes.get_non_existing_node();
         let spend_amount = 15 as u64;
-        let tx = get_tx(spend_amount, context, from.address).await?.unwrap();
+        let cell = get_cell(spend_amount, context, from.address).await?.unwrap();
 
-        let spent_tx_hash = send_tx(&from, &to, tx, spend_amount).await?;
-        assert!(spent_tx_hash.is_none());
+        let spent_cell_hash = send_cell(&from, &to, cell, spend_amount).await?;
+        assert!(spent_cell_hash.is_none());
 
         context.count_test_run();
 
         Result::Ok(())
     }
 
-    async fn send_tx_and_get_result(
+    async fn send_cell_and_get_result(
         from: &TestNode,
         to: &TestNode,
         amount: u64,
         context: &mut IntegrationTestContext,
-    ) -> Result<SendTxResult> {
-        let tx = get_tx(amount, context, from.address).await?.unwrap();
-        let tx_hash = tx.hash();
-        let previous_output_len = tx.inner().outputs().len();
-        let previous_balance = tx.inner().sum();
+    ) -> Result<SendCellResult> {
+        let cell = get_cell(amount, context, from.address).await?.unwrap();
+        let cell_hash = cell.hash();
+        let previous_output_len = cell.outputs().len();
+        let previous_balance = cell.sum();
 
-        let spent_tx_hash = send_tx(from, to, tx, amount).await?;
-        assert!(spent_tx_hash.is_some());
+        let spent_cell_hash = send_cell(from, to, cell, amount).await?;
+        assert!(spent_cell_hash.is_some());
 
-        let spent_tx = get_tx_from_hash(spent_tx_hash.unwrap().clone(), from.address).await?;
-        assert!(spent_tx.is_some());
+        let spent_cell = get_cell_from_hash(spent_cell_hash.unwrap().clone(), from.address).await?;
+        assert!(spent_cell.is_some());
 
-        let mut spent_tx_outputs = spent_tx.as_ref().unwrap().inner().outputs();
-        assert!(spent_tx_outputs.iter().find(|o| { o.value == amount}).is_some()); // check if transfer was successful
+        let mut spent_cell_outputs = spent_cell.as_ref().unwrap().outputs();
+        assert!(spent_cell_outputs.iter().find(|o| { o.capacity == amount }).is_some()); // check if transfer was successful
 
-        register_tx_in_test_context(
-            tx_hash,
-            spent_tx_hash.unwrap(),
-            spent_tx_outputs.len(),
+        register_cell_in_test_context(
+            cell_hash,
+            spent_cell_hash.unwrap(),
+            spent_cell_outputs.len(),
             previous_output_len,
             context,
         );
 
-        Ok(SendTxResult {
-            original_tx_balance: previous_balance,
-            original_tx_output_len: previous_output_len,
-            original_tx_hash: tx_hash,
-            spent_tx: spent_tx.unwrap(),
+        Ok(SendCellResult {
+            original_cell_balance: previous_balance,
+            original_cell_output_len: previous_output_len,
+            original_cell_hash: cell_hash,
+            spent_cell: spent_cell.unwrap(),
         })
     }
 
-    fn assert_tx(
-        spent_tx: Transaction,
-        tx_hash: TxHash,
+    fn assert_cell(
+        spent_cell: Cell,
+        cell_hash: CellHash,
         previous_len: usize,
         previous_balance: u64,
         spend_amount: u64,
@@ -178,61 +178,68 @@ mod integration_test {
         to: &TestNode,
         context: &mut IntegrationTestContext,
     ) {
-        let spent_tx_hash = spent_tx.hash();
-        let spent_tx_inputs = &spent_tx.inner().inputs();
-        let spent_tx_outputs = &spent_tx.inner().outputs();
-        let spent_tx_len = spent_tx_outputs.len();
+        let spent_cell_hash = spent_cell.hash();
+        let spent_cell_inputs = &spent_cell.inputs();
+        let spent_cell_outputs = &spent_cell.outputs();
+        let spent_cell_len = spent_cell_outputs.len();
 
         // validate outputs
-        if spent_tx_len > 1 {
-            assert_eq!(2, spent_tx_len, "Tx must have spent and remaining outputs");
+        if spent_cell_len > 1 {
+            assert_eq!(2, spent_cell_len, "Cell must have spent and remaining outputs");
 
-            let remaining_output = spent_tx_outputs.iter().find(|o| { o.owner_hash == from.public_key});
-            assert!(
-                remaining_output.is_some(),
-                "The remaining output doesn't exist"
-            );
+            let remaining_output = spent_cell_outputs.iter().find(|o| o.lock == from.public_key);
+            assert!(remaining_output.is_some(), "The remaining output doesn't exist");
             assert_eq!(
                 previous_balance - FEE - spend_amount,
-                remaining_output.unwrap().value,
+                remaining_output.unwrap().capacity,
                 "Invalid balance of the remaining output"
             );
         } else {
-            assert_eq!(1, spent_tx_len, "Tx must have only spent output");
+            assert_eq!(1, spent_cell_len, "Cell must have only spent output");
         }
-        let spent_output = spent_tx_outputs.iter().find(|o| { o.owner_hash == to.public_key });
+        let spent_output = spent_cell_outputs.iter().find(|o| o.lock == to.public_key);
         assert!(spent_output.is_some(), "The spent output doesn't exist");
-        assert_eq!(spend_amount, spent_output.unwrap().value, "Invalid balance of the spent output");
+        assert_eq!(
+            spend_amount,
+            spent_output.unwrap().capacity,
+            "Invalid balance of the spent output"
+        );
 
         // validate inputs
-        assert_eq!(previous_len, spent_tx_inputs.len());
-        let mut inputs_as_vec = spent_tx_inputs.inputs.iter().cloned().collect::<Vec<Input>>();
+        assert_eq!(previous_len, spent_cell_inputs.len());
+        let mut inputs_as_vec = spent_cell_inputs.inputs.iter().cloned().collect::<Vec<Input>>();
         inputs_as_vec.sort();
         let mut i = 0;
         for input in inputs_as_vec {
             assert_eq!(
-                i as u8, input.i,
-                "Tx input index must be always 0 as we have a single output to spend"
+                i as u8, input.output_index.index,
+                "Cell input index must be always 0 as we have a single output to spend"
             );
             assert_eq!(
-                tx_hash, input.source,
-                "Invalid source (parent) of tx from which we consume amount"
+                cell_hash, input.output_index.cell_hash,
+                "Invalid source (parent) of cell from which we consume amount"
             );
             assert_eq!(
                 from.keypair.public.as_bytes(),
-                input.owner.as_bytes(),
-                "Invalid tx owner in the input"
+                input.unlock.public_key.as_bytes(),
+                "Invalid cell owner in the input"
             );
             i += 1;
         }
 
-        register_tx_in_test_context(tx_hash, spent_tx_hash, spent_tx_len, previous_len, context);
+        register_cell_in_test_context(
+            cell_hash,
+            spent_cell_hash,
+            spent_cell_len,
+            previous_len,
+            context,
+        );
     }
 
-    struct SendTxResult {
-        original_tx_balance: u64,
-        original_tx_output_len: usize,
-        original_tx_hash: TxHash,
-        spent_tx: Transaction,
+    struct SendCellResult {
+        original_cell_balance: u64,
+        original_cell_output_len: usize,
+        original_cell_hash: CellHash,
+        spent_cell: Cell,
     }
 }
