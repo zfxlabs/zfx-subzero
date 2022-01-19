@@ -15,6 +15,12 @@ pub struct Input {
     pub unlock: CellUnlockScript,
 }
 
+impl std::fmt::Display for Input {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.output_index.cell_id().unwrap())
+    }
+}
+
 impl Input {
     pub fn new(keypair: &Keypair, cell_hash: CellHash, index: u8) -> Result<Self> {
         let output_index = OutputIndex::new(cell_hash.clone(), index);

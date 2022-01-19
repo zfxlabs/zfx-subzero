@@ -4,6 +4,8 @@ use super::Result;
 
 use std::ops::{Deref, DerefMut};
 
+use crate::colored::Colorize;
+
 // The hash of a cells output index.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct CellId([u8; 32]);
@@ -11,6 +13,13 @@ pub struct CellId([u8; 32]);
 impl std::fmt::Debug for CellId {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
         write!(fmt, "{}", hex::encode(self.0))
+    }
+}
+
+impl std::fmt::Display for CellId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s = format!("{}", hex::encode(self.0)).blue();
+        write!(f, "{}", s)
     }
 }
 

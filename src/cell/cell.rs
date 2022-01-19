@@ -10,6 +10,12 @@ pub struct Cell {
     outputs: Outputs,
 }
 
+impl std::fmt::Display for Cell {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "inputs: {}\noutputs: {}\n", self.inputs, self.outputs)
+    }
+}
+
 impl Cell {
     pub fn new(inputs: Inputs, outputs: Outputs) -> Self {
         Cell { inputs, outputs }

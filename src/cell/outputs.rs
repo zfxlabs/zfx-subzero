@@ -5,9 +5,41 @@ use super::types::Capacity;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Outputs {
     pub outputs: Vec<Output>,
+}
+
+impl std::fmt::Debug for Outputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.outputs.len() == 0 {
+            write!(f, "[]")
+        } else {
+            let mut comma_separated = String::new();
+            for output in &self.outputs[0..self.outputs.len() - 1] {
+                comma_separated.push_str(&format!("{:?}", output));
+                comma_separated.push_str(", ");
+            }
+            comma_separated.push_str(&format!("{:?}", &self.outputs[self.outputs.len() - 1]));
+            write!(f, "[{}]", comma_separated)
+        }
+    }
+}
+
+impl std::fmt::Display for Outputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.outputs.len() == 0 {
+            write!(f, "[]")
+        } else {
+            let mut comma_separated = String::new();
+            for output in &self.outputs[0..self.outputs.len() - 1] {
+                comma_separated.push_str(&format!("{}", output));
+                comma_separated.push_str(", ");
+            }
+            comma_separated.push_str(&format!("{}", &self.outputs[self.outputs.len() - 1]));
+            write!(f, "[{}]", comma_separated)
+        }
+    }
 }
 
 impl Deref for Outputs {

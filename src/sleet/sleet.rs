@@ -275,7 +275,7 @@ impl Handler<LiveCommittee> for Sleet {
         );
         let mut cell_ids_set: CellIds = CellIds::empty();
         for (cell_hash, cell) in msg.live_cells.clone() {
-            info!("{:?}", cell.clone());
+            info!("{}", cell.clone());
             let cell_ids = CellIds::from_outputs(cell_hash.clone(), cell.outputs()).unwrap();
             cell_ids_set = cell_ids_set.union(&cell_ids).cloned().collect();
         }

@@ -8,9 +8,45 @@ use std::cmp::{Eq, Ord, Ordering, PartialEq};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Inputs {
     pub inputs: HashSet<Input>,
+}
+
+impl std::fmt::Debug for Inputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.inputs.len() == 0 {
+            write!(f, "[]")
+        } else {
+            let mut inputs: Vec<Input> = self.iter().cloned().collect();
+            inputs.sort();
+            let mut comma_separated = String::new();
+            for input in &inputs[0..inputs.len() - 1] {
+                comma_separated.push_str(&format!("{:?}", input));
+                comma_separated.push_str(", ");
+            }
+            comma_separated.push_str(&format!("{:?}", &inputs[inputs.len() - 1]));
+            write!(f, "[{}]", comma_separated)
+        }
+    }
+}
+
+impl std::fmt::Display for Inputs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.inputs.len() == 0 {
+            write!(f, "[]")
+        } else {
+            let mut inputs: Vec<Input> = self.iter().cloned().collect();
+            inputs.sort();
+            let mut comma_separated = String::new();
+            for input in &inputs[0..inputs.len() - 1] {
+                comma_separated.push_str(&format!("{}", input));
+                comma_separated.push_str(", ");
+            }
+            comma_separated.push_str(&format!("{}", &inputs[inputs.len() - 1]));
+            write!(f, "[{}]", comma_separated)
+        }
+    }
 }
 
 impl Deref for Inputs {

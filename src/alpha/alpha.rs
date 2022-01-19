@@ -52,14 +52,14 @@ impl Actor for Alpha {
             let hash = block::accept_genesis(&self.tree, genesis.clone()).unwrap();
             info!("accepted genesis => {:?}", hex::encode(hash));
             let genesis_state = self.state.apply(genesis).unwrap();
-            info!("{}", self.state.format());
             self.state = genesis_state;
+            info!("{}", self.state.format());
         } else {
             let (hash, genesis) = block::get_genesis(&self.tree).unwrap();
             info!("existing genesis => {:?}", hex::encode(hash));
             let genesis_state = self.state.apply(genesis).unwrap();
-            info!("{}", self.state.format());
             self.state = genesis_state;
+            info!("{}", self.state.format());
         }
     }
 }
