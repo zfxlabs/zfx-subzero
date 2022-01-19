@@ -69,7 +69,6 @@ async fn main() -> Result<()> {
 
     let cell_hash_vec = hex::decode(cell_hash).unwrap();
     let mut cell_hash_bytes = [0u8; 32];
-    let mut i = 0;
     for i in 0..32 {
         cell_hash_bytes[i] = cell_hash_vec[i];
     }
@@ -81,7 +80,7 @@ async fn main() -> Result<()> {
         )
         .await?
         {
-            info!("spendable: {:?}\n", cell_in.clone());
+            info!("spendable:\n{}\n", cell_in.clone());
             let transfer_op =
                 TransferOperation::new(cell_in.clone(), pkh.clone(), pkh.clone(), amount + 1);
             let transfer_tx = transfer_op.transfer(&keypair).unwrap();

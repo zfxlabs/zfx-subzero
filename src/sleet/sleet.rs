@@ -81,7 +81,7 @@ impl Sleet {
     /// Called for all newly discovered transactions.
     /// Returns `true` if the transaction haven't been encountered before
     fn on_receive_tx(&mut self, sleet_tx: SleetTx) -> Result<bool> {
-        let cell = sleet_tx.inner.clone();
+        let cell = sleet_tx.cell.clone();
         if !cell_storage::is_known_cell(&self.known_cells, cell.hash()).unwrap() {
             self.insert(sleet_tx.clone())?;
             let _ = cell_storage::insert_cell(&self.known_cells, cell.clone());
@@ -95,7 +95,7 @@ impl Sleet {
     // Vertices
 
     pub fn insert(&mut self, tx: SleetTx) -> Result<()> {
-        let cell = tx.inner.clone();
+        let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
         self.dag.insert_vx(cell.hash(), tx.parents.clone())?;
         Ok(())
@@ -339,7 +339,7 @@ impl Handler<QueryComplete> for Sleet {
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
-            let _ = self.live_cells.insert(msg.tx.hash(), msg.tx.inner.clone());
+            let _ = self.live_cells.insert(msg.tx.hash(), msg.tx.cell.clone());
 
             // The transaction or some of its ancestors may have become
             // accepted. Check this.
@@ -357,7 +357,7 @@ impl Handler<QueryComplete> for Sleet {
             }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        cell_storage::insert_cell(&self.queried_cells, msg.tx.inner.clone()).unwrap();
+        cell_storage::insert_cell(&self.queried_cells, msg.tx.cell.clone()).unwrap();
     }
 }
 
@@ -534,7 +534,7 @@ impl Handler<QueryTx> for Sleet {
         match self.is_strongly_preferred(msg.tx.hash()) {
             Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome },
             Err(e) => {
-                error!("[{}] Missing ancestor of {:?}: {}", "sleet".cyan(), msg.tx.inner, e);
+                error!("[{}] Missing ancestor of {:?}: {}", "sleet".cyan(), msg.tx.cell, e);
                 // FIXME We're voting against the tx w/o having enough information
                 QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome: false }
             }
@@ -650,6 +650,6 @@ mod test {
 
         // Coinbase transactions will all conflict, since `tx1` was inserted first it will
         // be the only preferred parent.
-        assert_eq!(sleet.select_parents(3).unwrap(), vec![stx1.inner.hash(),]);
+        assert_eq!(sleet.select_parents(3).unwrap(), vec![stx1.cell.hash(),]);
     }
 }
