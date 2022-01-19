@@ -24,7 +24,7 @@ impl SleetTx {
 
 impl std::fmt::Display for SleetTx {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let s = format!("{}", self.inner);
+        let s = format!("{:?}", self.inner);
         let mut ps = "".to_owned();
         for p in self.parents.iter() {
             let h = hex::encode(p);

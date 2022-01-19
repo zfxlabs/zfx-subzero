@@ -8,7 +8,7 @@ use crate::chain::alpha::state::Weight;
 use crate::chain::alpha::TxHash;
 use crate::client::Fanout;
 use crate::graph::DAG;
-use crate::hail::AcceptedTransactions;
+use crate::hail::AcceptedCells;
 use crate::protocol::{Request, Response};
 use crate::storage::cell as cell_storage;
 use crate::util;
@@ -39,7 +39,7 @@ pub struct Sleet {
     /// The client used to make external requests.
     sender: Recipient<Fanout>,
     /// Connection to Hail
-    hail_recipient: Recipient<AcceptedTransactions>,
+    hail_recipient: Recipient<AcceptedCells>,
     /// The identity of this validator.
     node_id: Id,
     /// The weighted validator set.
@@ -62,7 +62,7 @@ impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new(
         sender: Recipient<Fanout>,
-        hail_recipient: Recipient<AcceptedTransactions>,
+        hail_recipient: Recipient<AcceptedCells>,
         node_id: Id,
     ) -> Self {
         Sleet {
@@ -348,7 +348,7 @@ impl Handler<QueryComplete> for Sleet {
             match new_accepted {
                 Ok(new_accepted) => {
                     if !new_accepted.is_empty() {
-                        ctx.notify(NewAccepted { tx_hashes: new_accepted });
+                        ctx.notify(NewAccepted { cell_hashes: new_accepted });
                     }
                 }
                 Err(e) => {
@@ -365,20 +365,20 @@ impl Handler<QueryComplete> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
-    pub tx_hashes: Vec<TxHash>,
+    pub cell_hashes: Vec<TxHash>,
 }
 impl Handler<NewAccepted> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut txs = vec![];
-        for t in msg.tx_hashes.iter() {
+        let mut cells = vec![];
+        for cell_hash in msg.cell_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
-            let tx = alpha::get_tx(&self.known_txs, t).unwrap().unwrap();
-            info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx);
-            txs.push(tx);
+            let (_, cell) = cell_storage::get_cell(&self.known_cells, cell_hash).unwrap();
+            info!("[{}] transaction is accepted\n{:?}", "sleet".cyan(), cell);
+            cells.push(cell);
         }
-        self.hail_recipient.do_send(AcceptedTransactions { txs });
+        self.hail_recipient.do_send(AcceptedCells { cells });
     }
 }
 // Instead of having an infinite loop as per the paper which receives and processes
@@ -613,10 +613,10 @@ mod test {
         fn started(&mut self, _ctx: &mut Context<Self>) {}
     }
 
-    impl Handler<AcceptedTransactions> for HailMock {
+    impl Handler<AcceptedCells> for HailMock {
         type Result = ();
 
-        fn handle(&mut self, msg: AcceptedTransactions, ctx: &mut Context<Self>) -> Self::Result {
+        fn handle(&mut self, msg: AcceptedCells, ctx: &mut Context<Self>) -> Self::Result {
             ()
         }
     }
@@ -632,7 +632,7 @@ mod test {
         let genesis_tx = generate_coinbase(&root_kp, 1000);
         let genesis_cell_ids =
             CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
-        let mut sleet = Sleet::new(sender.recipient(), Id::zero());
+        let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero());
         sleet.conflict_graph = ConflictGraph::new(genesis_cell_ids);
 
         // Generate a genesis set of coins
