@@ -2,11 +2,11 @@ use super::router::Router;
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
 use crate::{Error, Result};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use actix::Addr;
 use actix_rt::net::TcpStream;
-use actix_service::{fn_service, ServiceFactoryExt as _};
+use actix_service::fn_service;
 
 use std::net::SocketAddr;
 
@@ -28,33 +28,39 @@ impl Server {
         let router = self.router.clone();
         info!("listening on {:?}", ip);
 
+		// Starts an actix server that listens fori ncoming connections.
+		// Default thread count is the number of logical cpus
+		// 
         actix_server::Server::build()
             .bind("listener", ip, move || {
                 let router = router.clone();
 
+				// creates a service process that runs for each incoming connection
                 fn_service(move |stream: TcpStream| {
                     let router = router.clone();
 
-                    async move {
-                        let mut channel: Channel<Response, Request> =
-                            Channel::wrap(stream).unwrap();
-                        let (mut sender, mut receiver) = channel.split();
-                        let request = receiver.recv().await.unwrap();
-                        match request.clone() {
-                            Some(request) => {
-                                let response = router.send(request.clone()).await.unwrap();
-                                //debug!("sending response = {:?}", response);
-                                sender.send(response).await.unwrap();
-                            }
-                            None => error!("received None"),
-                        }
-                        Ok(())
-                    }
+                    async move { Server::process_stream(stream, router).await }
                 })
-                .map_err(|err| Error::IO(err))
             })?
             .run()
             .await
             .map_err(|err| Error::IO(err))
+    }
+
+	// Processes the tcp stream and sends the request to the router
+    async fn process_stream(stream: TcpStream, router: Addr<Router>) -> Result<()> {
+        let mut channel: Channel<Response, Request> = Channel::wrap(stream).unwrap();
+        let (mut sender, mut receiver) = channel.split();
+        let request = receiver.recv().await.unwrap();
+        match request.clone() {
+            Some(request) => {
+                let response = router.send(request.clone()).await.unwrap();
+                //debug!("sending response = {:?}", response);
+                sender.send(response).await.unwrap();
+            }
+            None => error!("received None"),
+        }
+
+        Ok(())
     }
 }
