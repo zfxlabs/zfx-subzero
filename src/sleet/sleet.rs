@@ -9,7 +9,7 @@ use crate::graph::conflict_graph::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
 use crate::protocol::{Request, Response};
-use crate::storage::cell as cell_storage;
+use crate::storage::tx as tx_storage;
 use crate::util;
 
 use super::tx::Tx;
@@ -43,10 +43,10 @@ pub struct Sleet {
     node_id: Id,
     /// The weighted validator set.
     committee: HashMap<Id, (SocketAddr, Weight)>,
-    /// The set of all known cells in storage.
-    known_cells: sled::Db,
-    /// The set of all queried cells in storage.
-    queried_cells: sled::Db,
+    /// The set of all known transactions in storage.
+    known_txs: sled::Db,
+    /// The set of all queried transactions in storage.
+    queried_txs: sled::Db,
     /// The graph of conflicting transactions (potentially multi-input).
     conflict_graph: ConflictGraph,
     /// A mapping of a cell ids (inputs) to unspent cell outputs.
@@ -69,8 +69,8 @@ impl Sleet {
             hail_recipient,
             node_id,
             committee: HashMap::default(),
-            known_cells: sled::Config::new().temporary(true).open().unwrap(),
-            queried_cells: sled::Config::new().temporary(true).open().unwrap(),
+            known_txs: sled::Config::new().temporary(true).open().unwrap(),
+            queried_txs: sled::Config::new().temporary(true).open().unwrap(),
             conflict_graph: ConflictGraph::new(CellIds::empty()),
             live_cells: HashMap::default(),
             accepted_txs: HashSet::new(),
@@ -81,10 +81,9 @@ impl Sleet {
     /// Called for all newly discovered transactions.
     /// Returns `true` if the transaction haven't been encountered before
     fn on_receive_tx(&mut self, sleet_tx: Tx) -> Result<bool> {
-        let cell = sleet_tx.cell.clone();
-        if !cell_storage::is_known_cell(&self.known_cells, cell.hash()).unwrap() {
+        if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
             self.insert(sleet_tx.clone())?;
-            let _ = cell_storage::insert_cell(&self.known_cells, cell.clone());
+            let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
             Ok(true)
         } else {
             // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
@@ -97,7 +96,7 @@ impl Sleet {
     pub fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
-        self.dag.insert_vx(cell.hash(), tx.parents.clone())?;
+        self.dag.insert_vx(tx.hash(), tx.parents.clone())?;
         Ok(())
     }
 
@@ -339,7 +338,7 @@ impl Handler<QueryComplete> for Sleet {
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
-            let _ = self.live_cells.insert(msg.tx.hash(), msg.tx.cell.clone());
+            let _ = self.live_cells.insert(msg.tx.cell.hash(), msg.tx.cell.clone());
 
             // The transaction or some of its ancestors may have become
             // accepted. Check this.
@@ -347,7 +346,7 @@ impl Handler<QueryComplete> for Sleet {
             match new_accepted {
                 Ok(new_accepted) => {
                     if !new_accepted.is_empty() {
-                        ctx.notify(NewAccepted { cell_hashes: new_accepted });
+                        ctx.notify(NewAccepted { tx_hashes: new_accepted });
                     }
                 }
                 Err(e) => {
@@ -357,25 +356,25 @@ impl Handler<QueryComplete> for Sleet {
             }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        cell_storage::insert_cell(&self.queried_cells, msg.tx.cell.clone()).unwrap();
+        tx_storage::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
-    pub cell_hashes: Vec<CellHash>,
+    pub tx_hashes: Vec<TxHash>,
 }
 impl Handler<NewAccepted> for Sleet {
     type Result = ();
 
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         let mut cells = vec![];
-        for cell_hash in msg.cell_hashes.iter().cloned() {
+        for tx_hash in msg.tx_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
-            let (_, cell) = cell_storage::get_cell(&self.known_cells, cell_hash).unwrap();
-            info!("[{}] transaction is accepted\n{}", "sleet".cyan(), cell);
-            cells.push(cell);
+            let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
+            info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
+            cells.push(tx.cell);
         }
         self.hail_recipient.do_send(AcceptedCells { cells });
     }
@@ -468,9 +467,9 @@ impl Handler<GenerateTx> for Sleet {
     type Result = GenerateTxAck;
 
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] Generating new transaction\n{:?}", "sleet".cyan(), msg.cell.clone());
         let parents = self.select_parents(NPARENTS).unwrap();
         let sleet_tx = Tx::new(parents, msg.cell.clone());
+        info!("[{}] Generating new transaction\n{}", "sleet".cyan(), sleet_tx.clone());
 
         match self.on_receive_tx(sleet_tx.clone()) {
             Ok(true) => {
@@ -481,9 +480,9 @@ impl Handler<GenerateTx> for Sleet {
 
             Err(e) => {
                 error!(
-                    "[{}] Couldn't insert new transaction {:?}:\n {}",
+                    "[{}] Couldn't insert new transaction\n{}:\n {}",
                     "sleet".cyan(),
-                    msg.cell,
+                    sleet_tx,
                     e
                 );
                 GenerateTxAck { cell_hash: None }
@@ -534,7 +533,7 @@ impl Handler<QueryTx> for Sleet {
         match self.is_strongly_preferred(msg.tx.hash()) {
             Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome },
             Err(e) => {
-                error!("[{}] Missing ancestor of {:?}: {}", "sleet".cyan(), msg.tx.cell, e);
+                error!("[{}] Missing ancestor of {}\n {}", "sleet".cyan(), msg.tx, e);
                 // FIXME We're voting against the tx w/o having enough information
                 QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome: false }
             }
