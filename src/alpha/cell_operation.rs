@@ -20,16 +20,11 @@ pub fn consume_from_cell(cell: &Cell, amount: Capacity, owner_key: &Keypair) -> 
     let encoded_public = bincode::serialize(&owner_key.public)?;
     let pkh = blake3::hash(&encoded_public).as_bytes().clone();
 
-    let mut owned_outputs = vec![];
-    for output in cell.outputs().iter() {
+    let owned_outputs = cell.outputs_of_owner(&pkh);
+    for output in owned_outputs.iter() {
         // Validate the output to make sure it has the right form.
         let () = output.validate_capacity()?;
-        let () = validate_output(output.clone())?;
-        if output.lock == pkh.clone() {
-            owned_outputs.push(output.clone());
-        } else {
-            continue;
-        }
+        let () = validate_output(&output)?;
     }
     validate_capacity(&owned_outputs, amount, FEE)?;
 
@@ -64,7 +59,7 @@ pub fn consume_from_cell(cell: &Cell, amount: Capacity, owner_key: &Keypair) -> 
 }
 
 /// Checks that the output has the right form.
-pub fn validate_output(output: Output) -> Result<()> {
+pub fn validate_output(output: &Output) -> Result<()> {
     match output.cell_type {
         CellType::Coinbase => {
             let _: CoinbaseState = bincode::deserialize(&output.data)?;
@@ -82,7 +77,7 @@ pub fn validate_output(output: Output) -> Result<()> {
 }
 
 /// Checks that the capacity is > 0 and does not exceed the sum of the outputs.
-pub fn validate_capacity(outputs: &Vec<Output>, capacity: Capacity, fee: u64) -> Result<()> {
+pub fn validate_capacity(outputs: &Vec<&Output>, capacity: Capacity, fee: u64) -> Result<()> {
     let total: u64 = outputs.iter().map(|o| o.capacity).sum();
     if capacity == 0 {
         return Err(Error::ZeroTransfer);
