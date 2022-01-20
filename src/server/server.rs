@@ -23,14 +23,13 @@ impl Server {
         Server { ip, router }
     }
 
+    // Starts an actix server that listens fori ncoming connections.
+    // Default thread count is the number of logical cpus
     pub async fn listen(&self) -> Result<()> {
         let ip = self.ip.clone();
         let router = self.router.clone();
         info!("listening on {:?}", ip);
 
-        // Starts an actix server that listens fori ncoming connections.
-        // Default thread count is the number of logical cpus
-        //
         actix_server::Server::build()
             .bind("listener", ip, move || {
                 let router = router.clone();
