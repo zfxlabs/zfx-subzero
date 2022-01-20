@@ -25,6 +25,7 @@ pub enum Error {
     Cell(cell::Error),
     Graph(graph::Error),
     // Operations
+    UnspendableCell,
     ExceedsAvailableFunds,
     ZeroTransfer,
     ZeroStake,
