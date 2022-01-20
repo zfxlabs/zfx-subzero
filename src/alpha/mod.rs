@@ -9,6 +9,7 @@ pub mod block;
 
 pub mod state;
 
+pub mod cell_operation;
 mod initial_staker;
 
 pub use alpha::*;
