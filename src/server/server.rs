@@ -30,13 +30,23 @@ impl Server {
         let router = self.router.clone();
         info!("listening on {:?}", ip);
 
+		// Starts an actix server that listens fori ncoming connections.
+		// Default thread count is the number of logical cpus
+		// 
         actix_server::Server::build()
             .bind("listener", ip, move || {
                 let router = router.clone();
 
+<<<<<<< HEAD
                 // creates a service process that runs for each incoming connection
                 fn_service(move |stream: TcpStream| {
                     let router = router.clone();
+=======
+				// creates a service process that runs for each incoming connection
+                fn_service(move |stream: TcpStream| {
+                    let router = router.clone();
+
+>>>>>>> c12f338 (inner closure moved from fn_service)
                     async move { Server::process_stream(stream, router).await }
                 })
             })?
@@ -45,7 +55,11 @@ impl Server {
             .map_err(|err| Error::IO(err))
     }
 
+<<<<<<< HEAD
     // Processes the tcp stream and sends the request to the router
+=======
+	// Processes the tcp stream and sends the request to the router
+>>>>>>> c12f338 (inner closure moved from fn_service)
     async fn process_stream(stream: TcpStream, router: Addr<Router>) -> Result<()> {
         let mut channel: Channel<Response, Request> = Channel::wrap(stream).unwrap();
         let (mut sender, mut receiver) = channel.split();
