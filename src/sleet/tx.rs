@@ -1,4 +1,4 @@
-use crate::alpha::TxHash;
+use crate::alpha::types::TxHash;
 use crate::cell::Cell;
 
 use crate::colored::Colorize;

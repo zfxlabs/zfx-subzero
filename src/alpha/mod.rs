@@ -1,5 +1,5 @@
 mod alpha;
-mod types;
+pub mod types;
 
 pub mod coinbase;
 pub mod stake;
@@ -13,7 +13,6 @@ pub mod cell_operation;
 mod initial_staker;
 
 pub use alpha::*;
-pub use types::*;
 
 use crate::cell;
 use crate::graph;

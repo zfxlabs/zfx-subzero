@@ -1,6 +1,6 @@
 use super::{Error, Result};
 
-use crate::alpha::TxHash;
+use crate::alpha::types::TxHash;
 use crate::sleet::tx::Tx;
 
 use zerocopy::{AsBytes, FromBytes, Unaligned};

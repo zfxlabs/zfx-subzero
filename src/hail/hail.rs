@@ -1,8 +1,8 @@
 use crate::zfx_id::Id;
 use zfx_sortition::sortition;
 
-use crate::alpha::block::{Block, BlockHash, BlockHeight, VrfOutput};
-use crate::alpha::Weight;
+use crate::alpha::block::Block;
+use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
 use crate::cell::Cell;
 use crate::client::Fanout;
 use crate::colored::Colorize;
@@ -72,6 +72,12 @@ impl Hail {
             dag: DAG::new(),
         }
     }
+
+    // /// Called for blocks which are received via consensus queries.
+    // /// Returns `true` if the block hasn't been encountered before.
+    // fn on_receive_block(&mut self, hail_block: HailBlock) -> Result<bool> {
+
+    // }
 
     // Branch preference
 
@@ -282,36 +288,6 @@ impl Handler<FreshBlock> for Hail {
     }
 }
 
-// Receiving blocks. The difference between receiving blocks and receiving a block query
-// is that `ReceiveBlock` is used when we are the block producer generating a new block
-// whereas a `QueryBlock` is used when receiving a block query from another validator.
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "ReceiveBlockAck")]
-pub struct ReceiveBlock {
-    pub block: Block,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct ReceiveBlockAck;
-
-impl Handler<ReceiveBlock> for Hail {
-    type Result = ReceiveBlockAck;
-
-    fn handle(&mut self, msg: ReceiveBlock, ctx: &mut Context<Self>) -> Self::Result {
-        let block = msg.block.clone();
-        //if !alpha::is_known_block(&self.known_blocks, block.hash()).unwrap() {
-        info!("[{}] received new block {:?}", "hail".cyan(), block.clone());
-
-        // let parents = self.select_parents(NPARENTS).unwrap();
-        // self.insert(HailBlock::new(parents, block.clone())).unwrap();
-        // alpha::insert_block(&self.known_blocks, block.clone()).unwrap();
-        // ctx.notify(FreshBlock { block: block.clone() });
-        // }
-        ReceiveBlockAck {}
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryBlockAck")]
 pub struct QueryBlock {
@@ -329,7 +305,8 @@ impl Handler<QueryBlock> for Hail {
     type Result = QueryBlockAck;
 
     fn handle(&mut self, msg: QueryBlock, ctx: &mut Context<Self>) -> Self::Result {
-        let block = msg.block.clone();
+        let block_hash = msg.block.hash().unwrap();
+        info!("[{}] received query for block {}", "hail".blue(), hex::encode(block_hash));
 
         // FIXME: If we are in the middle of querying this transaction, wait until a
         // decision or a synchronous timebound is reached on attempts.

@@ -1,16 +1,13 @@
 use super::coinbase::CoinbaseOperation;
 use super::initial_staker::genesis_stakers;
 use super::stake::StakeOperation;
+use super::types::{BlockHash, BlockHeight, VrfOutput};
 use super::Result;
 use crate::cell::Cell;
 
 use std::convert::TryInto;
 
-pub type BlockHash = [u8; 32];
-pub type BlockHeight = u64;
-pub type VrfOutput = [u8; 32];
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Block {
     pub predecessor: Option<BlockHash>,
     pub height: BlockHeight,
