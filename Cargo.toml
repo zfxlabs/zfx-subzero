@@ -46,3 +46,4 @@ base58check = "*"
 
 [features]
 integration_tests = []
+hail_test = []
