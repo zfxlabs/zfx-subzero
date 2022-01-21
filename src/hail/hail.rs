@@ -17,7 +17,7 @@ use super::conflict_set::ConflictSet;
 use super::vertex::Vertex;
 use super::{Error, Result};
 
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use actix::{Actor, AsyncContext, Context, Handler, Recipient, ResponseFuture};
 use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
@@ -33,6 +33,8 @@ const BETA2: u8 = 20;
 
 /// Hail is a Snow* based consensus for blocks.
 pub struct Hail {
+    /// The current block height.
+    height: BlockHeight,
     /// The client used to make external requests.
     sender: Recipient<Fanout>,
     /// The identity of this validator.
@@ -45,10 +47,16 @@ pub struct Hail {
     queried_blocks: sled::Db,
     /// The map of conflicting blocks at a particular height
     conflict_map: ConflictMap,
+    /// A mapping of block hashes to live blocks.
+    live_blocks: HashMap<BlockHash, Block>,
     /// The map contains vertices (height, block hash) which are already accepted
     accepted_vertices: HashSet<Vertex>,
     /// The consensus graph.
     dag: DAG<Vertex>,
+    /// The block production vrf (a vrf for `height + 1` if we are the next block producer).
+    block_production_slot: Option<VrfOutput>,
+    /// Whether we have already proposed a block at this height.
+    block_proposed: bool,
 }
 
 impl Hail {
@@ -56,14 +64,18 @@ impl Hail {
     /// blocks yet to become final.
     pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
         Hail {
+            height: 0,
             sender,
             node_id,
             committee: HashMap::default(),
             known_blocks: sled::Config::new().temporary(true).open().unwrap(),
             queried_blocks: sled::Config::new().temporary(true).open().unwrap(),
             conflict_map: ConflictMap::new(),
+            live_blocks: HashMap::default(),
             accepted_vertices: HashSet::new(),
             dag: DAG::new(),
+            block_production_slot: None,
+            block_proposed: false,
         }
     }
 
@@ -82,12 +94,10 @@ impl Hail {
     // Vertices
 
     pub fn insert(&mut self, block: HailBlock) -> Result<()> {
-        let inner_block = block.block.clone();
-        let height = inner_block.height.clone();
-        let block_hash = block.hash()?;
-        let vertex = Vertex::new(height, block_hash);
+        let inner_block = block.inner();
+        let vertex = block.vertex().unwrap();
         self.conflict_map.insert_block(inner_block.clone())?;
-        self.dag.insert_vx(vertex, vec![block.parent.clone()])?;
+        self.dag.insert_vx(vertex, vec![block.parent()])?;
         Ok(())
     }
 
@@ -109,19 +119,19 @@ impl Hail {
 
     /// Starts at the live edges (the leaf nodes) of the `DAG` and does a depth first
     /// search until a preferrential parent with height = `h - 1` is found.
-    pub fn select_parent(&mut self, h: BlockHeight) -> Result<Option<Vertex>> {
+    pub fn select_parent(&mut self, h: BlockHeight) -> Result<Vertex> {
         if self.dag.is_empty() {
-            return Ok(None);
+            return Err(Error::EmptyDAG);
         }
         let leaves = self.dag.leaves();
         for leaf in leaves {
             for vx in self.dag.dfs(&leaf) {
                 if self.is_strongly_preferred(vx.clone())? && vx.height == h {
-                    return Ok(Some(vx.clone()));
+                    return Ok(vx.clone());
                 }
             }
         }
-        Ok(None)
+        Err(Error::InvalidParent)
     }
 
     // Ancestral Preference
@@ -298,7 +308,7 @@ impl Handler<LiveCommittee> for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
-    pub block: Block,
+    pub block: HailBlock,
     pub acks: Vec<Response>,
 }
 
@@ -313,7 +323,7 @@ impl Handler<QueryIncomplete> for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryComplete {
-    pub block: Block,
+    pub block: HailBlock,
     pub acks: Vec<Response>,
 }
 
@@ -335,13 +345,17 @@ impl Handler<QueryComplete> for Hail {
         }
         // if yes: set_chit(tx, 1), update ancestral preferences
         if util::sum_outcomes(outcomes) > ALPHA {
-            let vx = Vertex::new(msg.block.height, msg.block.hash().unwrap());
-            self.dag.set_chit(vx, 1).unwrap();
-            // self.update_ancestral_preference(msg.block.hash()).unwrap();
+            let vx = msg.block.vertex().unwrap();
+            self.dag.set_chit(vx.clone(), 1).unwrap();
+            self.update_ancestral_preference(vx.clone()).unwrap();
             info!("[{}] query complete, chit = 1", "hail".blue());
+            // Let `hail` know that this block can now be built upon
+            let _ = self.live_blocks.insert(vx.block_hash.clone(), msg.block.inner());
+
+            // TODO: The block or some of its ancestors may have become accepted. Check this.
         }
         // if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        // alpha::insert_block(&self.queried_blocks, msg.block.clone()).unwrap();
+        block_storage::insert_block(&self.queried_blocks, msg.block.clone()).unwrap();
     }
 }
 
@@ -352,7 +366,7 @@ impl Handler<QueryComplete> for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 pub struct FreshBlock {
-    pub block: Block,
+    pub block: HailBlock,
 }
 
 impl Handler<FreshBlock> for Hail {
@@ -398,7 +412,7 @@ impl Handler<FreshBlock> for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryBlockAck")]
 pub struct QueryBlock {
-    pub block: Block,
+    pub block: HailBlock,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -412,13 +426,93 @@ impl Handler<QueryBlock> for Hail {
     type Result = QueryBlockAck;
 
     fn handle(&mut self, msg: QueryBlock, ctx: &mut Context<Self>) -> Self::Result {
-        let block_hash = msg.block.hash().unwrap();
-        info!("[{}] received query for block {}", "hail".blue(), hex::encode(block_hash));
+        let vx = msg.block.vertex().unwrap();
+        info!(
+            "[{}] received query for block {}",
+            "hail".blue(),
+            hex::encode(vx.block_hash.clone())
+        );
+        match self.on_receive_block(msg.block.clone()) {
+            Ok(true) => ctx.notify(FreshBlock { block: msg.block.clone() }),
+            Ok(false) => (),
+            Err(e) => {
+                error!("[{}] failed to receive block {:?}: {}", "hail".blue(), msg.block, e);
+            }
+        }
+        // FIXME: If we are in the middle of querying this block, wait until a decision or a
+        // synchronous timebound is reached on attempts.
+        match self.is_strongly_preferred(vx.clone()) {
+            Ok(outcome) => {
+                QueryBlockAck { id: self.node_id, block_hash: vx.block_hash.clone(), outcome }
+            }
+            Err(e) => {
+                error!("[{}] Missing ancestor or {}\n {}", "hail".blue(), msg.block, e);
+                // FIXME: We're voting against the block w/o enough information
+                QueryBlockAck {
+                    id: self.node_id,
+                    block_hash: vx.block_hash.clone(),
+                    outcome: false,
+                }
+            }
+        }
+    }
+}
 
-        // FIXME: If we are in the middle of querying this transaction, wait until a
-        // decision or a synchronous timebound is reached on attempts.
-        // let outcome = self.is_strongly_preferred(msg.block.hash()).unwrap();
-        QueryBlockAck { id: self.node_id, block_hash: msg.block.hash().unwrap(), outcome: false }
+// Allow clients to fetch blocks for testing.
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "BlockAck")]
+pub struct GetBlock {
+    pub block_hash: BlockHash,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct BlockAck {
+    pub block: Option<Block>,
+}
+
+impl Handler<GetBlock> for Hail {
+    type Result = BlockAck;
+
+    fn handle(&mut self, msg: GetBlock, _ctx: &mut Context<Self>) -> Self::Result {
+        BlockAck { block: self.live_blocks.get(&msg.block_hash).map(|x| x.clone()) }
+    }
+}
+
+// Generate blocks
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "GenerateBlockAck")]
+pub struct GenerateBlock {
+    pub block: Block,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct GenerateBlockAck {
+    /// hash of applied transaction
+    pub block_hash: Option<BlockHash>,
+}
+
+impl Handler<GenerateBlock> for Hail {
+    type Result = GenerateBlockAck;
+
+    fn handle(&mut self, msg: GenerateBlock, ctx: &mut Context<Self>) -> Self::Result {
+        let parent = self.select_parent(msg.block.height).unwrap();
+        let hail_block = HailBlock::new(parent, msg.block.clone());
+        info!("[{}] generating new block\n{}", "hail".blue(), hail_block.clone());
+
+        match self.on_receive_block(hail_block.clone()) {
+            Ok(true) => {
+                ctx.notify(FreshBlock { block: hail_block });
+                GenerateBlockAck { block_hash: Some(msg.block.hash().unwrap()) }
+            }
+            Ok(false) => GenerateBlockAck { block_hash: None },
+
+            Err(e) => {
+                error!("[{}] couldn't insert new block\n{}:\n {}", "hail".blue(), hail_block, e);
+                GenerateBlockAck { block_hash: None }
+            }
+        }
     }
 }
 
@@ -433,6 +527,17 @@ impl Handler<AcceptedCells> for Hail {
 
     fn handle(&mut self, msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
-        // TODO ...
+
+        match self.block_production_slot {
+            Some(vrf_output) => {
+                // If we are the block producer at height `h + 1` then generate a new block with the
+                // accepted cells.
+            }
+            None =>
+            // If we are not a block producer then do nothing with the accepted cells.
+            {
+                ()
+            }
+        }
     }
 }
