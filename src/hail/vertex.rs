@@ -1,0 +1,13 @@
+use crate::alpha::types::{BlockHash, BlockHeight};
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct Vertex {
+    pub height: BlockHeight,
+    pub block_hash: BlockHash,
+}
+
+impl Vertex {
+    pub fn new(height: BlockHeight, block_hash: BlockHash) -> Self {
+        Vertex { height, block_hash }
+    }
+}

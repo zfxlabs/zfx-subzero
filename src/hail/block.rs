@@ -1,3 +1,4 @@
+use super::vertex::Vertex;
 use super::{Error, Result};
 use crate::alpha::block::Block;
 use crate::alpha::types::BlockHash;
@@ -5,13 +6,13 @@ use crate::alpha::types::BlockHash;
 /// The `HailBlock` is a consensus specific representation of a block which contains a real block.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HailBlock {
-    pub parents: Vec<BlockHash>,
+    pub parent: Vertex,
     pub block: Block,
 }
 
 impl HailBlock {
-    pub fn new(parents: Vec<BlockHash>, block: Block) -> Self {
-        HailBlock { parents, block }
+    pub fn new(parent: Vertex, block: Block) -> Self {
+        HailBlock { parent, block }
     }
 
     /// Returns the hash of the inner block.

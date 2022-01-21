@@ -37,7 +37,7 @@ pub fn insert_tx(db: &sled::Db, tx: Tx) -> Result<Option<sled::IVec>> {
     }
 }
 
-/// Fetches the genesis block (the first block in the database).
+/// Fetches a transaction.
 pub fn get_tx(db: &sled::Db, tx_hash: TxHash) -> Result<(TxHash, Tx)> {
     let key = Key::new(tx_hash);
     match db.get(key.as_bytes()) {
