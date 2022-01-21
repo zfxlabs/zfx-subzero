@@ -2,7 +2,7 @@ use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tokio::net::tcp::{ReadHalf, WriteHalf};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio_serde::formats::*;
 use tokio_serde::Framed;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
