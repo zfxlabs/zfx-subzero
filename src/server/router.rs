@@ -1,11 +1,12 @@
-use crate::chain::{alpha, alpha::Alpha};
 use crate::ice::Ice;
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
 use crate::view::View;
+use crate::{alpha, alpha::Alpha};
 
 use tracing::{debug, error, info};
 
+use crate::sleet;
 use actix::{Actor, Addr, Context, Handler, ResponseFuture};
 
 pub struct Router {
@@ -56,16 +57,21 @@ impl Handler<Request> for Router {
                     let last_accepted = alpha.send(alpha::GetLastAccepted).await.unwrap();
                     Response::LastAccepted(last_accepted)
                 }
-                // Sleet external requests
-                Request::GetTx(get_tx) => {
-                    debug!("routing GetTx -> Sleet");
-                    let tx_ack = sleet.send(get_tx).await.unwrap();
-                    Response::TxAck(tx_ack)
+                Request::GetCellHashes => {
+                    debug!("routing GetCellHashes -> Alpha");
+                    let cell_hashes = sleet.send(sleet::GetCellHashes).await.unwrap();
+                    Response::CellHashes(cell_hashes)
                 }
-                Request::ReceiveTx(receive_tx) => {
-                    debug!("routing ReceiveTx -> Sleet");
-                    let receive_tx_ack = sleet.send(receive_tx).await.unwrap();
-                    Response::ReceiveTxAck(receive_tx_ack)
+                // Sleet external requests
+                Request::GetCell(get_cell) => {
+                    debug!("routing GetCell -> Sleet");
+                    let cell_ack = sleet.send(get_cell).await.unwrap();
+                    Response::CellAck(cell_ack)
+                }
+                Request::GenerateTx(generate_tx) => {
+                    debug!("routing GenerateTx -> Sleet");
+                    let receive_tx_ack = sleet.send(generate_tx).await.unwrap();
+                    Response::GenerateTxAck(receive_tx_ack)
                 }
                 Request::QueryTx(query_tx) => {
                     debug!("routing QueryTx -> Sleet");

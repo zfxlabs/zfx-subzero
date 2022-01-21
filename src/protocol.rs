@@ -1,4 +1,5 @@
-use crate::chain::alpha;
+use crate::alpha;
+use crate::alpha::TxHash;
 use crate::hail;
 use crate::ice;
 use crate::sleet;
@@ -14,9 +15,11 @@ pub enum Request {
     // Chain Bootstrapping
     GetLastAccepted,
     GetAncestors,
+    // State
+    GetCellHashes,
     // Sleet
-    GetTx(sleet::GetTx),
-    ReceiveTx(sleet::ReceiveTx),
+    GetCell(sleet::GetCell),
+    GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     // Hail
     QueryBlock(hail::QueryBlock),
@@ -31,9 +34,10 @@ pub enum Response {
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,
+    CellHashes(sleet::CellHashes),
     // Sleet
-    TxAck(sleet::TxAck),
-    ReceiveTxAck(sleet::ReceiveTxAck),
+    CellAck(sleet::CellAck),
+    GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     // Hail
     QueryBlockAck(hail::QueryBlockAck),
