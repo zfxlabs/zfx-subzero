@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[cfg(feature = "integration_tests")]
 mod integration_test {
     use crate::alpha::stake::StakeOperation;
     use crate::cell::inputs::Input;
