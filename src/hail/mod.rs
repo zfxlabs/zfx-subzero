@@ -20,8 +20,10 @@ pub enum Error {
     InvalidBlock(Block),
     InvalidBlockHash(BlockHash),
     InvalidBlockHeight(BlockHeight),
+    InvalidParent,
     InvalidConflictSet,
     InsufficientWeight,
+    EmptyDAG,
 }
 
 impl std::error::Error for Error {}
