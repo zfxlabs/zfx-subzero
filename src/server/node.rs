@@ -1,13 +1,9 @@
-use std::collections::HashSet;
 use std::io::{BufReader, Read, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::Path;
-use std::thread;
 
 use crate::alpha::Alpha;
 use actix::{Actor, Arbiter};
-use actix_rt::System;
-use clap::{value_t, values_t, App, Arg};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 use tracing::info;
@@ -123,7 +119,7 @@ fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
     std::fs::create_dir_all(&tmp_dir).expect(&format!("Couldn't create directory: {}", tmp_dir));
     let keypair_path = vec![&tmp_dir[..], "/", &node_id, ".keypair"].concat();
     match std::fs::File::open(keypair_path.clone()) {
-        Ok(mut file) => {
+        Ok(file) => {
             let mut buf_reader = BufReader::new(file);
             let mut contents = String::new();
             buf_reader.read_to_string(&mut contents)?;

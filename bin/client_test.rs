@@ -3,8 +3,6 @@ use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
-use zfx_subzero::version;
-use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
@@ -16,10 +14,6 @@ use tracing::info;
 use tracing_subscriber;
 
 use clap::{value_t, App, Arg};
-
-fn id_from_ip(ip: &SocketAddr) -> Id {
-    Id::new(format!("{:?}", ip.clone()).as_bytes())
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -91,8 +85,8 @@ async fn main() -> Result<()> {
             )
             .await?
             {
-                Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(hash) })) => {
-                    // info!("Ack hash: {}", hex::encode(hash))
+                Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(_hash) })) => {
+                    // info!("Ack hash: {}", hex::encode(_hash))
                 }
                 other => panic!("Unexpected: {:?}", other),
             }
