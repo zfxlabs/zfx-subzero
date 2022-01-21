@@ -135,10 +135,7 @@ impl Handler<GossipQuery> for DisseminationComponent {
         let rumours_limit = ((msg.network_size as f64).log2()).ceil() as usize;
         let r = Rumours { rumours: self.rumours.take_n(GOSSIP_LIMIT) };
         let deleted = self.rumours.cleanup(rumours_limit);
-        info!(
-            "{}",
-            format!("<<{} {}>>", deleted.to_string().green(), "rumours disseminated".cyan())
-        );
+        info!("<<{} {}>>", deleted.to_string().green(), "rumours disseminated".cyan());
         r
     }
 }
