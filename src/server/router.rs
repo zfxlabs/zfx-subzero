@@ -25,7 +25,7 @@ impl Router {
 impl Actor for Router {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!("router> started");
     }
 }
@@ -33,7 +33,7 @@ impl Actor for Router {
 impl Handler<Request> for Router {
     type Result = ResponseFuture<Response>;
 
-    fn handle(&mut self, msg: Request, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
         let view = self.view.clone();
         let ice = self.ice.clone();
         let alpha = self.alpha.clone();

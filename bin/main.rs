@@ -1,18 +1,10 @@
 use tracing::info;
 use tracing_subscriber;
-use zfx_subzero::{server, Result};
 
 use clap::{value_t, values_t, App, Arg};
 
-use ed25519_dalek::Keypair;
-use rand::rngs::OsRng;
-
-use std::collections::HashSet;
-use std::io::{BufReader, Read, Write};
-use std::net::SocketAddr;
-use std::path::Path;
-
 use zfx_subzero::server::node;
+use zfx_subzero::Result;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -62,7 +54,7 @@ fn main() -> Result<()> {
 
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(listener_ip, bootstrap_ips, keypair);
+        node::run(listener_ip, bootstrap_ips, keypair).unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;

@@ -376,7 +376,7 @@ impl Handler<NewAccepted> for Sleet {
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
         }
-        self.hail_recipient.do_send(AcceptedCells { cells });
+        let _ = self.hail_recipient.do_send(AcceptedCells { cells });
     }
 }
 // Instead of having an infinite loop as per the paper which receives and processes
