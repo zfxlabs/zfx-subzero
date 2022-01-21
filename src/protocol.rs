@@ -1,5 +1,5 @@
 use crate::alpha;
-use crate::alpha::TxHash;
+use crate::alpha::types::TxHash;
 use crate::hail;
 use crate::ice;
 use crate::sleet;

@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use rand::seq::SliceRandom;
 
-use crate::alpha::Weight;
+use crate::alpha::types::Weight;
 use crate::zfx_id::Id;
 
 /// Compute the `hail` consensus weight based on the number of tokens a validator has.

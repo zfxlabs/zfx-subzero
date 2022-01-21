@@ -1,5 +1,6 @@
 use super::{Error, Result};
-use crate::alpha::block::{Block, BlockHash, BlockHeight};
+use crate::alpha::block::Block;
+use crate::alpha::types::{BlockHash, BlockHeight};
 
 use byteorder::BigEndian;
 use zerocopy::{byteorder::U64, AsBytes, FromBytes, Unaligned};

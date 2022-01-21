@@ -2,12 +2,13 @@ use super::{Error, Result};
 
 use super::conflict_set::ConflictSet;
 
-use crate::alpha::block::{Block, BlockHash, BlockHeight};
+use crate::alpha::block::Block;
+use crate::alpha::types::{BlockHash, BlockHeight};
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 pub struct ConflictMap {
-    inner: HashMap<BlockHeight, ConflictSet<BlockHash>>,
+    inner: HashMap<BlockHeight, ConflictSet>,
 }
 
 impl ConflictMap {
@@ -46,17 +47,17 @@ impl ConflictMap {
         }
     }
 
-    pub fn insert_block(&mut self, block: Block) -> ConflictSet<BlockHash> {
+    pub fn insert_block(&mut self, block: Block) -> ConflictSet {
         match self.inner.entry(block.height.clone()) {
             // The conflict set already contains a conflict.
             Entry::Occupied(mut o) => {
                 let cs = o.get_mut();
-                cs.conflicts.insert(block.hash().unwrap());
+                let block_hash = block.hash().unwrap();
+                cs.conflicts.insert(block_hash.clone());
                 // If the confidence is still 0 and the lowest hash in the set is this block hash,
                 // then prefer this block.
-                if cs.cnt == 0 {
-                    // && cs.lowest_hash() == block.hash() {
-                    cs.pref = block.hash().unwrap();
+                if cs.cnt == 0 && cs.is_lowest_hash(block_hash.clone()) {
+                    cs.pref = block_hash;
                 }
                 cs.clone()
             }

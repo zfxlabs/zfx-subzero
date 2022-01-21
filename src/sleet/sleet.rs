@@ -1,7 +1,7 @@
 use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
-use crate::alpha::{TxHash, Weight};
+use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::{CellHash, PublicKeyHash};
 use crate::cell::{Cell, CellIds};
 use crate::client::Fanout;
@@ -153,7 +153,7 @@ impl Sleet {
             let d1 = self.dag.conviction(tx_hash.clone())?;
             let d2 = self.dag.conviction(pref)?;
             // update the conflict set at this tx
-            self.conflict_graph.update_conflict_set(tx_hash, d1, d2)?;
+            self.conflict_graph.update_conflict_set(&tx_hash, d1, d2)?;
         }
         Ok(())
     }

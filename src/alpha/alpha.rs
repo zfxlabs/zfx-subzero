@@ -11,8 +11,9 @@ use crate::{ice, ice::Ice};
 
 use crate::storage::block;
 
-use super::block::{build_genesis, BlockHash};
+use super::block::build_genesis;
 use super::state::State;
+use super::types::BlockHash;
 
 use tracing::{debug, info};
 
