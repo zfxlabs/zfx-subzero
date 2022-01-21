@@ -1,4 +1,5 @@
 # zfx-subzero
+![Build](https://github.com/zfxlabs/zfx-subzero/actions/workflows/main.yml/badge.svg?branch=main)
 
 The `zfx-subzero` project is a unification of the core products which `zero.fx` has been working on throughout the year into a unified whole.
 
