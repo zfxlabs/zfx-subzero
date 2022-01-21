@@ -7,7 +7,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 use crate::alpha::transfer::TransferOperation;
-use crate::cell::types::{CellHash};
+use crate::cell::types::CellHash;
 use crate::cell::Cell;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode};
 use crate::protocol::Response;

@@ -3,12 +3,12 @@ use crate::alpha::coinbase::CoinbaseState;
 use crate::alpha::stake::StakeState;
 use crate::alpha::transfer::TransferState;
 use crate::cell::inputs::Input;
+use crate::cell::inputs::Inputs;
 use crate::cell::outputs::Output;
 use crate::cell::types::{Capacity, FEE};
 use crate::cell::{Cell, CellType};
 use ed25519_dalek::Keypair;
 use std::collections::HashMap;
-use crate::cell::inputs::Inputs;
 
 pub struct ConsumeResult {
     pub consumed: Capacity,
@@ -16,7 +16,11 @@ pub struct ConsumeResult {
     pub inputs: Vec<Input>,
 }
 
-pub fn consume_from_cell(cell: &Cell, amount: Capacity, owner_key: &Keypair) -> Result<ConsumeResult> {
+pub fn consume_from_cell(
+    cell: &Cell,
+    amount: Capacity,
+    owner_key: &Keypair,
+) -> Result<ConsumeResult> {
     let encoded_public = bincode::serialize(&owner_key.public)?;
     let pkh = blake3::hash(&encoded_public).as_bytes().clone();
 
@@ -60,7 +64,7 @@ pub fn consume_from_cell(cell: &Cell, amount: Capacity, owner_key: &Keypair) -> 
         return Err(Error::UnspendableCell);
     }
 
-    Ok(ConsumeResult { consumed, residue, inputs})
+    Ok(ConsumeResult { consumed, residue, inputs })
 }
 
 /// Checks that the output has the right form.

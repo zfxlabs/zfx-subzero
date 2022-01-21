@@ -180,9 +180,10 @@ impl Handler<LiveNetwork> for Alpha {
                 // Send `hail` the live committee information for querying blocks.
                 let () = hail_addr
                     .send(hail::LiveCommittee {
-                        self_id: self_id.clone(),
                         height: state.height,
-                        total_stake: state.total_staking_capacity,
+                        self_id: self_id.clone(),
+                        self_staking_capacity: committee.self_staking_capacity.clone(),
+                        total_staking_capacity: state.total_staking_capacity,
                         validators: committee.hail_validators.clone(),
                         vrf_out,
                     })
