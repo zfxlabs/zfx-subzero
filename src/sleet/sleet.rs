@@ -18,7 +18,7 @@ use super::{Error, Result};
 use tracing::{debug, error, info};
 
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture};
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -566,6 +566,7 @@ mod test {
     use crate::alpha::transfer::TransferOperation;
     use crate::cell::Cell;
 
+    use actix::ResponseFuture;
     use ed25519_dalek::Keypair;
     use rand::{rngs::OsRng, CryptoRng};
 
@@ -599,7 +600,7 @@ mod test {
     impl Handler<Fanout> for DummyClient {
         type Result = ResponseFuture<Vec<Response>>;
 
-        fn handle(&mut self, msg: Fanout, ctx: &mut Context<Self>) -> Self::Result {
+        fn handle(&mut self, _msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
             Box::pin(async move { vec![] })
         }
     }
@@ -614,7 +615,7 @@ mod test {
     impl Handler<AcceptedCells> for HailMock {
         type Result = ();
 
-        fn handle(&mut self, msg: AcceptedCells, ctx: &mut Context<Self>) -> Self::Result {
+        fn handle(&mut self, _msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
             ()
         }
     }
