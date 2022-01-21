@@ -126,9 +126,10 @@ impl Actor for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
-    pub self_id: Id,
     pub height: u64,
-    pub total_stake: u64,
+    pub self_id: Id,
+    pub self_staking_capacity: u64,
+    pub total_staking_capacity: u64,
     pub validators: HashMap<Id, (SocketAddr, u64)>,
     pub vrf_out: VrfOutput,
 }
@@ -150,20 +151,29 @@ impl Handler<LiveCommittee> for Hail {
         let mut validators = vec![];
         let mut block_producers = HashSet::new();
         let mut block_production_slot = None;
+        info!("[{}] total_staking_capacity = {:?}", "hail".blue(), msg.total_staking_capacity);
         for (id, (_, qty)) in msg.validators {
             let vrf_h = compute_vrf_h(id.clone(), &msg.vrf_out);
-            let s_w = sortition::select(qty, msg.total_stake, expected_size, &vrf_h);
+            let s_w = sortition::select(qty, msg.total_staking_capacity, expected_size, &vrf_h);
+            info!("id = {:?}, qty = {:?}", id.clone(), qty.clone());
             // If the sortition weight > 0 then this `id` is a block producer.
             if s_w > 0 {
                 block_producers.insert(id.clone());
             }
-            // If the sortition weight > 0 and this is our `id`, we have a slot to produce
-            // the next block.
-            if s_w > 0 && id.clone() == self_id {
-                block_production_slot = Some(vrf_h.clone());
-            }
-            let v_w = util::percent_of(qty, msg.total_stake);
+            let v_w = util::percent_of(qty, msg.total_staking_capacity);
             validators.push((id.clone(), v_w));
+        }
+
+        // Compute whether we are a block producer
+        let vrf_h = compute_vrf_h(self_id.clone(), &msg.vrf_out);
+        let s_w = sortition::select(
+            msg.self_staking_capacity,
+            msg.total_staking_capacity,
+            expected_size,
+            &vrf_h,
+        );
+        if s_w > 0 {
+            block_production_slot = Some(vrf_h.clone());
         }
 
         // If we are the next block producer, generate a block if we can
