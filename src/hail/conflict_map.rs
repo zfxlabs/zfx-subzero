@@ -1,6 +1,7 @@
 use super::{Error, Result};
 
 use super::conflict_set::ConflictSet;
+use super::vertex::Vertex;
 
 use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight};
@@ -40,32 +41,38 @@ impl ConflictMap {
         }
     }
 
-    pub fn get_confidence(&self, height: &BlockHeight) -> Result<u8> {
-        match self.inner.get(height) {
-            Some(cs) => Ok(cs.cnt),
-            None => Err(Error::InvalidBlockHeight(height.clone())),
+    pub fn get_confidence(&self, vx: &Vertex) -> Result<u8> {
+        match self.inner.get(&vx.height) {
+            Some(cs) => {
+                if cs.pref == vx.block_hash {
+                    Ok(cs.cnt)
+                } else {
+                    Ok(0)
+                }
+            }
+            None => Err(Error::InvalidBlockHeight(vx.height.clone())),
         }
     }
 
-    pub fn insert_block(&mut self, block: Block) -> ConflictSet {
+    pub fn insert_block(&mut self, block: Block) -> Result<ConflictSet> {
         match self.inner.entry(block.height.clone()) {
             // The conflict set already contains a conflict.
             Entry::Occupied(mut o) => {
                 let cs = o.get_mut();
-                let block_hash = block.hash().unwrap();
+                let block_hash = block.hash()?;
                 cs.conflicts.insert(block_hash.clone());
                 // If the confidence is still 0 and the lowest hash in the set is this block hash,
                 // then prefer this block.
                 if cs.cnt == 0 && cs.is_lowest_hash(block_hash.clone()) {
                     cs.pref = block_hash;
                 }
-                cs.clone()
+                Ok(cs.clone())
             }
             // The block is currently non-conflicting.
             Entry::Vacant(v) => {
                 let mut cs = ConflictSet::new(block.hash().unwrap());
                 v.insert(cs.clone());
-                cs
+                Ok(cs)
             }
         }
     }

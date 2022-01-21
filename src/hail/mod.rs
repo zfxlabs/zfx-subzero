@@ -1,7 +1,8 @@
-mod block;
+pub mod block;
 mod conflict_map;
 mod conflict_set;
 mod hail;
+mod vertex;
 
 pub use hail::*;
 
@@ -10,9 +11,9 @@ use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight};
 use crate::graph;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Error {
-    Actix(actix::MailboxError),
+    ActixMailboxError,
     Alpha(alpha::Error),
     Sled(sled::Error),
     Graph(graph::Error),
@@ -24,6 +25,12 @@ pub enum Error {
 }
 
 impl std::error::Error for Error {}
+
+impl std::convert::From<actix::MailboxError> for Error {
+    fn from(error: actix::MailboxError) -> Self {
+        Error::ActixMailboxError
+    }
+}
 
 impl std::convert::From<sled::Error> for Error {
     fn from(error: sled::Error) -> Self {
