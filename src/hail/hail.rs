@@ -33,6 +33,8 @@ const BETA2: u8 = 20;
 
 /// Hail is a Snow* based consensus for blocks.
 pub struct Hail {
+    /// The hash of the last accepted block (at the current block height).
+    last_accepted_hash: Option<BlockHash>,
     /// The current block height.
     height: BlockHeight,
     /// The client used to make external requests.
@@ -64,6 +66,7 @@ impl Hail {
     /// blocks yet to become final.
     pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
         Hail {
+            last_accepted_hash: None,
             height: 0,
             sender,
             node_id,
@@ -248,6 +251,7 @@ impl Actor for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
+    pub last_accepted_hash: BlockHash,
     pub height: u64,
     pub self_id: Id,
     pub self_staking_capacity: u64,
@@ -270,11 +274,11 @@ impl Handler<LiveCommittee> for Hail {
         let expected_size = (msg.validators.len() as f64).sqrt().ceil();
         info!("[{}] expected_size = {:?}", "hail".blue(), expected_size);
 
-        let mut validators = vec![];
+        let mut committee = HashMap::default();
         let mut block_producers = HashSet::new();
         let mut block_production_slot = None;
         info!("[{}] total_staking_capacity = {:?}", "hail".blue(), msg.total_staking_capacity);
-        for (id, (_, qty)) in msg.validators {
+        for (id, (ip, qty)) in msg.validators {
             let vrf_h = compute_vrf_h(id.clone(), &msg.vrf_out);
             let s_w = sortition::select(qty, msg.total_staking_capacity, expected_size, &vrf_h);
             info!("id = {:?}, qty = {:?}", id.clone(), qty.clone());
@@ -283,7 +287,9 @@ impl Handler<LiveCommittee> for Hail {
                 block_producers.insert(id.clone());
             }
             let v_w = util::percent_of(qty, msg.total_staking_capacity);
-            validators.push((id.clone(), v_w));
+            if let Some(_) = committee.insert(id.clone(), (ip, v_w)) {
+                panic!("duplicate validator insertion");
+            }
         }
 
         // Compute whether we are a block producer
@@ -298,10 +304,21 @@ impl Handler<LiveCommittee> for Hail {
             block_production_slot = Some(vrf_h.clone());
         }
 
-        // If we are the next block producer, generate a block if we can
         info!("[{}] is_block_producer = {:?}", "hail".blue(), block_production_slot.is_some());
+        info!(
+            "[{}] last_accepted_hash = {}",
+            "hail".blue(),
+            hex::encode(msg.last_accepted_hash.clone())
+        );
 
-        // Otherwise wait for the next block to be received
+        self.last_accepted_hash = Some(msg.last_accepted_hash);
+        self.height = msg.height;
+        self.block_production_slot = block_production_slot.clone();
+        self.block_proposed = false;
+        self.committee = committee;
+
+        // TODO: Check if we have pending accepted cells and build a block (block building
+        // will still take place when receiving accepted cells otherwise).
     }
 }
 
@@ -330,7 +347,7 @@ pub struct QueryComplete {
 impl Handler<QueryComplete> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: QueryComplete, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: QueryComplete, ctx: &mut Context<Self>) -> Self::Result {
         // FIXME: Verify that there are no duplicate ids
         let mut outcomes = vec![];
         for ack in msg.acks.iter() {
@@ -352,10 +369,43 @@ impl Handler<QueryComplete> for Hail {
             // Let `hail` know that this block can now be built upon
             let _ = self.live_blocks.insert(vx.block_hash.clone(), msg.block.inner());
 
-            // TODO: The block or some of its ancestors may have become accepted. Check this.
+            // The block or some of its ancestors may have become accepted. Check this.
+            let newly_accepted = self.compute_accepted_vertices(&vx);
+            match newly_accepted {
+                Ok(newly_accepted) => {
+                    if !newly_accepted.is_empty() {
+                        ctx.notify(NewAccepted { vertices: newly_accepted });
+                    }
+                }
+                Err(e) => {
+                    // Its a bug if this occurs
+                    panic!("[hail] Error checking whether block is accepted: {}", e);
+                }
+            }
         }
         // if no:  set_chit(tx, 0) -- happens in `insert_vx`
         block_storage::insert_block(&self.queried_blocks, msg.block.clone()).unwrap();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct NewAccepted {
+    pub vertices: Vec<Vertex>,
+}
+impl Handler<NewAccepted> for Hail {
+    type Result = ();
+
+    fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
+        let mut blocks = vec![];
+        for vx in msg.vertices.iter().cloned() {
+            // At this point we can be sure that the tx is known
+            let (_, block) = block_storage::get_block(&self.known_blocks, vx.block_hash).unwrap();
+            info!("[{}] transaction is accepted\n{}", "hail".blue(), block.clone());
+            blocks.push(block.inner());
+        }
+        // TODO: There should only be one accepted block
+        // let _ = self.alpha_recipient.do_send(AcceptedBlocks { blocks });
     }
 }
 
@@ -529,9 +579,16 @@ impl Handler<AcceptedCells> for Hail {
         info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
 
         match self.block_production_slot {
-            Some(vrf_output) => {
+            Some(vrf_out) => {
                 // If we are the block producer at height `h + 1` then generate a new block with the
                 // accepted cells.
+                let block = Block::new(
+                    self.last_accepted_hash.unwrap(),
+                    self.height + 1,
+                    vrf_out,
+                    msg.cells.clone(),
+                );
+                // ctx.notify(GenerateBlock { block });
             }
             None =>
             // If we are not a block producer then do nothing with the accepted cells.

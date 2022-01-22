@@ -379,6 +379,7 @@ impl Handler<NewAccepted> for Sleet {
         let _ = self.hail_recipient.do_send(AcceptedCells { cells });
     }
 }
+
 // Instead of having an infinite loop as per the paper which receives and processes
 // inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
 // a fresh transaction is received - either externally in `GenerateTx` or as an internal
