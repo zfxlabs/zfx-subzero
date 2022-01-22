@@ -29,9 +29,9 @@ use std::net::SocketAddr;
 
 // Safety parameters
 
-const ALPHA: f64 = 0.5;
-const BETA1: u8 = 11;
-const BETA2: u8 = 20;
+pub const ALPHA: f64 = 0.5;
+pub const BETA1: u8 = 11;
+pub const BETA2: u8 = 20;
 
 /// Hail is a Snow* based consensus for blocks.
 pub struct Hail {
@@ -137,14 +137,19 @@ impl Hail {
             return Err(Error::EmptyDAG);
         }
         let leaves = self.dag.leaves();
+        let mut vxs = vec![];
         for leaf in leaves {
             for vx in self.dag.dfs(&leaf) {
                 if self.is_strongly_preferred(vx.clone())? && vx.height == h - 1 {
-                    return Ok(vx.clone());
+                    vxs.push(vx.clone());
                 }
             }
         }
-        Err(Error::InvalidParent)
+        if vxs.len() > 1 {
+            Err(Error::InvalidParent)
+        } else {
+            Ok(vxs[0].clone())
+        }
     }
 
     // Ancestral Preference
@@ -341,11 +346,10 @@ impl Handler<QueryComplete> for Hail {
             let vx = msg.block.vertex().unwrap();
             self.dag.set_chit(vx.clone(), 1).unwrap();
             self.update_ancestral_preference(vx.clone()).unwrap();
-            info!(
-                "[{}] query complete, chit = 1 (block: {})",
-                "hail".blue(),
-                hex::encode(vx.block_hash)
-            );
+
+            let block_hash_string = hex::encode(vx.block_hash);
+            info!("[{}] >>> block: {} <<<", "hail".blue(), block_hash_string.green());
+            info!("[{}] query complete, chit = 1", "hail".blue(),);
             // Let `hail` know that this block can now be built upon
             let inner_block = msg.block.inner();
             let _ = self.live_blocks.insert(vx.block_hash.clone(), inner_block.clone());
@@ -371,6 +375,9 @@ impl Handler<QueryComplete> for Hail {
                     panic!("[hail] Error checking whether block is accepted: {}", e);
                 }
             }
+        } else {
+            let block_hash_string = hex::encode(msg.block.hash().unwrap());
+            info!("[{}] >>> block: {} <<<", "hail".blue(), block_hash_string.red());
         }
         // if no:  set_chit(tx, 0) -- happens in `insert_vx`
         block_storage::insert_block(&self.queried_blocks, msg.block.clone()).unwrap();
