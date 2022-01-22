@@ -5,30 +5,37 @@ use crate::alpha::types::{BlockHash, BlockHeight};
 
 use crate::colored::Colorize;
 
-/// The `HailBlock` is a consensus specific representation of a block which contains a real block.
+/// The `HailBlock` is a consensus specific representation of a block which contains a real block
+/// along with a parent vertex which points to its predecessor (must be height - 1).
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HailBlock {
-    parent: Vertex,
+    /// The parent vertex of this block (genesis is `None`, all other blocks have a parent).
+    parent: Option<Vertex>,
+    /// The inner block contents.
     block: Block,
 }
 
 impl HailBlock {
-    pub fn new(parent: Vertex, block: Block) -> Self {
+    pub fn new(parent: Option<Vertex>, block: Block) -> Self {
         HailBlock { parent, block }
     }
 
-    pub fn parent(&self) -> Vertex {
+    /// Returns the parent vertex of this block if this block is not genesis.
+    pub fn parent(&self) -> Option<Vertex> {
         self.parent.clone()
     }
 
+    /// Returns the height of the contained block.
     pub fn height(&self) -> BlockHeight {
         self.block.height.clone()
     }
 
+    /// Returns a vertex formed from the height and the hash of the block.
     pub fn vertex(&self) -> Result<Vertex> {
         Ok(Vertex::new(self.height(), self.hash()?))
     }
 
+    /// Returns the inner block.
     pub fn inner(&self) -> Block {
         self.block.clone()
     }
@@ -43,9 +50,14 @@ impl std::fmt::Display for HailBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = format!("{}", self.block);
         let mut ps = "".to_owned();
-        let h = hex::encode(self.parent.block_hash);
-        ps.push(' ');
-        ps.push_str(&h);
+        match &self.parent {
+            Some(parent) => {
+                let h = hex::encode(parent.block_hash);
+                ps.push(' ');
+                ps.push_str(&h);
+            }
+            None => (),
+        };
         let s = format!("{}[{}]{}\n", s, "parent".yellow(), ps);
         write!(f, "{}", s)
     }
