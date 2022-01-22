@@ -5,9 +5,11 @@ The `zfx-subzero` project is a unification of the core products which `zero.fx` 
 
 The purpose of `subzero` is provide a network which can reach consensus on blocks containing operations for potentially multiple distinct blockchains. `subzero` acts as a consensus and storage layer, delegating the task of executing state transitions and verifying the specific contents of operations to other client chains.
 
-The `alpha` primitives are the only exception to this rule. `alpha`s purpose is to define very simple primitives which allow for an economic model to exist (primitives for transfers and staking namely), so that there is a notion of state capacity on the network (this is necessary in order to provide sybil resistance). 
+The `alpha` primitives are the only exception to this rule. `alpha`s purpose is to define very simple primitives which allow for an economic model to exist (primitives for transfers and staking namely), so that there is a notion of state capacity on the network (this is necessary in order to provide sybil resistance).
 
 The network is comprised of `cell` based transactions, which is an extension to the `utxo` model to include a `data` field and a cell type. This enables transactions to contain arbitrary data where the cell type defines the interpretation of the cell and is only relevant to clients which support that specific cell type.
+
+The `alpha` primitives are the only types of `cell` which must be executed as part of connsensus in order to determine whether validator staking times become invalid or when new validators begin staking on the network.
 
 There are three layers of consensus in `subzero`, each of which provide a vital role enabling the subsequent consensus mechanisms to operate. 
 
@@ -29,9 +31,9 @@ Please see the `sleet` subdirectory for further information.
 
 # hail
 
-`hail` is a consensus algorithm based on `Snowman` but augmented with cryptographic sortition. It is specialised to blocks and ensures that no two conflicting blocks can be accepted at the same height. Similarly to `sleet`, no inner verification of the block contents nor execution of state transitions is done.
+`hail` is a consensus algorithm based on `Snowman` but augmented with cryptographic sortition. It is specialised to blocks and ensures that no two conflicting blocks can be accepted at the same height. Similar to `sleet`, no inner verification of the block contents nor execution of state transitions is done besides on `alpha` primitive cells (such as staking cells).
 
-`hail` passes the blocks onto a `block` recipient. In the case of the `zfx` network the block recipient is the `alpha` chain, which defines rules for executing `alpha` based cells. However this is extensible to any other type of chain.
+`hail` passes blocks which are final on to a `block` recipient. The `block` recipient can be any type of `client` chain which serialised data into `cell`s a priori.
 
 Please see the `hail` subdirectory for more information.
 
@@ -47,8 +49,11 @@ How the components fit together:
 3. `sleet` consensus (mempool) is initialised with the latest validator set in order to query peers about transactions. The `alpha` frontier of final transactions is sent to `sleet` in order to provision the roots of new transactions.
 4. Transactions are posted to `sleet` by the client in order to spend funds (e.g. sending from account A to B on the alpha chain). `sleet` resolves conflicts between these transactions, ensuring that only transactions which do not conflict (spend the same funds) eventually become final.
 5. `hail` is initialised with the latest validator set in the same way as `sleet`. Whenever the VRF based selection selects the validator running `hail`, final transactions in `sleet` are used to generate a new block. `hail` resolves conflicts between blocks, ensuring that whenever a block conflicts at the same height the block with the lowest hash is selected.
+6. A `block` recipient chain receives accepted blocks (final blocks) containing the cells that were finalised, executes the cells which are relevant to it and extends its blockchain.
 
 ## Running the local testnet
+
+The local testnet is currently comprised of 3 nodes (for simplicity) which can be spawned by running the following commands. 
 
 ```
 cargo run --bin node -- -a 127.0.0.1:1234 -b 127.0.0.1:1235 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416
@@ -59,6 +64,8 @@ cargo run --bin node -- -a 127.0.0.1:1236 -b 127.0.0.1:1235 --keypair 6f4b736b9a
 ```
 
 ## Running the client test
+
+The client test which sends transactions in a loop to one of the validators mempools can be executed with the following command, where the `--loop` argument can be used to control how many transactions get generated.
 
 ```
 cargo run --bin client_test -- --peer-ip 127.0.0.1:1234 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --cell-hash b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e # --loop 16
