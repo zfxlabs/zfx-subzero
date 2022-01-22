@@ -13,6 +13,7 @@ use crate::storage::hail_block as block_storage;
 use crate::util;
 
 use super::block::HailBlock;
+use super::committee::Committee;
 use super::conflict_map::ConflictMap;
 use super::conflict_set::ConflictSet;
 use super::vertex::Vertex;
@@ -42,8 +43,8 @@ pub struct Hail {
     sender: Recipient<Fanout>,
     /// The identity of this validator.
     node_id: Id,
-    /// The weighted validator set.
-    committee: HashMap<Id, (SocketAddr, Weight)>,
+    /// The current block committee.
+    committee: Committee,
     /// The set of all known blocks.
     known_blocks: sled::Db,
     /// The set of all queried blocks.
@@ -56,10 +57,6 @@ pub struct Hail {
     accepted_vertices: HashSet<Vertex>,
     /// The consensus graph.
     dag: DAG<Vertex>,
-    /// The block production vrf (a vrf for `height + 1` if we are the next block producer).
-    block_production_slot: Option<VrfOutput>,
-    /// Whether we have already proposed a block at this height.
-    block_proposed: bool,
 }
 
 impl Hail {
@@ -70,16 +67,14 @@ impl Hail {
             last_accepted_hash: None,
             height: 0,
             sender,
-            node_id,
-            committee: HashMap::default(),
+            node_id: node_id.clone(),
+            committee: Committee::empty(node_id),
             known_blocks: sled::Config::new().temporary(true).open().unwrap(),
             queried_blocks: sled::Config::new().temporary(true).open().unwrap(),
             conflict_map: ConflictMap::new(),
             live_blocks: HashMap::default(),
             accepted_vertices: HashSet::new(),
             dag: DAG::new(),
-            block_production_slot: None,
-            block_proposed: false,
         }
     }
 
@@ -275,51 +270,16 @@ pub struct LiveCommittee {
     pub vrf_out: VrfOutput,
 }
 
-fn compute_vrf_h(id: Id, vrf_out: &VrfOutput) -> [u8; 32] {
-    let vrf_h = vec![id.as_bytes(), vrf_out].concat();
-    blake3::hash(&vrf_h).as_bytes().clone()
-}
-
 impl Handler<LiveCommittee> for Hail {
     type Result = ();
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received live committee at height = {:?}", "hail".blue(), msg.height);
         let self_id = msg.self_id.clone();
-        let expected_size = (msg.validators.len() as f64).sqrt().ceil();
-        info!("[{}] expected_size = {:?}", "hail".blue(), expected_size);
+        let self_staking_capacity = msg.self_staking_capacity.clone();
 
-        let mut committee = HashMap::default();
-        let mut block_producers = HashSet::new();
-        let mut block_production_slot = None;
-        info!("[{}] total_staking_capacity = {:?}", "hail".blue(), msg.total_staking_capacity);
-        for (id, (ip, qty)) in msg.validators {
-            let vrf_h = compute_vrf_h(id.clone(), &msg.vrf_out);
-            let s_w = sortition::select(qty, msg.total_staking_capacity, expected_size, &vrf_h);
-            info!("id = {:?}, qty = {:?}", id.clone(), qty.clone());
-            // If the sortition weight > 0 then this `id` is a block producer.
-            if s_w > 0 {
-                block_producers.insert(id.clone());
-            }
-            let v_w = util::percent_of(qty, msg.total_staking_capacity);
-            if let Some(_) = committee.insert(id.clone(), (ip, v_w)) {
-                panic!("duplicate validator insertion");
-            }
-        }
+        self.committee.next(msg.self_staking_capacity, msg.vrf_out, msg.validators);
 
-        // Compute whether we are a block producer
-        let vrf_h = compute_vrf_h(self_id.clone(), &msg.vrf_out);
-        let s_w = sortition::select(
-            msg.self_staking_capacity,
-            msg.total_staking_capacity,
-            expected_size,
-            &vrf_h,
-        );
-        if s_w > 0 {
-            block_production_slot = Some(vrf_h.clone());
-        }
-
-        info!("[{}] is_block_producer = {:?}", "hail".blue(), block_production_slot.is_some());
         info!(
             "[{}] last_accepted_hash = {}",
             "hail".blue(),
@@ -328,9 +288,6 @@ impl Handler<LiveCommittee> for Hail {
 
         self.last_accepted_hash = Some(msg.last_accepted_hash);
         self.height = msg.height;
-        self.block_production_slot = block_production_slot.clone();
-        self.block_proposed = false;
-        self.committee = committee;
 
         // Insert the last accepted block into the DAG (else its empty and cannot be built upon).
         self.insert(msg.last_accepted_block).unwrap();
@@ -384,9 +341,23 @@ impl Handler<QueryComplete> for Hail {
             let vx = msg.block.vertex().unwrap();
             self.dag.set_chit(vx.clone(), 1).unwrap();
             self.update_ancestral_preference(vx.clone()).unwrap();
-            info!("[{}] query complete, chit = 1", "hail".blue());
+            info!(
+                "[{}] query complete, chit = 1 (block: {})",
+                "hail".blue(),
+                hex::encode(vx.block_hash)
+            );
             // Let `hail` know that this block can now be built upon
-            let _ = self.live_blocks.insert(vx.block_hash.clone(), msg.block.inner());
+            let inner_block = msg.block.inner();
+            let _ = self.live_blocks.insert(vx.block_hash.clone(), inner_block.clone());
+
+            // Advance the committee, here usually we must take into account the start and end time
+            // of staking cells as well as their execution in order to modify the validator weights
+            // appropriately on subsequent blocks.
+            let self_staking_capacity = self.committee.self_staking_capacity();
+            let validators = self.committee.validators();
+            self.committee.next(self_staking_capacity, inner_block.vrf_out, validators);
+            self.last_accepted_hash = Some(vx.block_hash.clone());
+            self.height = vx.height;
 
             // The block or some of its ancestors may have become accepted. Check this.
             let maybe_accepted = self.next_accepted_vertex(&vx);
@@ -415,10 +386,10 @@ impl Handler<Accepted> for Hail {
     type Result = ();
 
     fn handle(&mut self, msg: Accepted, _ctx: &mut Context<Self>) -> Self::Result {
-        // At this point we can be sure that the tx is known
-        let (_, block) =
-            block_storage::get_block(&self.known_blocks, msg.vertex.block_hash).unwrap();
-        info!("[{}] transaction is accepted\n{}", "hail".blue(), block.clone());
+        // At this point we can be sure that the block is known
+        // let (_, block) =
+        //     block_storage::get_block(&self.known_blocks, msg.vertex.block_hash).unwrap();
+        // info!("[{}] block is accepted\n{}", "hail".blue(), block.clone());
         // TODO: There should only be one accepted block
         // let _ = self.alpha_recipient.do_send(AcceptedBlock { block: block.inner() });
     }
@@ -594,17 +565,20 @@ impl Handler<AcceptedCells> for Hail {
     fn handle(&mut self, msg: AcceptedCells, ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
 
-        match self.block_production_slot {
+        match self.committee.block_production_slot() {
             Some(vrf_out) => {
-                // If we are the block producer at height `h + 1` then generate a new block with the
-                // accepted cells.
-                let block = Block::new(
-                    self.last_accepted_hash.unwrap(),
-                    self.height + 1,
-                    vrf_out,
-                    msg.cells.clone(),
-                );
-                ctx.notify(GenerateBlock { block });
+                if !self.committee.block_proposed() {
+                    // If we are the block producer at height `h + 1` then generate a new block with
+                    // the accepted cells.
+                    let block = Block::new(
+                        self.last_accepted_hash.unwrap(),
+                        self.height + 1,
+                        vrf_out,
+                        msg.cells.clone(),
+                    );
+                    ctx.notify(GenerateBlock { block });
+                    self.committee.set_block_proposed(true);
+                }
             }
             None =>
             // If we are not a block producer then do nothing with the accepted cells.

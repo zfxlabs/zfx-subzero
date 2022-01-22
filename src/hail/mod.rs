@@ -1,4 +1,5 @@
 pub mod block;
+mod committee;
 mod conflict_map;
 mod conflict_set;
 mod hail;
