@@ -1,7 +1,15 @@
 # zfx-subzero
 ![Build](https://github.com/zfxlabs/zfx-subzero/actions/workflows/main.yml/badge.svg?branch=main)
 
-The `zfx-subzero` project is a unification of the core products which `zero.fx` has been working on throughout the year into a unified whole.
+The `zfx-subzero` project is a unification of the core products which `zero.fx` has been working on throughout the year.
+
+The purpose of `subzero` is provide a network which can reach consensus on blocks containing operations for potentially multiple distinct blockchains. `subzero` acts as a consensus and storage layer, delegating the task of executing state transitions and verifying the specific contents of operations to other client chains.
+
+The `alpha` primitives are the only exception to this rule. `alpha`s purpose is to define very simple primitives which allow for an economic model to exist (primitives for transfers and staking namely), so that there is a notion of state capacity on the network (this is necessary in order to provide sybil resistance). 
+
+The network is comprised of `cell` based transactions, which is an extension to the `utxo` model to include a `data` field and a cell type. This enables transactions to contain arbitrary data where the cell type defines the interpretation of the cell and is only relevant to clients which support that specific cell type.
+
+There are three layers of consensus in `subzero`, each of which provide a vital role enabling the subsequent consensus mechanisms to operate. 
 
 # ice
 
@@ -13,23 +21,23 @@ Please see the `ice` subdirectory for further details.
 
 # sleet
 
-A consensus algorithm based on `Avalanche` but specialised to mempools. 
+`sleet` is a consensus algorithm based on `Avalanche` and the closest one to the original papers. The purpose of `sleet` is to resolve conflicts between `cell`-based transactions and ensure that a double spending transaction never becomes live, nor adopted in a subsequent block.
+
+`sleet` ensures that cells do not conflict but do not execute state contained within. Thus if the `cell` can be deserialized, has the right form and spends from a valid `capacity`, it will be accepted in a block. It is then up to the receivers of the block to determine whether its inner contents (the `data` field) are valid.
 
 Please see the `sleet` subdirectory for further information.
 
 # hail
 
-A consensus algorithm with similar properties as `Avalanche` but specialised to blocks. 
+`hail` is a consensus algorithm based on `Snowman` but augmented with cryptographic sortition. It is specialised to blocks and ensures that no two conflicting blocks can be accepted at the same height. Similarly to `sleet`, no inner verification of the block contents nor execution of state transitions is done.
+
+`hail` passes the blocks onto a `block` recipient. In the case of the `zfx` network the block recipient is the `alpha` chain, which defines rules for executing `alpha` based cells. However this is extensible to any other type of chain.
 
 Please see the `hail` subdirectory for more information.
 
 # alpha
 
-The root chain of the `zero.fx` network. 
-
-# bridge
-
-Work for `m4` surrounding bridging will go in this subdirectory, concerning bridging assets to `Tezos` and back.
+`alpha` is the primary client chain of the `zfx` network. It defines the rules for executing the primitives of the network for staking and transferring capacity. 
 
 ## Unified Overview
 

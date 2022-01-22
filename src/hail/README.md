@@ -1,8 +1,6 @@
 # hail
 
-`hail` is a block based consensus algorithm based on `Avalanche` which uses directed acylic graphs and `VRFs`. It is the primary consensus mechanism for all chains defined on within the `zero.fx` network.
-
-`hail` is the fastest existing consensus algorithm in terms of time to reach finality on a block, able to achieve finality in less than a second.
+`hail` is a block based consensus algorithm based on `Avalanche` which uses directed acylic graphs and `VRFs`. It is the primary consensus mechanism for all block based chains defined within the `zero.fx` network.
 
 # Algorithm
 
