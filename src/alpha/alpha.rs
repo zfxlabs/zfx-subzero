@@ -3,6 +3,7 @@ use crate::zfx_id::Id;
 use crate::colored::Colorize;
 
 use crate::client;
+use crate::hail::block::HailBlock;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
 use crate::sleet::{self, Sleet};
@@ -178,10 +179,14 @@ impl Handler<LiveNetwork> for Alpha {
                     .await
                     .unwrap();
 
+                // Build a `HailBlock` from the last accepted block.
+                let last_accepted_block = HailBlock::new(None, last_block.clone());
+
                 // Send `hail` the live committee information for querying blocks.
                 let () = hail_addr
                     .send(hail::LiveCommittee {
                         last_accepted_hash,
+                        last_accepted_block,
                         height: state.height,
                         self_id: self_id.clone(),
                         self_staking_capacity: committee.self_staking_capacity.clone(),
