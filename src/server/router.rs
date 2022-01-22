@@ -1,3 +1,4 @@
+use crate::hail::Hail;
 use crate::ice::Ice;
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
@@ -14,11 +15,18 @@ pub struct Router {
     ice: Addr<Ice>,
     alpha: Addr<Alpha>,
     sleet: Addr<Sleet>,
+    hail: Addr<Hail>,
 }
 
 impl Router {
-    pub fn new(view: Addr<View>, ice: Addr<Ice>, alpha: Addr<Alpha>, sleet: Addr<Sleet>) -> Self {
-        Router { view, ice, alpha, sleet }
+    pub fn new(
+        view: Addr<View>,
+        ice: Addr<Ice>,
+        alpha: Addr<Alpha>,
+        sleet: Addr<Sleet>,
+        hail: Addr<Hail>,
+    ) -> Self {
+        Router { view, ice, alpha, sleet, hail }
     }
 }
 
@@ -38,6 +46,7 @@ impl Handler<Request> for Router {
         let ice = self.ice.clone();
         let alpha = self.alpha.clone();
         let sleet = self.sleet.clone();
+        let hail = self.hail.clone();
         Box::pin(async move {
             match msg {
                 // Handshake
@@ -78,8 +87,19 @@ impl Handler<Request> for Router {
                     let query_tx_ack = sleet.send(query_tx).await.unwrap();
                     Response::QueryTxAck(query_tx_ack)
                 }
-                _ => {
-                    error!("received unknown request / not implemented");
+                // Hail external requests
+                Request::GetBlock(get_block) => {
+                    debug!("routing GetBlock -> Hail");
+                    let block_ack = hail.send(get_block).await.unwrap();
+                    Response::BlockAck(block_ack)
+                }
+                Request::QueryBlock(query_block) => {
+                    debug!("routing QueryBlock -> Hail");
+                    let query_block_ack = hail.send(query_block).await.unwrap();
+                    Response::QueryBlockAck(query_block_ack)
+                }
+                req => {
+                    error!("received unknown request / not implemented = {:?}", req);
                     Response::Unknown
                 }
             }

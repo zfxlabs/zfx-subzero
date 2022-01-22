@@ -95,7 +95,7 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
 
         let listener_execution = async move {
             // Setup the router
-            let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr);
+            let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
             let router_addr = router.start();
             // Setup the server
             let server = Server::new(listener_ip, router_addr);
