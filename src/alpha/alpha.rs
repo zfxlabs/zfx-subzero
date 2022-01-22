@@ -11,7 +11,7 @@ use crate::{ice, ice::Ice};
 
 use crate::storage::block;
 
-use super::block::build_genesis;
+use super::block::{build_genesis, Block};
 use super::state::State;
 use super::types::BlockHash;
 
@@ -260,5 +260,21 @@ impl Handler<GetAncestors> for Alpha {
 
     fn handle(&mut self, _msg: GetAncestors, _ctx: &mut Context<Self>) -> Self::Result {
         Ancestors {}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct AcceptedBlock {
+    pub block: Block,
+}
+
+impl Handler<AcceptedBlock> for Alpha {
+    type Result = ();
+
+    fn handle(&mut self, msg: AcceptedBlock, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] received accepted block", "alpha".yellow());
+
+        // TODO
     }
 }

@@ -3,6 +3,7 @@ use zfx_sortition::sortition;
 
 use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
+use crate::alpha::AcceptedBlock;
 use crate::cell::Cell;
 use crate::client::Fanout;
 use crate::colored::Colorize;
@@ -220,15 +221,14 @@ impl Hail {
     }
 
     /// Check if a transaction or one of its ancestors have become accepted
-    pub fn compute_accepted_vertices(&mut self, vx: &Vertex) -> Result<Vec<Vertex>> {
-        let mut new = vec![];
-        for t in self.dag.dfs(vx) {
-            if !self.accepted_vertices.contains(t) && self.is_accepted(t)? {
-                new.push(t.clone());
-                let _ = self.accepted_vertices.insert(t.clone());
+    pub fn next_accepted_vertex(&mut self, vertex: &Vertex) -> Result<Option<Vertex>> {
+        for vx in self.dag.dfs(vertex) {
+            if !self.accepted_vertices.contains(vx) && self.is_accepted(vx)? {
+                let _ = self.accepted_vertices.insert(vx.clone());
+                return Ok(Some(vx.clone()));
             }
         }
-        Ok(new)
+        Ok(None)
     }
 
     pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
@@ -370,13 +370,12 @@ impl Handler<QueryComplete> for Hail {
             let _ = self.live_blocks.insert(vx.block_hash.clone(), msg.block.inner());
 
             // The block or some of its ancestors may have become accepted. Check this.
-            let newly_accepted = self.compute_accepted_vertices(&vx);
-            match newly_accepted {
-                Ok(newly_accepted) => {
-                    if !newly_accepted.is_empty() {
-                        ctx.notify(NewAccepted { vertices: newly_accepted });
-                    }
+            let maybe_accepted = self.next_accepted_vertex(&vx);
+            match maybe_accepted {
+                Ok(Some(accepted)) => {
+                    ctx.notify(Accepted { vertex: accepted });
                 }
+                Ok(None) => (),
                 Err(e) => {
                     // Its a bug if this occurs
                     panic!("[hail] Error checking whether block is accepted: {}", e);
@@ -390,22 +389,19 @@ impl Handler<QueryComplete> for Hail {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
-pub struct NewAccepted {
-    pub vertices: Vec<Vertex>,
+pub struct Accepted {
+    pub vertex: Vertex,
 }
-impl Handler<NewAccepted> for Hail {
+impl Handler<Accepted> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
-        let mut blocks = vec![];
-        for vx in msg.vertices.iter().cloned() {
-            // At this point we can be sure that the tx is known
-            let (_, block) = block_storage::get_block(&self.known_blocks, vx.block_hash).unwrap();
-            info!("[{}] transaction is accepted\n{}", "hail".blue(), block.clone());
-            blocks.push(block.inner());
-        }
+    fn handle(&mut self, msg: Accepted, _ctx: &mut Context<Self>) -> Self::Result {
+        // At this point we can be sure that the tx is known
+        let (_, block) =
+            block_storage::get_block(&self.known_blocks, msg.vertex.block_hash).unwrap();
+        info!("[{}] transaction is accepted\n{}", "hail".blue(), block.clone());
         // TODO: There should only be one accepted block
-        // let _ = self.alpha_recipient.do_send(AcceptedBlocks { blocks });
+        // let _ = self.alpha_recipient.do_send(AcceptedBlock { block: block.inner() });
     }
 }
 
@@ -575,7 +571,7 @@ pub struct AcceptedCells {
 impl Handler<AcceptedCells> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: AcceptedCells, ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
 
         match self.block_production_slot {
@@ -588,7 +584,7 @@ impl Handler<AcceptedCells> for Hail {
                     vrf_out,
                     msg.cells.clone(),
                 );
-                // ctx.notify(GenerateBlock { block });
+                ctx.notify(GenerateBlock { block });
             }
             None =>
             // If we are not a block producer then do nothing with the accepted cells.
