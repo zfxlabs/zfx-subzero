@@ -83,10 +83,10 @@ mod test {
     async fn test_transfer_with_total_less_than_fee() {
         let (kp1, kp2, pkh1, pkh2) = generate_keys();
 
-        let coinbase_op = CoinbaseOperation::new(vec![(pkh1.clone(), 13), (pkh1.clone(), 12)]);
+        let coinbase_op = CoinbaseOperation::new(vec![(pkh1.clone(), 1), (pkh1.clone(), 1)]);
         let coinbase_tx = coinbase_op.try_into().unwrap();
 
-        let transfer_op = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 15);
+        let transfer_op = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 3);
 
         assert_eq!(transfer_op.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
     }
@@ -106,7 +106,7 @@ mod test {
         let transfer_tx = transfer_op.transfer(&kp1).unwrap();
 
         assert_eq!(transfer_tx.inputs().len(), 3);
-        assert_eq!(transfer_tx.outputs()[0].capacity, 100); // total spent - fee
+        assert_eq!(transfer_tx.outputs()[0].capacity, 200 - FEE); // total spent - fee
         assert_eq!(transfer_tx.outputs()[1].capacity, 1800); // remaining spendable amount
     }
 
@@ -139,25 +139,26 @@ mod test {
 
         // Generate a coinbase transaction and spend it
         let coinbase_tx = generate_coinbase(&kp1, 1000);
-        let transfer_op1 = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 900);
+        let transfer_op1 =
+            TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 1000 - FEE);
 
         let tx2 = transfer_op1.transfer(&kp1).unwrap();
         assert_eq!(tx2.inputs().len(), 1);
         assert_eq!(tx2.outputs().len(), 1);
         // The sum of the outputs should be 1000 - fee = 900
-        assert_eq!(tx2.sum(), 900);
+        assert_eq!(tx2.sum(), 1000 - FEE);
 
         // Spend the result of spending the coinbase. tx2 for pkh2 owner should have 900 spendable capacity
         let transfer_op2 = TransferOperation::new(tx2, pkh1.clone(), pkh2.clone(), 700);
         let tx3 = transfer_op2.transfer(&kp2).unwrap();
         assert_eq!(tx3.inputs().len(), 1);
         // The sum should take into account the change amount
-        assert_eq!(tx3.sum(), 800);
+        assert_eq!(tx3.sum(), 1000 - FEE * 2);
 
-        // tx3 for pkh1 owner should have 700 spendable capacity
-        let transfer_op3 = TransferOperation::new(tx3, pkh2.clone(), pkh1.clone(), 600);
+        // tx3 for pkh1 owner should have 700 - FEE spendable capacity
+        let transfer_op3 = TransferOperation::new(tx3, pkh2.clone(), pkh1.clone(), 700 - FEE);
         let tx4 = transfer_op3.transfer(&kp1).unwrap();
-        assert_eq!(tx4.sum(), 600);
+        assert_eq!(tx4.sum(), 700 - FEE);
         assert_eq!(tx4.outputs().len(), 1);
     }
 
