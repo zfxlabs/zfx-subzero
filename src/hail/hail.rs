@@ -100,9 +100,23 @@ impl Hail {
     pub fn insert(&mut self, block: HailBlock) -> Result<()> {
         let inner_block = block.inner();
         let vertex = block.vertex().unwrap();
-        self.conflict_map.insert_block(inner_block.clone())?;
-        self.dag.insert_vx(vertex, vec![block.parent()])?;
-        Ok(())
+        match block.parent() {
+            Some(parent) => {
+                self.conflict_map.insert_block(inner_block.clone())?;
+                self.dag.insert_vx(vertex, vec![parent])?;
+                Ok(())
+            }
+            None => {
+                // FIXME: Verify that this is the genesis hash (vertex.block_hash)
+                if vertex.height == 0 {
+                    self.conflict_map.insert_block(inner_block.clone())?;
+                    self.dag.insert_vx(vertex, vec![])?;
+                    Ok(())
+                } else {
+                    Err(Error::InvalidBlock(block.inner()))
+                }
+            }
+        }
     }
 
     // Branch preference
@@ -130,7 +144,7 @@ impl Hail {
         let leaves = self.dag.leaves();
         for leaf in leaves {
             for vx in self.dag.dfs(&leaf) {
-                if self.is_strongly_preferred(vx.clone())? && vx.height == h {
+                if self.is_strongly_preferred(vx.clone())? && vx.height == h - 1 {
                     return Ok(vx.clone());
                 }
             }
@@ -252,6 +266,7 @@ impl Actor for Hail {
 #[rtype(result = "()")]
 pub struct LiveCommittee {
     pub last_accepted_hash: BlockHash,
+    pub last_accepted_block: HailBlock,
     pub height: u64,
     pub self_id: Id,
     pub self_staking_capacity: u64,
@@ -316,6 +331,10 @@ impl Handler<LiveCommittee> for Hail {
         self.block_production_slot = block_production_slot.clone();
         self.block_proposed = false;
         self.committee = committee;
+
+        // Insert the last accepted block into the DAG (else its empty and cannot be built upon).
+        self.insert(msg.last_accepted_block).unwrap();
+        info!("[{}] inserted last_accepted_block", "hail".blue());
 
         // TODO: Check if we have pending accepted cells and build a block (block building
         // will still take place when receiving accepted cells otherwise).
@@ -543,8 +562,9 @@ impl Handler<GenerateBlock> for Hail {
     type Result = GenerateBlockAck;
 
     fn handle(&mut self, msg: GenerateBlock, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] selecting parent at block height = {:?}", "hail".blue(), msg.block.height);
         let parent = self.select_parent(msg.block.height).unwrap();
-        let hail_block = HailBlock::new(parent, msg.block.clone());
+        let hail_block = HailBlock::new(Some(parent), msg.block.clone());
         info!("[{}] generating new block\n{}", "hail".blue(), hail_block.clone());
 
         match self.on_receive_block(hail_block.clone()) {
