@@ -29,6 +29,13 @@ impl Cell {
         self.outputs.clone()
     }
 
+    pub fn outputs_of_owner(&self, owner: &PublicKeyHash) -> Vec<&Output> {
+        self.outputs
+            .iter()
+            .filter_map(|o| if o.lock == *owner { Some(o) } else { None })
+            .collect::<Vec<&Output>>()
+    }
+
     pub fn hash(&self) -> CellHash {
         let encoded = bincode::serialize(self).unwrap();
         blake3::hash(&encoded).as_bytes().clone()

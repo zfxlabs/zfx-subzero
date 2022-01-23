@@ -8,8 +8,9 @@ use rand::thread_rng;
 
 use crate::alpha::transfer::TransferOperation;
 use crate::cell::types::CellHash;
-use crate::cell::Cell;
-use crate::integration_test::test_model::{IntegrationTestContext, TestNode};
+use crate::cell::{Cell, CellType};
+use crate::ice::Status;
+use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::protocol::Response;
 use crate::Result;
 use crate::{client, sleet, Request};
@@ -54,25 +55,25 @@ pub async fn send_cell(
 pub async fn get_cell(
     min_amount: u64,
     context: &mut IntegrationTestContext,
-    node_address: SocketAddr,
+    node: &TestNode,
 ) -> Result<Option<Cell>> {
-    let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node_address).await?);
+    let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node.address).await?);
 
-    get_cell_with_min_amount(min_amount, node_address, &cell_hashes).await
+    get_cell_with_min_amount(min_amount, node, &cell_hashes).await
 }
 
 pub async fn get_not_spendable_cell(
     min_amount: u64,
     context: &mut IntegrationTestContext,
-    node_address: SocketAddr,
+    node: &TestNode,
 ) -> Result<Option<Cell>> {
-    let mut cell_hashes = get_cell_hashes(node_address).await?;
+    let mut cell_hashes = get_cell_hashes(node.address).await?;
     let spendable_cell_hashes = context.get_latest_cells_of(cell_hashes.iter().cloned().collect());
     cell_hashes.retain(|cell_hash| !spendable_cell_hashes.contains(cell_hash)); // exclude all spendable transactions
 
     get_cell_with_min_amount(
         min_amount,
-        node_address,
+        node,
         &cell_hashes.iter().cloned().collect::<HashSet<CellHash>>(),
     )
     .await
@@ -80,23 +81,23 @@ pub async fn get_not_spendable_cell(
 
 pub async fn get_cell_with_min_amount(
     min_amount: u64,
-    node_address: SocketAddr,
+    node: &TestNode,
     cell_hashes: &HashSet<CellHash>,
 ) -> Result<Option<Cell>> {
-    get_cell_in_amount_range(min_amount, u64::MAX, node_address, cell_hashes).await
+    get_cell_in_amount_range(min_amount, u64::MAX, node, cell_hashes).await
 }
 
 pub async fn get_cell_in_amount_range(
     min_amount: u64,
     max_amount: u64,
-    node_address: SocketAddr,
+    node: &TestNode,
     cell_hashes: &HashSet<CellHash>,
 ) -> Result<Option<Cell>> {
     for cell_hash in cell_hashes {
-        if let Ok(cell_option) = get_cell_from_hash(cell_hash.clone(), node_address).await {
+        if let Ok(cell_option) = get_cell_from_hash(cell_hash.clone(), node.address).await {
             if cell_option.is_some() {
                 let cell = cell_option.unwrap();
-                let balance = cell.sum();
+                let balance = get_outputs_capacity_of_owner(&cell, &node);
                 if balance > min_amount && balance < max_amount {
                     // return the first match transaction
                     return Ok(Some(cell));
@@ -105,6 +106,13 @@ pub async fn get_cell_in_amount_range(
         }
     }
     Ok(None)
+}
+
+pub fn get_outputs_capacity_of_owner(cell: &Cell, owner: &TestNode) -> u64 {
+    cell.outputs_of_owner(&owner.public_key)
+        .iter()
+        .filter_map(|o| if o.cell_type != CellType::Stake { Some(o.capacity) } else { None })
+        .sum()
 }
 
 pub async fn get_cell_from_hash(
@@ -133,6 +141,19 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
         Result::Ok(cell_hashes_mut)
     } else {
         Result::Ok(vec![])
+    }
+}
+
+pub async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
+    match client::oneshot(node_address, Request::CheckStatus).await {
+        Ok(r) => {
+            if let Some(Response::Status(status)) = r {
+                Result::Ok(Some(status))
+            } else {
+                Result::Ok(None)
+            }
+        }
+        _ => Result::Ok(None),
     }
 }
 
