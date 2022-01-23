@@ -1,4 +1,4 @@
-use crate::ice::Ice;
+use crate::ice::{CheckStatus, Ice};
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
 use crate::view::View;
@@ -77,6 +77,11 @@ impl Handler<Request> for Router {
                     debug!("routing QueryTx -> Sleet");
                     let query_tx_ack = sleet.send(query_tx).await.unwrap();
                     Response::QueryTxAck(query_tx_ack)
+                }
+                Request::CheckStatus => {
+                    debug!("routing CheckStatus -> Ice");
+                    let status = ice.send(CheckStatus).await.unwrap();
+                    Response::Status(status)
                 }
                 _ => {
                     error!("received unknown request / not implemented");

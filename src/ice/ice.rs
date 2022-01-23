@@ -321,6 +321,23 @@ pub async fn ping(self_id: Id, ip: SocketAddr, queries: Vec<Query>) -> Result<Ac
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Status")]
+pub struct CheckStatus;
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct Status {
+    pub bootstrapped: bool,
+}
+
+impl Handler<CheckStatus> for Ice {
+    type Result = Status;
+
+    fn handle(&mut self, msg: CheckStatus, ctx: &mut Context<Self>) -> Self::Result {
+        Status { bootstrapped: self.bootstrapped }
+    }
+}
+
 pub async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, ack: Ack) {
     let switch = ice.send(PingSuccess { ack: ack.clone() }).await.unwrap();
     if switch.flipped {
