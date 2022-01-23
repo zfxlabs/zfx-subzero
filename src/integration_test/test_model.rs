@@ -14,17 +14,12 @@ pub const NODE_ADDRESS: &str = "127.0.0.1:123";
 
 pub struct IntegrationTestContext {
     pub test_run_counter: u32,
-    pub test_nodes: TestNodes,
     old_to_new_cell_hashes: HashMap<CellHash, CellHash>,
 }
 
 impl IntegrationTestContext {
     pub fn new() -> IntegrationTestContext {
-        IntegrationTestContext {
-            test_run_counter: 0,
-            old_to_new_cell_hashes: HashMap::new(),
-            test_nodes: TestNodes::new(),
-        }
+        IntegrationTestContext { test_run_counter: 0, old_to_new_cell_hashes: HashMap::new() }
     }
 
     pub fn count_test_run(&mut self) {
@@ -71,12 +66,30 @@ impl TestNodes {
         TestNodes { nodes }
     }
 
+    pub fn get_running_nodes(&self) -> Vec<&TestNode> {
+        return self
+            .nodes
+            .iter()
+            .filter_map(|n| if let ThreadNodeState::Running(_) = n.state { Some(n) } else { None })
+            .collect::<Vec<&TestNode>>();
+    }
+
     pub fn get_node(&self, id: usize) -> Option<&TestNode> {
         return self.nodes.get(id);
     }
 
     pub fn get_non_existing_node(&self) -> TestNode {
         return TestNode::new(9, 9, NON_EXISTING_NODE);
+    }
+
+    pub fn kill_node(&mut self, id: usize) {
+        self.nodes[id].kill();
+    }
+
+    pub fn start_node(&mut self, id: usize) {
+        if let ThreadNodeState::Stopped = self.nodes[id].state {
+            self.nodes[id].start();
+        }
     }
 }
 
