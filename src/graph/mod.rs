@@ -15,7 +15,7 @@ pub enum Error {
     VertexExists,
     VacantEntry,
     UndefinedChit,
-    UndefinedUTXO,
+    UndefinedVertex,
     ChitReplace,
     // Dependency graph
     EmptyConflictGraph,

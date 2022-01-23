@@ -146,7 +146,15 @@ impl Hail {
             }
         }
         if vxs.len() > 1 {
-            Err(Error::InvalidParent)
+            let mut hashes: Vec<Vertex> = vxs.clone();
+            let mut h = hashes[0].clone();
+            for i in 1..hashes.len() {
+                let hi = hashes[i].clone();
+                if hi.block_hash < h.block_hash {
+                    h = hi;
+                }
+            }
+            Ok(h)
         } else {
             Ok(vxs[0].clone())
         }
@@ -426,7 +434,10 @@ impl Handler<FreshBlock> for Hail {
         // Fanout queries to sampled validators
         let send_to_client = self.sender.send(Fanout {
             ips: validator_ips.clone(),
-            request: Request::QueryBlock(QueryBlock { block: msg.block.clone() }),
+            request: Request::QueryBlock(QueryBlock {
+                id: self.node_id.clone(),
+                block: msg.block.clone(),
+            }),
         });
 
         // Wrap the future so that subsequent chained handlers can access te actor.
@@ -455,6 +466,7 @@ impl Handler<FreshBlock> for Hail {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryBlockAck")]
 pub struct QueryBlock {
+    pub id: Id,
     pub block: HailBlock,
 }
 

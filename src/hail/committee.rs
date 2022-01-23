@@ -24,7 +24,7 @@ pub struct Committee {
     block_production_slot: Option<VrfOutput>,
     /// Whether we have already proposed a block at this height.
     block_proposed: bool,
-    block_producers: HashSet<Id>,
+    block_producers: HashSet<VrfOutput>,
 }
 
 impl std::ops::Deref for Committee {
@@ -66,7 +66,7 @@ impl Committee {
         &mut self,
         vrf_output: VrfOutput,
         validators: HashMap<Id, (SocketAddr, StakingCapacity)>,
-    ) -> (HashMap<Id, (SocketAddr, Weight)>, HashSet<Id>, Option<VrfOutput>) {
+    ) -> (HashMap<Id, (SocketAddr, Weight)>, HashSet<VrfOutput>, Option<VrfOutput>) {
         let expected_size = (validators.len() as f64).sqrt().ceil() + 100.0;
         info!("[{}] expected_size = {:?}", "committee".yellow(), expected_size);
 
@@ -81,7 +81,7 @@ impl Committee {
                 sortition::select(*staking_capacity, total_staking_capacity, expected_size, &vrf_h);
             // If the sortition weight > 0 then this `id` is a block producer.
             if s_w > 0 {
-                block_producers.insert(id.clone());
+                block_producers.insert(vrf_h.clone());
             }
             info!("percent_of {:?}, total = {:?}", *staking_capacity, total_staking_capacity);
             let v_w = util::percent_of(*staking_capacity, total_staking_capacity);
@@ -102,6 +102,7 @@ impl Committee {
             &vrf_h,
         );
         if s_w > 0 {
+            block_producers.insert(vrf_h.clone());
             block_production_slot = Some(vrf_h.clone());
         }
 
@@ -128,6 +129,10 @@ impl Committee {
         self.block_producers = block_producers;
         self.block_production_slot = block_production_slot;
         self.block_proposed = false;
+    }
+
+    pub fn is_valid_vrf(&self, vrf_output: VrfOutput) -> bool {
+        self.block_producers.contains(&vrf_output)
     }
 
     pub fn block_production_slot(&self) -> Option<VrfOutput> {

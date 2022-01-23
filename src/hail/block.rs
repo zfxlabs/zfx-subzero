@@ -1,7 +1,7 @@
 use super::vertex::Vertex;
 use super::{Error, Result};
 use crate::alpha::block::Block;
-use crate::alpha::types::{BlockHash, BlockHeight};
+use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput};
 
 use crate::colored::Colorize;
 
@@ -28,6 +28,10 @@ impl HailBlock {
     /// Returns the height of the contained block.
     pub fn height(&self) -> BlockHeight {
         self.block.height.clone()
+    }
+
+    pub fn vrf_output(&self) -> VrfOutput {
+        self.block.vrf_out.clone()
     }
 
     /// Returns a vertex formed from the height and the hash of the block.
