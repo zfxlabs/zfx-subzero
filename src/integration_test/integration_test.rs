@@ -1,5 +1,5 @@
 #[cfg(test)]
-// #[cfg(feature = "integration_tests")]
+#[cfg(feature = "integration_tests")]
 mod integration_test {
     use crate::alpha::coinbase::CoinbaseOperation;
     use crate::alpha::stake::StakeOperation;
