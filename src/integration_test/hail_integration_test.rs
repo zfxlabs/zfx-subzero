@@ -4,7 +4,8 @@ mod hail_test {
     use crate::alpha::transfer::TransferOperation;
     use crate::cell::types::CellHash;
     use crate::client;
-    use crate::integration_test::test_model::{IntegrationTestContext, TestNode};
+    use crate::integration_test::test_functions::*;
+    use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
     use crate::protocol::{Request, Response};
     use crate::sleet;
     use crate::Result;
@@ -12,7 +13,7 @@ mod hail_test {
     use std::time::Duration;
     use tracing::info;
 
-    // We know that this output has 2000 to spend, and FEE = 100.
+    // We know that this output has 2000 to spend.
     // 9 transactions will be accepted from the 19 issued.
     const INITIAL_HASH: &str = "b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e";
     const ITERATIONS: u64 = 19;
@@ -20,13 +21,15 @@ mod hail_test {
     #[actix_rt::test]
     async fn run_hail_test() -> Result<()> {
         let mut context = IntegrationTestContext::new();
+        let mut nodes = TestNodes::new();
 
-        run_nodes(&mut context.test_nodes.nodes);
-        tokio::time::sleep(Duration::from_secs(40)).await;
+        run_nodes(&mut nodes.nodes);
+        wait_until_nodes_start(&nodes).await?;
 
+        let node = nodes.get_node(0).unwrap();
         let mut cell_hash = starting_hash();
         for i in 0..ITERATIONS {
-            cell_hash = spend_cell(&mut context, cell_hash, 1 + i).await?;
+            cell_hash = spend_cell(&node, cell_hash, 1 + i).await?;
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         Ok(())
@@ -40,12 +43,7 @@ mod hail_test {
     }
 
     /// Spend the specified cell and return its output
-    async fn spend_cell(
-        ctx: &mut IntegrationTestContext,
-        cell_hash: CellHash,
-        amount: u64,
-    ) -> Result<CellHash> {
-        let node = ctx.test_nodes.get_node(0).unwrap();
+    async fn spend_cell(node: &TestNode, cell_hash: CellHash, amount: u64) -> Result<CellHash> {
         if let Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) = client::oneshot(
             node.address,
             Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
@@ -77,21 +75,6 @@ mod hail_test {
             Ok(new_cell_hash)
         } else {
             panic!("cell doesn't exist: {}", hex::encode(&cell_hash));
-        }
-    }
-
-    // FIXME: this is copied from integration_test.rs
-    fn run_nodes(nodes: &mut Vec<TestNode>) {
-        tracing_subscriber::fmt()
-            .with_level(false)
-            .with_target(false)
-            .without_time()
-            .compact()
-            .with_max_level(tracing::Level::INFO)
-            .init();
-
-        for node in nodes {
-            node.start()
         }
     }
 }
