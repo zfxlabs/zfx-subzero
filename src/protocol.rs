@@ -11,6 +11,7 @@ pub enum Request {
     // Handshake
     Version(version::Version),
     // Ice
+    CheckStatus,
     Ping(ice::Ping),
     // Chain Bootstrapping
     GetLastAccepted,
@@ -32,6 +33,7 @@ pub enum Response {
     VersionAck(version::VersionAck),
     // Ice
     Ack(ice::Ack),
+    Status(ice::Status),
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,

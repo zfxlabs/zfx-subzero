@@ -1,5 +1,5 @@
 use crate::hail::Hail;
-use crate::ice::Ice;
+use crate::ice::{CheckStatus, Ice};
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
 use crate::view::View;
@@ -98,7 +98,12 @@ impl Handler<Request> for Router {
                     let query_block_ack = hail.send(query_block).await.unwrap();
                     Response::QueryBlockAck(query_block_ack)
                 }
-                req => {
+                Request::CheckStatus => {
+                    debug!("routing CheckStatus -> Ice");
+                    let status = ice.send(CheckStatus).await.unwrap();
+                    Response::Status(status)
+                }
+               req => {
                     error!("received unknown request / not implemented = {:?}", req);
                     Response::Unknown
                 }
