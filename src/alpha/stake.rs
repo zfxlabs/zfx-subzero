@@ -88,7 +88,7 @@ mod test {
 
         // Generate a coinbase transaction and stake it
         let c1 = generate_coinbase(&kp1, 1000);
-        let stake_op1 = StakeOperation::new(c1.clone(), Id::generate(), pkh2, 900);
+        let stake_op1 = StakeOperation::new(c1.clone(), Id::generate(), pkh2, 1000 - FEE);
         let c2 = stake_op1.stake(&kp1).unwrap();
 
         assert_eq!(c2.inputs().len(), 1);

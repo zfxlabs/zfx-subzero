@@ -49,7 +49,7 @@ pub struct Sleet {
     queried_txs: sled::Db,
     /// The graph of conflicting transactions (potentially multi-input).
     conflict_graph: ConflictGraph,
-    /// A mapping of a cell ids (inputs) to unspent cell outputs.
+    /// A mapping of a cell hashes to unspent cells.
     live_cells: HashMap<CellHash, Cell>,
     /// The map contains transaction already accepted
     accepted_txs: HashSet<TxHash>,
@@ -379,6 +379,7 @@ impl Handler<NewAccepted> for Sleet {
         let _ = self.hail_recipient.do_send(AcceptedCells { cells });
     }
 }
+
 // Instead of having an infinite loop as per the paper which receives and processes
 // inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
 // a fresh transaction is received - either externally in `GenerateTx` or as an internal

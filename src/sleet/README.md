@@ -1,6 +1,6 @@
 # sleet
 
-`sleet` is a transaction based consensus algorithm based on `Avalanche` which uses directed acylic graphs and multi-input conflict resolution. It is the primary consensus mechanism for mempools which use the UTXO model within the `zero.fx` network.
+`sleet` is a transaction based consensus algorithm based on `Avalanche` which uses directed acylic graphs and multi-input conflict resolution. It is the primary consensus mechanism for mempools which use the `cell` model within the `zero.fx` network.
 
 # Algorithm
 

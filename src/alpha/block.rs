@@ -15,6 +15,18 @@ pub struct Block {
     pub cells: Vec<Cell>,
 }
 
+impl std::fmt::Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut s = match self.predecessor {
+            Some(predecessor) => format!("predecessor = {}\n", hex::encode(predecessor)),
+            None => format!("predecessor = None\n"),
+        };
+        s = format!("{}block_height = {:?}\n", s, self.height);
+        s = format!("{}vrf_output = {}", s, hex::encode(self.vrf_out));
+        write!(f, "{}\n", s)
+    }
+}
+
 /// The genesis VRF output - a random set of bytes.
 pub fn genesis_vrf_out() -> Result<[u8; 32]> {
     let mut vrf_out = [0u8; 32];

@@ -1,4 +1,5 @@
 pub mod block;
+mod committee;
 mod conflict_map;
 mod conflict_set;
 mod hail;
@@ -20,8 +21,10 @@ pub enum Error {
     InvalidBlock(Block),
     InvalidBlockHash(BlockHash),
     InvalidBlockHeight(BlockHeight),
+    InvalidParent,
     InvalidConflictSet,
     InsufficientWeight,
+    EmptyDAG,
 }
 
 impl std::error::Error for Error {}

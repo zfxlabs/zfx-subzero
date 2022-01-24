@@ -23,6 +23,7 @@ pub enum Request {
     GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     // Hail
+    GetBlock(hail::GetBlock),
     QueryBlock(hail::QueryBlock),
 }
 
@@ -42,6 +43,7 @@ pub enum Response {
     GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     // Hail
+    BlockAck(hail::BlockAck),
     QueryBlockAck(hail::QueryBlockAck),
     // Error
     Unknown,

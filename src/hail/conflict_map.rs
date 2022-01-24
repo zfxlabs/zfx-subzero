@@ -6,7 +6,11 @@ use super::vertex::Vertex;
 use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight};
 
+use super::hail::BETA1;
+
 use std::collections::{hash_map::Entry, HashMap, HashSet};
+
+use tracing::info;
 
 pub struct ConflictMap {
     inner: HashMap<BlockHeight, ConflictSet>,
@@ -63,8 +67,14 @@ impl ConflictMap {
                 cs.conflicts.insert(block_hash.clone());
                 // If the confidence is still 0 and the lowest hash in the set is this block hash,
                 // then prefer this block.
-                if cs.cnt == 0 && cs.is_lowest_hash(block_hash.clone()) {
+                if cs.cnt < BETA1 && cs.is_lowest_hash(block_hash.clone()) {
+                    info!(
+                        "[conflicts] !! block = {} supersedes {}",
+                        hex::encode(block_hash.clone()),
+                        hex::encode(cs.pref),
+                    );
                     cs.pref = block_hash;
+                    cs.cnt = 0;
                 }
                 Ok(cs.clone())
             }

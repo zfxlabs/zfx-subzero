@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
             }
             // info!("sent tx:\n{:?}\n", tx.clone());
             info!("new cell_hash: {}", hex::encode(&cell_hash_bytes));
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
         } else {
             panic!("cell doesn't exist: {}", hex::encode(&cell_hash_bytes));
         }
