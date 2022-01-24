@@ -104,6 +104,9 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
             if queue.len() == 0 {
                 break;
             }
+            if sum == u8::MAX {
+                break;
+            }
             let elt = queue.pop_front().unwrap();
             let chit = self.get_chit(elt.clone())?;
             sum += chit;
