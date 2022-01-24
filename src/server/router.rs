@@ -103,7 +103,7 @@ impl Handler<Request> for Router {
                     let status = ice.send(CheckStatus).await.unwrap();
                     Response::Status(status)
                 }
-               req => {
+                req => {
                     error!("received unknown request / not implemented = {:?}", req);
                     Response::Unknown
                 }
