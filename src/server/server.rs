@@ -1,19 +1,14 @@
-use crate::zfx_id::Id;
-
 use super::router::Router;
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
-use crate::Result;
+use crate::{Error, Result};
 use tracing::{error, info};
 
 use actix::Addr;
+use actix_rt::net::TcpStream;
+use actix_service::fn_service;
 
 use std::net::SocketAddr;
-use tokio::net::TcpListener;
-
-fn id_from_ip(ip: &SocketAddr) -> Id {
-    Id::new(format!("{:?}", ip.clone()).as_bytes())
-}
 
 /// Implements a server for handling incoming connections.
 pub struct Server {
@@ -28,28 +23,42 @@ impl Server {
         Server { ip, router }
     }
 
-    pub async fn listen(self) -> Result<()> {
-        let listener = TcpListener::bind(self.ip.clone()).await?;
-        info!("listening on {:?}", self.ip.clone());
-        loop {
-            let ip = self.ip.clone();
-            let self_id = id_from_ip(&ip);
-            let router = self.router.clone();
-            let mut channel: Channel<Response, Request> = Channel::accept(&listener).await?;
-            tokio::spawn(async move {
-                let (mut sender, mut receiver) = channel.split();
-                // receive a request
-                let request = receiver.recv().await.unwrap();
-                // process the request
-                match request.clone() {
-                    Some(request) => {
-                        let response = router.send(request).await.unwrap();
-                        // debug!("sending response = {:?}", response);
-                        sender.send(response).await.unwrap();
-                    }
-                    None => error!("received None"),
-                }
-            });
+    // Starts an actix server that listens for incoming connections.
+    // Default thread count is the number of logical cpus
+    pub async fn listen(&self) -> Result<()> {
+        let ip = self.ip.clone();
+        let router = self.router.clone();
+        info!("listening on {:?}", ip);
+
+        actix_server::Server::build()
+            .bind("listener", ip, move || {
+                let router = router.clone();
+
+                // creates a service process that runs for each incoming connection
+                fn_service(move |stream: TcpStream| {
+                    let router = router.clone();
+                    async move { Server::process_stream(stream, router).await }
+                })
+            })?
+            .run()
+            .await
+            .map_err(|err| Error::IO(err))
+    }
+
+    // Processes the tcp stream and sends the request to the router
+    async fn process_stream(stream: TcpStream, router: Addr<Router>) -> Result<()> {
+        let mut channel: Channel<Response, Request> = Channel::wrap(stream).unwrap();
+        let (mut sender, mut receiver) = channel.split();
+        let request = receiver.recv().await.unwrap();
+        match request.clone() {
+            Some(request) => {
+                let response = router.send(request.clone()).await.unwrap();
+                //debug!("sending response = {:?}", response);
+                sender.send(response).await.unwrap();
+            }
+            None => error!("received None"),
         }
+
+        Ok(())
     }
 }
