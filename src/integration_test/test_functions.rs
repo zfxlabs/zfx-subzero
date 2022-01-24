@@ -7,7 +7,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 use crate::alpha::transfer::TransferOperation;
-use crate::cell::types::CellHash;
+use crate::cell::types::{CellHash, PublicKeyHash};
 use crate::cell::{Cell, CellType};
 use crate::ice::Status;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
@@ -166,4 +166,45 @@ pub fn create_transfer_request(
     let transfer_op =
         TransferOperation::new(cell, to.public_key.clone(), from.public_key.clone(), spend_amount);
     Request::GenerateTx(sleet::GenerateTx { cell: transfer_op.transfer(&from.keypair).unwrap() })
+}
+
+pub fn run_nodes(nodes: &mut Vec<TestNode>) {
+    tracing_subscriber::fmt()
+        .with_level(false)
+        .with_target(false)
+        .without_time()
+        .compact()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    for node in nodes {
+        node.start()
+    }
+}
+
+pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
+    let mut live_nodes: HashSet<&PublicKeyHash> = HashSet::new();
+    let mut timer = 0;
+    let mut delay = 2;
+    let mut timeout = 60;
+    let nodes_size = nodes.nodes.len();
+
+    while live_nodes.len() < nodes_size && timer <= timeout {
+        sleep(Duration::from_secs(delay));
+        timer += delay;
+        // mark a node as 'live' if its bootstrapped status is true
+        for node in &nodes.nodes {
+            match check_node_status(node.address).await? {
+                Some(s) => {
+                    if s.bootstrapped {
+                        live_nodes.insert(&node.public_key)
+                    } else {
+                        live_nodes.remove(&node.public_key)
+                    }
+                }
+                None => live_nodes.remove(&node.public_key),
+            };
+        }
+    }
+    Ok(())
 }
