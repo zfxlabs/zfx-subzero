@@ -29,9 +29,9 @@ const NPARENTS: usize = 3;
 
 // Safety parameters
 
-const ALPHA: f64 = 0.5;
-const BETA1: u8 = 11;
-const BETA2: u8 = 20;
+pub const ALPHA: f64 = 0.5;
+pub const BETA1: u8 = 11;
+pub const BETA2: u8 = 20;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {

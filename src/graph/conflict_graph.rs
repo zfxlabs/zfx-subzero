@@ -5,6 +5,7 @@ use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 
 use crate::sleet::conflict_set::ConflictSet;
+use crate::sleet::BETA2;
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
@@ -247,7 +248,9 @@ impl ConflictGraph {
                     if !cell_hash.eq(&self.cs[i].1.last) {
                         self.cs[i].1.last = cell_hash.clone();
                     } else {
-                        self.cs[i].1.cnt += 1;
+                        if self.cs[i].1.cnt < BETA2 {
+                            self.cs[i].1.cnt += 1;
+                        }
                     }
                     return Ok(());
                 }
