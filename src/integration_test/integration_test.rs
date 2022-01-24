@@ -307,20 +307,39 @@ mod integration_test {
         })
     }
 
+    /// Verify that all running nodes have a cell with
+    /// particular hash. Runs several attempts before can fail.
     async fn assert_cell_presence_in_all_running_nodes(
         spent_cell_hash: CellHash,
         check_is_present: bool,
         nodes: &TestNodes,
     ) -> Result<Option<Cell>> {
         let mut spent_cell: Option<Cell> = None;
-        for node in &nodes.get_running_nodes() {
-            spent_cell = get_cell_from_hash(spent_cell_hash.clone(), node.address).await?;
-            if check_is_present {
-                assert!(spent_cell.is_some());
+        let mut spent_cells_counter = 0;
+        let running_nodes = &nodes.get_running_nodes();
+        let nodes_len = running_nodes.len();
+        let mut attempts = 3;
+
+        while attempts > 0 {
+            for node in running_nodes {
+                spent_cell = get_cell_from_hash(spent_cell_hash.clone(), node.address).await?;
+                if (check_is_present && spent_cell.is_some())
+                    || (!check_is_present && spent_cell.is_none())
+                {
+                    spent_cells_counter += 1;
+                }
+            }
+
+            if spent_cells_counter == nodes_len {
+                break;
             } else {
-                assert!(spent_cell.is_none());
+                spent_cells_counter = 0;
+                attempts -= 1;
             }
         }
+
+        assert_eq!(nodes_len, spent_cells_counter, "Not all running nodes have the spent cell");
+
         Ok(spent_cell)
     }
 
