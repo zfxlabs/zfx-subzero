@@ -595,6 +595,18 @@ mod test {
         Id::one()
     }
 
+    fn make_live_committee(cells: Vec<Cell>) -> LiveCommittee {
+        let mut validators = HashMap::new();
+
+        // We have one overweight validator for tests
+        validators.insert(mock_validator_id(), ("0.0.0.0:1".parse().unwrap(), 0.7));
+        let mut live_cells = HashMap::new();
+        for c in cells {
+            live_cells.insert(c.hash(), c.clone());
+        }
+        LiveCommittee { validators, live_cells }
+    }
+
     struct DummyClient {
         pub responses: Vec<(Id, bool)>,
     }
@@ -610,12 +622,28 @@ mod test {
         fn started(&mut self, _ctx: &mut Context<Self>) {}
     }
 
+    #[derive(Debug, Clone, Serialize, Deserialize, Message)]
+    #[rtype(result = "()")]
+    struct SetResponses {
+        pub responses: Vec<(Id, bool)>,
+    }
+    impl Handler<SetResponses> for DummyClient {
+        type Result = ();
+
+        fn handle(
+            &mut self,
+            SetResponses { responses }: SetResponses,
+            _ctx: &mut Context<Self>,
+        ) -> Self::Result {
+            self.responses = responses;
+        }
+    }
     impl Handler<Fanout> for DummyClient {
         type Result = ResponseFuture<Vec<Response>>;
 
         fn handle(
             &mut self,
-            Fanout { ips, request }: Fanout,
+            Fanout { ips: _, request }: Fanout,
             _ctx: &mut Context<Self>,
         ) -> Self::Result {
             let responses = self.responses.clone();
@@ -657,6 +685,88 @@ mod test {
         fn handle(&mut self, msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
             self.accepted.extend_from_slice(&msg.cells[..])
         }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize, Message)]
+    #[rtype(result = "Vec<Cell>")]
+    struct GetAcceptedCells;
+
+    impl Handler<GetAcceptedCells> for HailMock {
+        type Result = Vec<Cell>;
+
+        fn handle(&mut self, _msg: GetAcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
+            self.accepted.clone()
+        }
+    }
+
+    #[actix_rt::test]
+    async fn smoke_test_sleet() {
+        let mut client = DummyClient::new();
+        client.responses = vec![(mock_validator_id(), true)];
+        let sender = client.start();
+
+        let hail_mock = HailMock::new();
+        let receiver = hail_mock.start();
+
+        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
+        let sleet_addr = sleet.start();
+
+        let mut csprng = OsRng {};
+        let root_kp = Keypair::generate(&mut csprng);
+        let genesis_tx = generate_coinbase(&root_kp, 1000);
+
+        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
+        sleet_addr.send(live_committee).await.unwrap();
+
+        let cell = generate_transfer(&root_kp, genesis_tx.clone(), 1);
+        let hash = cell.hash();
+        sleet_addr.send(GenerateTx { cell }).await.unwrap();
+
+        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), 2);
+        assert!(hashes.ids.contains(&hash));
+
+        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        assert!(accepted.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_sleet_accept() {
+        const MIN_TXS_NEEDED: usize = 8;
+        let mut client = DummyClient::new();
+        client.responses = vec![(mock_validator_id(), true)];
+        let sender = client.start();
+
+        let hail_mock = HailMock::new();
+        let receiver = hail_mock.start();
+
+        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
+        let sleet_addr = sleet.start();
+
+        let mut csprng = OsRng {};
+        let root_kp = Keypair::generate(&mut csprng);
+        let genesis_tx = generate_coinbase(&root_kp, 1000);
+
+        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
+        sleet_addr.send(live_committee).await.unwrap();
+
+        let mut spend_cell = genesis_tx.clone();
+        let mut cell0: Cell = genesis_tx.clone(); // value irrelevant, will be initialised later
+        for i in 0..MIN_TXS_NEEDED {
+            let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
+            if i == 0 {
+                cell0 = cell.clone();
+            }
+            sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            spend_cell = cell;
+        }
+        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1);
+
+        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        println!("Accepted: {:?}", accepted);
+        assert!(accepted.len() == 1);
+        assert!(accepted == vec![cell0]);
     }
 
     #[actix_rt::test]
