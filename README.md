@@ -3,6 +3,8 @@
 
 The `zfx-subzero` project is a unification of the core products which `zero.fx` has been working on throughout the year.
 
+For build and test instructions, see [below](#build-and-test).
+
 The purpose of `subzero` is provide a network which can reach consensus on blocks containing operations for potentially multiple distinct blockchains. `subzero` acts as a consensus and storage layer, delegating the task of executing state transitions and verifying the specific contents of operations to other client chains.
 
 The `alpha` primitives are the only exception to this rule. `alpha`s purpose is to define very simple primitives which allow for an economic model to exist (primitives for transfers and staking namely), so that there is a notion of state capacity on the network (this is necessary in order to provide sybil resistance).
@@ -51,7 +53,19 @@ How the components fit together:
 5. `hail` is initialised with the latest validator set in the same way as `sleet`. Whenever the VRF based selection selects the validator running `hail`, final transactions in `sleet` are used to generate a new block. `hail` resolves conflicts between blocks, ensuring that whenever a block conflicts at the same height the block with the lowest hash is selected.
 6. A `block` recipient chain receives accepted blocks (final blocks) containing the cells that were finalised, executes the cells which are relevant to it and extends its blockchain.
 
-## Running the local testnet
+## Build and test
+
+Assuming that the standard set of Rust and C build tools are present, the following commands can be used to check out, build the project and run the tests:
+
+```
+git checkout git@github.com:zfxlabs/zfx-subzero.git zfx-subzero
+cd zfx-subzero
+git checkout m3
+cargo b
+cargo t
+```
+
+### Running the local testnet
 
 The local testnet is currently comprised of 3 nodes (for simplicity) which can be spawned by running the following commands. 
 
@@ -63,9 +77,9 @@ cargo run --bin node -- -a 127.0.0.1:1235 -b 127.0.0.1:1234 --keypair 5a353c630d
 cargo run --bin node -- -a 127.0.0.1:1236 -b 127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b
 ```
 
-## Running the client test
+### Running the client test
 
-The client test which sends transactions in a loop to one of the validators mempools can be executed with the following command, where the `--loop` argument can be used to control how many transactions get generated.
+The client test which sends transactions in a loop to one of the validators mempool in the running local testnet can be executed with the following command, where the `--loop` argument can be used to control how many transactions get generated.
 
 ```
 cargo run --bin client_test -- --peer-ip 127.0.0.1:1234 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --cell-hash b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e # --loop 16
