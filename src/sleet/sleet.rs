@@ -770,6 +770,44 @@ mod test {
     }
 
     #[actix_rt::test]
+    async fn test_sleet_dont_accept() {
+        const N: usize = 30;
+        let mut client = DummyClient::new();
+        // all transactions will be voted against,
+        // none will be accepted
+        client.responses = vec![(mock_validator_id(), false)];
+        let sender = client.start();
+
+        let hail_mock = HailMock::new();
+        let receiver = hail_mock.start();
+
+        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
+        let sleet_addr = sleet.start();
+
+        let mut csprng = OsRng {};
+        let root_kp = Keypair::generate(&mut csprng);
+        let genesis_tx = generate_coinbase(&root_kp, 1000);
+
+        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
+        sleet_addr.send(live_committee).await.unwrap();
+
+        let mut spend_cell = genesis_tx.clone();
+        for i in 0..N {
+            let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
+            sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            spend_cell = cell;
+        }
+
+        // The cells won't be added to `live_cells`. TODO Is this correct?
+        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), 1);
+
+        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        println!("Accepted: {:?}", accepted);
+        assert!(accepted.is_empty());
+    }
+
+    #[actix_rt::test]
     async fn test_strongly_preferred() {
         let client = DummyClient::new();
         let sender = client.start();
