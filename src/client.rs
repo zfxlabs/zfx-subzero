@@ -18,7 +18,7 @@ impl Client {
 impl Actor for Client {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!("started client");
     }
 }
@@ -34,7 +34,7 @@ pub struct Oneshot {
 impl Handler<Oneshot> for Client {
     type Result = ResponseFuture<Result<Option<Response>>>;
 
-    fn handle(&mut self, msg: Oneshot, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Oneshot, _ctx: &mut Context<Self>) -> Self::Result {
         Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone()).await })
     }
 }
@@ -49,7 +49,7 @@ pub struct Fanout {
 impl Handler<Fanout> for Client {
     type Result = ResponseFuture<Vec<Response>>;
 
-    fn handle(&mut self, msg: Fanout, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
         Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone()).await })
     }
 }

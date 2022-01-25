@@ -1,6 +1,6 @@
 use crate::zfx_id::Id;
 
-use crate::alpha::block::VrfOutput;
+use crate::alpha::types::VrfOutput;
 use crate::alpha::{self, Alpha};
 use crate::client;
 use crate::colored::Colorize;
@@ -257,6 +257,7 @@ pub struct LiveCommittee {
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Committee {
+    pub self_staking_capacity: u64,
     pub sleet_validators: HashMap<Id, (SocketAddr, f64)>,
     pub hail_validators: HashMap<Id, (SocketAddr, u64)>,
 }
@@ -270,17 +271,29 @@ impl Handler<LiveCommittee> for Ice {
         info!("[{}] received live committee", "ice".to_owned().magenta());
         let mut sleet_validators = HashMap::default();
         let mut hail_validators = HashMap::default();
+        info!("[{}] live committee size = {}", "ice".magenta(), msg.validators.len());
+        let mut self_staking_capacity = None;
         for (id, amount) in msg.validators.iter() {
-            match self.reservoir.get_live_endpoint(id) {
-                Some(ip) => {
-                    let w = util::percent_of(*amount, msg.total_staking_capacity);
-                    let _ = sleet_validators.insert(id.clone(), (ip.clone(), w));
-                    let _ = hail_validators.insert(id.clone(), (ip.clone(), *amount));
+            if id.clone() == self.id {
+                let w = util::percent_of(*amount, msg.total_staking_capacity);
+                self_staking_capacity = Some(*amount);
+            } else {
+                match self.reservoir.get_live_endpoint(id) {
+                    Some(ip) => {
+                        let w = util::percent_of(*amount, msg.total_staking_capacity);
+                        let _ = sleet_validators.insert(id.clone(), (ip.clone(), w));
+                        let _ = hail_validators.insert(id.clone(), (ip.clone(), *amount));
+                    }
+                    None => (),
                 }
-                None => (),
             }
         }
-        Committee { sleet_validators, hail_validators }
+        let self_staking_capacity = if let Some(self_staking_capacity) = self_staking_capacity {
+            self_staking_capacity
+        } else {
+            panic!("insufficient stake");
+        };
+        Committee { self_staking_capacity, sleet_validators, hail_validators }
     }
 }
 
@@ -327,6 +340,23 @@ pub async fn ping(
         Ok(None) => Err(Error::Crash),
         // Failure (crash)
         Err(err) => Err(Error::Crash),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Status")]
+pub struct CheckStatus;
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct Status {
+    pub bootstrapped: bool,
+}
+
+impl Handler<CheckStatus> for Ice {
+    type Result = Status;
+
+    fn handle(&mut self, msg: CheckStatus, ctx: &mut Context<Self>) -> Self::Result {
+        Status { bootstrapped: self.bootstrapped }
     }
 }
 

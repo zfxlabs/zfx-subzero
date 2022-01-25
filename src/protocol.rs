@@ -1,5 +1,5 @@
 use crate::alpha;
-use crate::alpha::TxHash;
+use crate::alpha::types::TxHash;
 use crate::hail;
 use crate::ice;
 use crate::sleet;
@@ -11,6 +11,7 @@ pub enum Request {
     // Handshake
     Version(version::Version),
     // Ice
+    CheckStatus,
     Ping(ice::Ping),
     // Chain Bootstrapping
     GetLastAccepted,
@@ -22,6 +23,7 @@ pub enum Request {
     GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     // Hail
+    GetBlock(hail::GetBlock),
     QueryBlock(hail::QueryBlock),
 }
 
@@ -31,6 +33,7 @@ pub enum Response {
     VersionAck(version::VersionAck),
     // Ice
     Ack(ice::Ack),
+    Status(ice::Status),
     // Chain Bootstrapping
     LastAccepted(alpha::LastAccepted),
     Ancestors,
@@ -40,6 +43,7 @@ pub enum Response {
     GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     // Hail
+    BlockAck(hail::BlockAck),
     QueryBlockAck(hail::QueryBlockAck),
     // Error
     Unknown,

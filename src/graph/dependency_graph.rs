@@ -32,7 +32,7 @@ impl DependencyGraph {
         let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
         match self.dh.entry(produced_cell_ids.clone()) {
             Entry::Occupied(_) => return Err(Error::DuplicateCell),
-            Entry::Vacant(mut v) => {
+            Entry::Vacant(v) => {
                 let _ = v.insert(consumed_cell_ids.clone());
             }
         }

@@ -5,7 +5,7 @@ pub mod dependency_graph;
 
 pub use dag::*;
 
-use crate::alpha::TxHash;
+use crate::alpha::types::TxHash;
 use crate::cell;
 use crate::cell::types::CellHash;
 
@@ -15,7 +15,7 @@ pub enum Error {
     VertexExists,
     VacantEntry,
     UndefinedChit,
-    UndefinedUTXO,
+    UndefinedVertex,
     ChitReplace,
     // Dependency graph
     EmptyConflictGraph,

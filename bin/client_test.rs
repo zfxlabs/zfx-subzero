@@ -3,8 +3,6 @@ use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
-use zfx_subzero::version;
-use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
@@ -16,10 +14,6 @@ use tracing::info;
 use tracing_subscriber;
 
 use clap::{value_t, App, Arg};
-
-fn id_from_ip(ip: &SocketAddr) -> Id {
-    Id::new(format!("{:?}", ip.clone()).as_bytes())
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -69,7 +63,6 @@ async fn main() -> Result<()> {
 
     let cell_hash_vec = hex::decode(cell_hash).unwrap();
     let mut cell_hash_bytes = [0u8; 32];
-    let mut i = 0;
     for i in 0..32 {
         cell_hash_bytes[i] = cell_hash_vec[i];
     }
@@ -81,7 +74,7 @@ async fn main() -> Result<()> {
         )
         .await?
         {
-            info!("spendable: {:?}\n", cell_in.clone());
+            info!("spendable:\n{}\n", cell_in.clone());
             let transfer_op =
                 TransferOperation::new(cell_in.clone(), pkh.clone(), pkh.clone(), amount + 1);
             let transfer_tx = transfer_op.transfer(&keypair).unwrap();
@@ -92,14 +85,14 @@ async fn main() -> Result<()> {
             )
             .await?
             {
-                Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(hash) })) => {
-                    // info!("Ack hash: {}", hex::encode(hash))
+                Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(_hash) })) => {
+                    // info!("Ack hash: {}", hex::encode(_hash))
                 }
                 other => panic!("Unexpected: {:?}", other),
             }
             // info!("sent tx:\n{:?}\n", tx.clone());
             info!("new cell_hash: {}", hex::encode(&cell_hash_bytes));
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
         } else {
             panic!("cell doesn't exist: {}", hex::encode(&cell_hash_bytes));
         }

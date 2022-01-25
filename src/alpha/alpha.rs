@@ -3,6 +3,7 @@ use crate::zfx_id::Id;
 use crate::colored::Colorize;
 
 use crate::client;
+use crate::hail::block::HailBlock;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
 use crate::sleet::{self, Sleet};
@@ -11,8 +12,9 @@ use crate::{ice, ice::Ice};
 
 use crate::storage::block;
 
-use super::block::{build_genesis, BlockHash};
+use super::block::{build_genesis, Block};
 use super::state::State;
+use super::types::BlockHash;
 
 use tracing::{debug, info};
 
@@ -177,12 +179,18 @@ impl Handler<LiveNetwork> for Alpha {
                     .await
                     .unwrap();
 
+                // Build a `HailBlock` from the last accepted block.
+                let last_accepted_block = HailBlock::new(None, last_block.clone());
+
                 // Send `hail` the live committee information for querying blocks.
                 let () = hail_addr
                     .send(hail::LiveCommittee {
-                        self_id: self_id.clone(),
+                        last_accepted_hash,
+                        last_accepted_block,
                         height: state.height,
-                        total_stake: state.total_staking_capacity,
+                        self_id: self_id.clone(),
+                        self_staking_capacity: committee.self_staking_capacity.clone(),
+                        total_staking_capacity: state.total_staking_capacity,
                         validators: committee.hail_validators.clone(),
                         vrf_out,
                     })
@@ -257,5 +265,21 @@ impl Handler<GetAncestors> for Alpha {
 
     fn handle(&mut self, _msg: GetAncestors, _ctx: &mut Context<Self>) -> Self::Result {
         Ancestors {}
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct AcceptedBlock {
+    pub block: Block,
+}
+
+impl Handler<AcceptedBlock> for Alpha {
+    type Result = ();
+
+    fn handle(&mut self, msg: AcceptedBlock, ctx: &mut Context<Self>) -> Self::Result {
+        info!("[{}] received accepted block", "alpha".yellow());
+
+        // TODO
     }
 }

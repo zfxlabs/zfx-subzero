@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target:
+          - { name: Ubuntu, os: ubuntu-latest }
+        version:
+          - 1.57.0
+
+    name: Build and test ZFX Sub-Zero on ${{ matrix.target.name }}
+    runs-on: ${{ matrix.target.os }}
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v2
+
+      - name: Install Rust
+        run: rustup update stable
+
+      - name: Use toolchain for version ${{ matrix.version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.version }}
+          override: true
+          profile: minimal
+          default: true
+          components: rustfmt
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1.2.0
+
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: '-- --check'
+
+      - name: Build components
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        timeout-minutes: 30
+        with:
+          command: test

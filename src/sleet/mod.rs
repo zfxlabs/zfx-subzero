@@ -1,11 +1,11 @@
 mod sleet;
-mod sleet_tx;
+pub mod tx;
 
 pub mod conflict_set;
 
 pub use sleet::*;
 
-use crate::alpha::TxHash;
+use crate::alpha::types::TxHash;
 use crate::cell;
 use crate::graph;
 

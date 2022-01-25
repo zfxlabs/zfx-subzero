@@ -80,7 +80,7 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
                     Ok(())
                 }
             }
-            Entry::Vacant(mut v) => {
+            Entry::Vacant(v) => {
                 let _ = v.insert(chit);
                 Ok(())
             }
@@ -225,8 +225,8 @@ where
         let next = self.stack.pop().unwrap();
         match self.visited.entry(&next) {
             Entry::Occupied(_) => (),
-            Entry::Vacant(mut v) => {
-                v.insert(true);
+            Entry::Vacant(v) => {
+                let _ = v.insert(true);
             }
         }
         let adj = self.dag.get(&next).unwrap();

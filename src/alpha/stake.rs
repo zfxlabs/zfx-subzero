@@ -10,6 +10,9 @@ use crate::cell::{Cell, CellType};
 
 use super::{Error, Result};
 
+use crate::alpha::cell_operation::{
+    consume_from_cell, validate_capacity, validate_output, ConsumeResult,
+};
 use ed25519_dalek::Keypair;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -22,24 +25,6 @@ pub struct StakeState {
 pub fn stake_output(node_id: Id, pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&StakeState { node_id })?;
     Ok(Output { capacity, cell_type: CellType::Stake, data, lock: pkh })
-}
-
-/// Checks that the output has the right form.
-pub fn validate_output(output: Output) -> Result<()> {
-    match output.cell_type {
-        CellType::Coinbase => {
-            let _: CoinbaseState = bincode::deserialize(&output.data)?;
-            Ok(())
-        }
-        CellType::Transfer => {
-            let _: TransferState = bincode::deserialize(&output.data)?;
-            Ok(())
-        }
-        CellType::Stake => {
-            let _: StakeState = bincode::deserialize(&output.data)?;
-            Ok(())
-        }
-    }
 }
 
 pub struct StakeOperation {
@@ -59,74 +44,18 @@ impl StakeOperation {
     }
 
     pub fn stake(&self, keypair: &Keypair) -> Result<Cell> {
-        let encoded_public = bincode::serialize(&keypair.public)?;
-        let pkh = blake3::hash(&encoded_public).as_bytes().clone();
-
-        self.validate_capacity(self.capacity.clone())?;
-
-        let mut owned_outputs = vec![];
-        for output in self.cell.outputs().iter() {
-            // Validate the output to make sure it has the right form.
-            let () = output.validate_capacity()?;
-            let () = validate_output(output.clone())?;
-            if output.lock == pkh.clone() {
-                owned_outputs.push(output.clone());
-            } else {
-                continue;
-            }
-        }
-
-        // Consume outputs and construct inputs - the remaining inputs should be reflected in the
-        // change amount.
-        let mut i = 0;
-        let mut spending_capacity = self.capacity.clone();
-        let mut change_capacity = 0;
-        let mut consumed = 0;
-        let mut inputs = vec![];
-        if owned_outputs.len() > 0 {
-            for output in owned_outputs.iter() {
-                if consumed < self.capacity {
-                    inputs.push(Input::new(keypair, self.cell.hash(), i)?);
-                    if spending_capacity >= output.capacity {
-                        spending_capacity -= output.capacity;
-                        consumed += output.capacity;
-                    } else {
-                        consumed += spending_capacity;
-                        change_capacity = output.capacity - spending_capacity;
-                    }
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-        } else {
-            return Err(Error::UnspendableCell);
-        }
+        let ConsumeResult { consumed, residue, inputs } =
+            consume_from_cell(&self.cell, self.capacity, keypair)?;
 
         // Create a change output.
         let main_output = stake_output(self.node_id.clone(), self.address.clone(), consumed)?;
-        let outputs = if change_capacity > FEE && change_capacity - FEE > 0 {
-            vec![
-                main_output,
-                transfer::transfer_output(self.address.clone(), change_capacity - FEE)?,
-            ]
+        let outputs = if residue > FEE && residue - FEE > 0 {
+            vec![main_output, transfer::transfer_output(self.address.clone(), residue - FEE)?]
         } else {
             vec![main_output]
         };
 
         Ok(Cell::new(Inputs::new(inputs), Outputs::new(outputs)))
-    }
-
-    /// Checks that the capacity is > 0 and does not exceed the sum of the outputs.
-    fn validate_capacity(&self, capacity: Capacity) -> Result<()> {
-        let mut total = self.cell.sum();
-        if capacity == 0 {
-            return Err(Error::ZeroStake);
-        }
-        if capacity > total - FEE {
-            return Err(Error::ExceedsAvailableFunds);
-        }
-        Ok(())
     }
 }
 
@@ -159,7 +88,7 @@ mod test {
 
         // Generate a coinbase transaction and stake it
         let c1 = generate_coinbase(&kp1, 1000);
-        let stake_op1 = StakeOperation::new(c1.clone(), Id::generate(), pkh2, 900);
+        let stake_op1 = StakeOperation::new(c1.clone(), Id::generate(), pkh2, 1000 - FEE);
         let c2 = stake_op1.stake(&kp1).unwrap();
 
         assert_eq!(c2.inputs().len(), 1);

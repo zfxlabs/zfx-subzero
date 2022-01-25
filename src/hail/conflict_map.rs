@@ -1,13 +1,19 @@
 use super::{Error, Result};
 
 use super::conflict_set::ConflictSet;
+use super::vertex::Vertex;
 
-use crate::alpha::block::{Block, BlockHash, BlockHeight};
+use crate::alpha::block::Block;
+use crate::alpha::types::{BlockHash, BlockHeight};
+
+use super::hail::BETA1;
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+use tracing::info;
+
 pub struct ConflictMap {
-    inner: HashMap<BlockHeight, ConflictSet<BlockHash>>,
+    inner: HashMap<BlockHeight, ConflictSet>,
 }
 
 impl ConflictMap {
@@ -39,32 +45,44 @@ impl ConflictMap {
         }
     }
 
-    pub fn get_confidence(&self, height: &BlockHeight) -> Result<u8> {
-        match self.inner.get(height) {
-            Some(cs) => Ok(cs.cnt),
-            None => Err(Error::InvalidBlockHeight(height.clone())),
+    pub fn get_confidence(&self, vx: &Vertex) -> Result<u8> {
+        match self.inner.get(&vx.height) {
+            Some(cs) => {
+                if cs.pref == vx.block_hash {
+                    Ok(cs.cnt)
+                } else {
+                    Ok(0)
+                }
+            }
+            None => Err(Error::InvalidBlockHeight(vx.height.clone())),
         }
     }
 
-    pub fn insert_block(&mut self, block: Block) -> ConflictSet<BlockHash> {
+    pub fn insert_block(&mut self, block: Block) -> Result<ConflictSet> {
         match self.inner.entry(block.height.clone()) {
             // The conflict set already contains a conflict.
             Entry::Occupied(mut o) => {
                 let cs = o.get_mut();
-                cs.conflicts.insert(block.hash().unwrap());
+                let block_hash = block.hash()?;
+                cs.conflicts.insert(block_hash.clone());
                 // If the confidence is still 0 and the lowest hash in the set is this block hash,
                 // then prefer this block.
-                if cs.cnt == 0 {
-                    // && cs.lowest_hash() == block.hash() {
-                    cs.pref = block.hash().unwrap();
+                if cs.cnt < BETA1 && cs.is_lowest_hash(block_hash.clone()) {
+                    info!(
+                        "[conflicts] !! block = {} supersedes {}",
+                        hex::encode(block_hash.clone()),
+                        hex::encode(cs.pref),
+                    );
+                    cs.pref = block_hash;
+                    cs.cnt = 0;
                 }
-                cs.clone()
+                Ok(cs.clone())
             }
             // The block is currently non-conflicting.
             Entry::Vacant(v) => {
                 let mut cs = ConflictSet::new(block.hash().unwrap());
                 v.insert(cs.clone());
-                cs
+                Ok(cs)
             }
         }
     }

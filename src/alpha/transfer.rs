@@ -6,6 +6,7 @@ use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};
 
+use crate::alpha::cell_operation::{consume_from_cell, ConsumeResult};
 use ed25519_dalek::Keypair;
 
 /// Empty transfer state - capacity transfers do not need to store extra state.
@@ -16,27 +17,6 @@ pub struct TransferState;
 pub fn transfer_output(pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&TransferState {})?;
     Ok(Output { capacity, cell_type: CellType::Transfer, data, lock: pkh })
-}
-
-/// Checks that the output has the right form.
-pub fn validate_output(output: Output) -> Result<()> {
-    match output.cell_type {
-        // Constructing a transfer output from a coinbase output is allowed
-        CellType::Coinbase => {
-            let _: CoinbaseState = bincode::deserialize(&output.data)?;
-            Ok(())
-        }
-        // Constructing a transfer output from a transfer output is allowed
-        CellType::Transfer => {
-            let _: TransferState = bincode::deserialize(&output.data)?;
-            Ok(())
-        }
-        // Constructing a transfer output from a stake output is allowed
-        CellType::Stake => {
-            let _: StakeState = bincode::deserialize(&output.data)?;
-            Ok(())
-        }
-    }
 }
 
 /// A transfer operation transfers capacity from an owner to another.
@@ -63,70 +43,17 @@ impl TransferOperation {
 
     /// Create a new set of transfer outputs from the supplied transfer operation.
     pub fn transfer(&self, keypair: &Keypair) -> Result<Cell> {
-        let encoded_public = bincode::serialize(&keypair.public)?;
-        let pkh = blake3::hash(&encoded_public).as_bytes().clone();
-
-        self.validate_capacity(self.capacity.clone())?;
-
-        let mut owned_outputs = vec![];
-        for output in self.cell.outputs().iter() {
-            // Validate the output to make sure it has the right form.
-            let () = output.validate_capacity()?;
-            let () = validate_output(output.clone())?;
-            if output.lock == pkh.clone() {
-                owned_outputs.push(output.clone());
-            } else {
-                continue;
-            }
-        }
-
-        // Consume outputs and construct inputs - the remaining inputs should be reflected in the
-        // change amount.
-        let mut i = 0;
-        let mut spending_capacity = self.capacity.clone();
-        let mut change_capacity = 0;
-        let mut consumed = 0;
-        let mut inputs = vec![];
-        if owned_outputs.len() > 0 {
-            for output in owned_outputs.iter() {
-                if consumed < self.capacity {
-                    inputs.push(Input::new(keypair, self.cell.hash(), i)?);
-                    if spending_capacity >= output.capacity {
-                        spending_capacity -= output.capacity;
-                        consumed += output.capacity;
-                    } else {
-                        consumed += spending_capacity;
-                        change_capacity = output.capacity - spending_capacity;
-                    }
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-        } else {
-            return Err(Error::UnspendableCell);
-        }
+        let ConsumeResult { consumed, residue, inputs } =
+            consume_from_cell(&self.cell, self.capacity, keypair)?;
 
         let main_output = transfer_output(self.recipient_address, consumed)?;
-        let outputs = if change_capacity > FEE && change_capacity - FEE > 0 {
-            vec![main_output, transfer_output(self.change_address, change_capacity - FEE)?]
+        let outputs = if residue > FEE && residue - FEE > 0 {
+            vec![main_output, transfer_output(self.change_address, residue - FEE)?]
         } else {
             vec![main_output]
         };
 
         Ok(Cell::new(Inputs::new(inputs), Outputs::new(outputs)))
-    }
-
-    /// Checks that the capacity is > 0 and does not exceed the sum of the outputs.
-    fn validate_capacity(&self, capacity: Capacity) -> Result<()> {
-        let mut total = self.cell.sum();
-        if capacity == 0 {
-            return Err(Error::ZeroTransfer);
-        }
-        if capacity > total - FEE {
-            return Err(Error::ExceedsAvailableFunds);
-        }
-        Ok(())
     }
 }
 
@@ -139,6 +66,30 @@ mod test {
     use ed25519_dalek::Keypair;
 
     use std::convert::TryInto;
+
+    #[actix_rt::test]
+    async fn test_transfer_more_than_owner_output_has() {
+        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+
+        let coinbase_op = CoinbaseOperation::new(vec![(pkh2.clone(), 688), (pkh1.clone(), 120)]);
+        let coinbase_tx = coinbase_op.try_into().unwrap();
+
+        let transfer_op = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 133); // pkh1 does not have enough balance
+
+        assert_eq!(transfer_op.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
+    }
+
+    #[actix_rt::test]
+    async fn test_transfer_with_total_less_than_fee() {
+        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+
+        let coinbase_op = CoinbaseOperation::new(vec![(pkh1.clone(), 1), (pkh1.clone(), 1)]);
+        let coinbase_tx = coinbase_op.try_into().unwrap();
+
+        let transfer_op = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 3);
+
+        assert_eq!(transfer_op.transfer(&kp1), Err(Error::ExceedsAvailableFunds));
+    }
 
     #[actix_rt::test]
     async fn test_transfer_with_three_outputs() {
@@ -155,7 +106,7 @@ mod test {
         let transfer_tx = transfer_op.transfer(&kp1).unwrap();
 
         assert_eq!(transfer_tx.inputs().len(), 3);
-        assert_eq!(transfer_tx.outputs()[0].capacity, 100); // total spent - fee
+        assert_eq!(transfer_tx.outputs()[0].capacity, 200 - FEE); // total spent - fee
         assert_eq!(transfer_tx.outputs()[1].capacity, 1800); // remaining spendable amount
     }
 
@@ -188,24 +139,26 @@ mod test {
 
         // Generate a coinbase transaction and spend it
         let coinbase_tx = generate_coinbase(&kp1, 1000);
-        let transfer_op1 = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 900);
+        let transfer_op1 =
+            TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 1000 - FEE);
 
         let tx2 = transfer_op1.transfer(&kp1).unwrap();
         assert_eq!(tx2.inputs().len(), 1);
         assert_eq!(tx2.outputs().len(), 1);
         // The sum of the outputs should be 1000 - fee = 900
-        assert_eq!(tx2.sum(), 900);
+        assert_eq!(tx2.sum(), 1000 - FEE);
 
-        // Spend the result of spending the coinbase
+        // Spend the result of spending the coinbase. tx2 for pkh2 owner should have 900 spendable capacity
         let transfer_op2 = TransferOperation::new(tx2, pkh1.clone(), pkh2.clone(), 700);
         let tx3 = transfer_op2.transfer(&kp2).unwrap();
         assert_eq!(tx3.inputs().len(), 1);
         // The sum should take into account the change amount
-        assert_eq!(tx3.sum(), 800);
+        assert_eq!(tx3.sum(), 1000 - FEE * 2);
 
-        let transfer_op3 = TransferOperation::new(tx3, pkh2.clone(), pkh1.clone(), 700);
+        // tx3 for pkh1 owner should have 700 - FEE spendable capacity
+        let transfer_op3 = TransferOperation::new(tx3, pkh2.clone(), pkh1.clone(), 700 - FEE);
         let tx4 = transfer_op3.transfer(&kp1).unwrap();
-        assert_eq!(tx4.sum(), 700);
+        assert_eq!(tx4.sum(), 700 - FEE);
         assert_eq!(tx4.outputs().len(), 1);
     }
 
