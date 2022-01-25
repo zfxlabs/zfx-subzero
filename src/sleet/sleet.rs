@@ -2,7 +2,7 @@ use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
 use crate::alpha::types::{TxHash, Weight};
-use crate::cell::types::{CellHash, PublicKeyHash};
+use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 use crate::client::Fanout;
 use crate::graph::conflict_graph::ConflictGraph;
@@ -569,7 +569,7 @@ mod test {
 
     use actix::ResponseFuture;
     use ed25519_dalek::Keypair;
-    use rand::{rngs::OsRng, CryptoRng};
+    use rand::rngs::OsRng;
 
     use std::convert::TryInto;
 
@@ -591,7 +591,19 @@ mod test {
         transfer_op.transfer(&keypair).unwrap()
     }
 
-    struct DummyClient;
+    fn mock_validator_id() -> Id {
+        Id::one()
+    }
+
+    struct DummyClient {
+        pub responses: Vec<(Id, bool)>,
+    }
+
+    impl DummyClient {
+        pub fn new() -> Self {
+            Self { responses: vec![] }
+        }
+    }
     impl Actor for DummyClient {
         type Context = Context<Self>;
 
@@ -601,12 +613,38 @@ mod test {
     impl Handler<Fanout> for DummyClient {
         type Result = ResponseFuture<Vec<Response>>;
 
-        fn handle(&mut self, _msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
-            Box::pin(async move { vec![] })
+        fn handle(
+            &mut self,
+            Fanout { ips, request }: Fanout,
+            _ctx: &mut Context<Self>,
+        ) -> Self::Result {
+            let responses = self.responses.clone();
+            Box::pin(async move {
+                match request {
+                    Request::QueryTx(QueryTx { tx }) => responses
+                        .iter()
+                        .map(|(id, outcome)| {
+                            Response::QueryTxAck(QueryTxAck {
+                                id: id.clone(),
+                                tx_hash: tx.hash(),
+                                outcome: outcome.clone(),
+                            })
+                        })
+                        .collect(),
+                    r => panic!("unexpected request: {:?}", r),
+                }
+            })
         }
     }
 
-    struct HailMock;
+    struct HailMock {
+        pub accepted: Vec<Cell>,
+    }
+    impl HailMock {
+        pub fn new() -> Self {
+            Self { accepted: vec![] }
+        }
+    }
     impl Actor for HailMock {
         type Context = Context<Self>;
 
@@ -616,15 +654,17 @@ mod test {
     impl Handler<AcceptedCells> for HailMock {
         type Result = ();
 
-        fn handle(&mut self, _msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
-            ()
+        fn handle(&mut self, msg: AcceptedCells, _ctx: &mut Context<Self>) -> Self::Result {
+            self.accepted.extend_from_slice(&msg.cells[..])
         }
     }
 
     #[actix_rt::test]
     async fn test_strongly_preferred() {
-        let sender = DummyClient.start();
-        let receiver = HailMock.start();
+        let client = DummyClient::new();
+        let sender = client.start();
+        let hail_mock = HailMock::new();
+        let receiver = hail_mock.start();
 
         let mut csprng = OsRng {};
         let root_kp = Keypair::generate(&mut csprng);
