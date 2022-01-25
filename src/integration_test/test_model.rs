@@ -82,6 +82,12 @@ impl TestNodes {
         return TestNode::new(9, 9, NON_EXISTING_NODE);
     }
 
+    pub fn kill_all(&mut self) {
+        for mut node in &mut self.nodes {
+            node.kill();
+        }
+    }
+
     pub fn kill_node(&mut self, id: usize) {
         self.nodes[id].kill();
     }
@@ -89,6 +95,12 @@ impl TestNodes {
     pub fn start_node(&mut self, id: usize) {
         if let ThreadNodeState::Stopped = self.nodes[id].state {
             self.nodes[id].start();
+        }
+    }
+
+    pub fn start_all(&mut self) {
+        for mut node in &mut self.nodes {
+            node.start();
         }
     }
 }
