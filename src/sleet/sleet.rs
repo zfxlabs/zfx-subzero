@@ -588,7 +588,10 @@ mod test {
         let enc = bincode::serialize(&keypair.public).unwrap();
         let pkh = blake3::hash(&enc).as_bytes().clone();
         let transfer_op = TransferOperation::new(from, pkh.clone(), pkh, amount);
-        transfer_op.transfer(&keypair).unwrap()
+        match transfer_op.transfer(&keypair) {
+            Ok(tr) => tr,
+            Err(e) => panic!("{}", e),
+        }
     }
 
     fn mock_validator_id() -> Id {
@@ -757,6 +760,8 @@ mod test {
             if i == 0 {
                 cell0 = cell.clone();
             }
+            println!("Cell: {}", cell.clone());
+
             sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
             spend_cell = cell;
         }
@@ -767,6 +772,51 @@ mod test {
         println!("Accepted: {:?}", accepted);
         assert!(accepted.len() == 1);
         assert!(accepted == vec![cell0]);
+    }
+
+    #[actix_rt::test]
+    async fn test_sleet_accept_with_conflict() {
+        const MIN_TXS_NEEDED: usize = 8;
+        let mut client = DummyClient::new();
+        client.responses = vec![(mock_validator_id(), true)];
+        let sender = client.start();
+
+        let hail_mock = HailMock::new();
+        let receiver = hail_mock.start();
+
+        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
+        let sleet_addr = sleet.start();
+
+        let mut csprng = OsRng {};
+        let root_kp = Keypair::generate(&mut csprng);
+        let genesis_tx = generate_coinbase(&root_kp, 1000);
+
+        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
+        sleet_addr.send(live_committee).await.unwrap();
+
+        let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
+        println!("First cell: {}", first_cell.clone());
+        sleet_addr.send(GenerateTx { cell: first_cell.clone() }).await.unwrap();
+
+        // Spends the same outputs, will conflict with `first_cell`
+        let conflicting_cell = generate_transfer(&root_kp, genesis_tx.clone(), 42);
+        sleet_addr.send(GenerateTx { cell: conflicting_cell.clone() }).await.unwrap();
+
+        let mut spend_cell = first_cell.clone();
+        for i in 0..MIN_TXS_NEEDED + 2 {
+            println!("Spending: {}", spend_cell.clone());
+            let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
+            sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            println!("Cell: {}", cell.clone());
+            spend_cell = cell;
+        }
+        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        //assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1);
+
+        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        println!("Accepted: {:?}", accepted);
+        assert!(accepted.len() == 1);
+        assert!(accepted == vec![first_cell]);
     }
 
     #[actix_rt::test]
