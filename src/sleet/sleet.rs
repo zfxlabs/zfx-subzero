@@ -81,6 +81,11 @@ impl Sleet {
     /// Called for all newly discovered transactions.
     /// Returns `true` if the transaction haven't been encountered before
     fn on_receive_tx(&mut self, sleet_tx: Tx) -> Result<bool> {
+        // Skip adding coinbase transactions (block rewards / initial allocations) to the
+        // mempool.
+        if has_coinbase_output(&sleet_tx.cell) {
+            return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
+        }
         if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
             self.insert(sleet_tx.clone())?;
             let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
@@ -240,6 +245,15 @@ impl Sleet {
         }
         util::sample_weighted(minimum_weight, validators).ok_or(Error::InsufficientWeight)
     }
+}
+
+pub fn has_coinbase_output(cell: &Cell) -> bool {
+    for o in cell.outputs().iter() {
+        if o.cell_type == crate::cell::CellType::Coinbase {
+            return true;
+        }
+    }
+    false
 }
 
 impl Actor for Sleet {
@@ -765,7 +779,6 @@ mod test {
         assert!(accepted.is_empty());
     }
 
-    #[ignore] // FIXME: Coinbase tx is not refused!
     #[actix_rt::test]
     async fn test_coinbase_tx() {
         let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
@@ -780,8 +793,8 @@ mod test {
         }
 
         let hashes = sleet.send(GetCellHashes).await.unwrap();
-        assert_eq!(hashes.ids.len(), 2);
-        assert!(hashes.ids.contains(&hash));
+        assert_eq!(hashes.ids.len(), 1);
+        assert!(!hashes.ids.contains(&hash));
     }
 
     #[actix_rt::test]
