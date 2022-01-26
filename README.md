@@ -81,6 +81,8 @@ cargo run --bin node -- -a 127.0.0.1:1236 -b 127.0.0.1:1235 --keypair 6f4b736b9a
 
 The client test which sends transactions in a loop to one of the validators mempool in the running local testnet can be executed with the following command, where the `--loop` argument can be used to control how many transactions get generated.
 
+The tesnet needs to be fully bootstrapped (Ice, Sleet and Hail initialised), in order to be able to accept transactions.
+
 ```
 cargo run --bin client_test -- --peer-ip 127.0.0.1:1234 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --cell-hash b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e # --loop 16
 ```
