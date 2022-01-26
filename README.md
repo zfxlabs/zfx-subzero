@@ -58,7 +58,7 @@ How the components fit together:
 Assuming that the standard set of Rust and C build tools are present, the following commands can be used to check out, build the project and run the tests:
 
 ```
-git checkout git@github.com:zfxlabs/zfx-subzero.git zfx-subzero
+git clone git@github.com:zfxlabs/zfx-subzero.git zfx-subzero
 cd zfx-subzero
 git checkout m3
 cargo b
