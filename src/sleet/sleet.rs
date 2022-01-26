@@ -612,6 +612,10 @@ mod test {
         Id::one()
     }
 
+    async fn sleep_ms(m: u64) {
+        tokio::time::sleep(std::time::Duration::from_millis(m)).await;
+    }
+
     fn make_live_committee(cells: Vec<Cell>) -> LiveCommittee {
         let mut validators = HashMap::new();
 
@@ -655,6 +659,13 @@ mod test {
             self.responses = responses;
         }
     }
+    async fn set_validator_response(client: Addr<DummyClient>, response: bool) {
+        client
+            .send(SetResponses { responses: vec![(mock_validator_id(), response)] })
+            .await
+            .unwrap();
+    }
+
     impl Handler<Fanout> for DummyClient {
         type Result = ResponseFuture<Vec<Response>>;
 
@@ -781,7 +792,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_coinbase_tx() {
-        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+        let (sleet, _client, _hail, root_kp, _genesis_tx) = start_test_env().await;
 
         let cell = generate_coinbase(&root_kp, 1);
         let hash = cell.hash();
@@ -799,7 +810,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_spend_nonexistent_funds() {
-        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+        let (sleet, _client, _hail, root_kp, _genesis_tx) = start_test_env().await;
 
         let unknown_coinbase = generate_coinbase(&root_kp, 1);
         let bad_cell = generate_transfer(&root_kp, unknown_coinbase, 1);
@@ -812,13 +823,13 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sleet_accept() {
-        const MIN_TXS_NEEDED: usize = 8;
+        const MIN_CHILDREN_NEEDED: usize = 8;
 
         let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
 
         let mut spend_cell = genesis_tx.clone();
         let mut cell0: Cell = genesis_tx.clone(); // value irrelevant, will be initialised later
-        for i in 0..MIN_TXS_NEEDED {
+        for i in 0..MIN_CHILDREN_NEEDED {
             let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
             if i == 0 {
                 cell0 = cell.clone();
@@ -829,7 +840,7 @@ mod test {
             spend_cell = cell;
         }
         let hashes = sleet.send(GetCellHashes).await.unwrap();
-        assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1);
+        assert_eq!(hashes.ids.len(), MIN_CHILDREN_NEEDED + 1);
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
@@ -839,8 +850,8 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sleet_accept_with_conflict() {
-        const MIN_TXS_NEEDED: usize = 8;
-        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+        const CHILDREN_NEEDED: usize = 10;
+        let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
         let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
         println!("First cell: {}", first_cell.clone());
@@ -848,10 +859,14 @@ mod test {
 
         // Spends the same outputs, will conflict with `first_cell`
         let conflicting_cell = generate_transfer(&root_kp, genesis_tx.clone(), 42);
+        // Make sure the mock validator votes against
+        set_validator_response(client.clone(), false).await;
         sleet.send(GenerateTx { cell: conflicting_cell.clone() }).await.unwrap();
+        sleep_ms(100).await;
+        set_validator_response(client.clone(), true).await;
 
         let mut spend_cell = first_cell.clone();
-        for i in 0..MIN_TXS_NEEDED + 2 {
+        for i in 0..CHILDREN_NEEDED {
             println!("Spending: {}", spend_cell.clone());
             let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
             sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
@@ -859,7 +874,8 @@ mod test {
             spend_cell = cell;
         }
         let hashes = sleet.send(GetCellHashes).await.unwrap();
-        assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1 + 2 + 2);
+        // + 2: `genesis_tx` and `first_cell`, the voted down tx won't be added to `live_cells`
+        assert_eq!(hashes.ids.len(), CHILDREN_NEEDED + 2);
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
@@ -874,7 +890,7 @@ mod test {
 
         // all transactions will be voted against,
         // none will be accepted
-        client.send(SetResponses { responses: vec![(mock_validator_id(), false)] }).await.unwrap();
+        set_validator_response(client, false).await;
 
         let mut spend_cell = genesis_tx.clone();
         for i in 0..N {
@@ -890,6 +906,41 @@ mod test {
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
         assert!(accepted.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_sleet_many_conflicts() {
+        const N: usize = 8;
+
+        let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
+
+        let mut spend_cell = genesis_tx.clone();
+        let mut cell0: Cell = genesis_tx.clone(); // value irrelevant, will be initialised later
+        for i in 0..N {
+            let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
+            if i == 0 {
+                cell0 = cell.clone();
+            }
+            // println!("Cell: {}", cell.clone());
+            sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+
+            set_validator_response(client.clone(), false).await;
+            let conflict_cell = generate_transfer(&root_kp, spend_cell.clone(), 50 + 1 + i as u64);
+            // println!("conflicting cell: {}", conflict_cell.clone());
+            sleet.send(GenerateTx { cell: conflict_cell.clone() }).await.unwrap();
+            sleep_ms(100).await;
+            set_validator_response(client.clone(), true).await;
+
+            spend_cell = cell;
+        }
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), N + 1);
+
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
+        println!("Accepted: {}", accepted.len());
+        assert!(accepted.len() == 1);
+        println!("Accepted: {:?}", accepted);
+        assert!(accepted == vec![cell0]);
     }
 
     #[actix_rt::test]
