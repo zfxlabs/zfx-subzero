@@ -727,6 +727,7 @@ mod test {
     #[actix_rt::test]
     async fn smoke_test_sleet() {
         let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+
         let cell = generate_transfer(&root_kp, genesis_tx.clone(), 1);
         let hash = cell.hash();
         sleet.send(GenerateTx { cell }).await.unwrap();
@@ -737,6 +738,63 @@ mod test {
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         assert!(accepted.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_duplicate_tx() {
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+
+        let cell = generate_transfer(&root_kp, genesis_tx.clone(), 1);
+        let hash = cell.hash();
+        match sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap() {
+            GenerateTxAck { cell_hash: Some(h) } => assert!(hash == h),
+            other => panic!("unexpected: {:?}", other),
+        }
+
+        // Trying the same tx a second time
+        match sleet.send(GenerateTx { cell }).await.unwrap() {
+            GenerateTxAck { cell_hash: None } => (),
+            other => panic!("unexpected: {:?}", other),
+        }
+
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), 2);
+        assert!(hashes.ids.contains(&hash));
+
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
+        assert!(accepted.is_empty());
+    }
+
+    #[ignore] // FIXME: Coinbase tx is not refused!
+    #[actix_rt::test]
+    async fn test_coinbase_tx() {
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+
+        let cell = generate_coinbase(&root_kp, 1);
+        let hash = cell.hash();
+
+        // Trying to insert a coinbase tx
+        match sleet.send(GenerateTx { cell }).await.unwrap() {
+            GenerateTxAck { cell_hash: None } => (),
+            other => panic!("unexpected: {:?}", other),
+        }
+
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), 2);
+        assert!(hashes.ids.contains(&hash));
+    }
+
+    #[actix_rt::test]
+    async fn test_spend_nonexistent_funds() {
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+
+        let unknown_coinbase = generate_coinbase(&root_kp, 1);
+        let bad_cell = generate_transfer(&root_kp, unknown_coinbase, 1);
+
+        match sleet.send(GenerateTx { cell: bad_cell }).await.unwrap() {
+            GenerateTxAck { cell_hash: None } => (),
+            other => panic!("unexpected: {:?}", other),
+        }
     }
 
     #[actix_rt::test]
@@ -769,43 +827,28 @@ mod test {
     #[actix_rt::test]
     async fn test_sleet_accept_with_conflict() {
         const MIN_TXS_NEEDED: usize = 8;
-        let mut client = DummyClient::new();
-        client.responses = vec![(mock_validator_id(), true)];
-        let sender = client.start();
-
-        let hail_mock = HailMock::new();
-        let receiver = hail_mock.start();
-
-        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
-        let sleet_addr = sleet.start();
-
-        let mut csprng = OsRng {};
-        let root_kp = Keypair::generate(&mut csprng);
-        let genesis_tx = generate_coinbase(&root_kp, 1000);
-
-        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
-        sleet_addr.send(live_committee).await.unwrap();
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
 
         let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
         println!("First cell: {}", first_cell.clone());
-        sleet_addr.send(GenerateTx { cell: first_cell.clone() }).await.unwrap();
+        sleet.send(GenerateTx { cell: first_cell.clone() }).await.unwrap();
 
         // Spends the same outputs, will conflict with `first_cell`
         let conflicting_cell = generate_transfer(&root_kp, genesis_tx.clone(), 42);
-        sleet_addr.send(GenerateTx { cell: conflicting_cell.clone() }).await.unwrap();
+        sleet.send(GenerateTx { cell: conflicting_cell.clone() }).await.unwrap();
 
         let mut spend_cell = first_cell.clone();
         for i in 0..MIN_TXS_NEEDED + 2 {
             println!("Spending: {}", spend_cell.clone());
             let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
-            sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
             println!("Cell: {}", cell.clone());
             spend_cell = cell;
         }
-        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1 + 2 + 2);
 
-        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
         assert!(accepted.len() == 1);
         assert!(accepted == vec![first_cell]);
@@ -814,37 +857,24 @@ mod test {
     #[actix_rt::test]
     async fn test_sleet_dont_accept() {
         const N: usize = 30;
-        let mut client = DummyClient::new();
+        let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
+
         // all transactions will be voted against,
         // none will be accepted
-        client.responses = vec![(mock_validator_id(), false)];
-        let sender = client.start();
-
-        let hail_mock = HailMock::new();
-        let receiver = hail_mock.start();
-
-        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
-        let sleet_addr = sleet.start();
-
-        let mut csprng = OsRng {};
-        let root_kp = Keypair::generate(&mut csprng);
-        let genesis_tx = generate_coinbase(&root_kp, 1000);
-
-        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
-        sleet_addr.send(live_committee).await.unwrap();
+        client.send(SetResponses { responses: vec![(mock_validator_id(), false)] }).await.unwrap();
 
         let mut spend_cell = genesis_tx.clone();
         for i in 0..N {
             let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
-            sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
             spend_cell = cell;
         }
 
         // The cells won't be added to `live_cells`. TODO Is this correct?
-        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), 1);
 
-        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
         assert!(accepted.is_empty());
     }
