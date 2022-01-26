@@ -247,6 +247,8 @@ impl Sleet {
     }
 }
 
+// TODO: this function should probably moved elsewhere
+/// Check if a cell creates a coinbase output.
 pub fn has_coinbase_output(cell: &Cell) -> bool {
     for o in cell.outputs().iter() {
         if o.cell_type == crate::cell::CellType::Coinbase {
@@ -899,7 +901,7 @@ mod test {
             spend_cell = cell;
         }
 
-        // The cells won't be added to `live_cells`. TODO Is this correct?
+        // The cells won't be added to `live_cells`, as all of them were voted against
         let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), 1);
 
