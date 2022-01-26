@@ -7,7 +7,7 @@ use actix::{Actor, Addr, Context, Handler};
 // for hash function
 use priority_queue::double_priority_queue::DoublePriorityQueue;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use tracing::debug;
 
 const GOSSIP_LIMIT: usize = 3; // Amount of gossip allowed to be passed
 
@@ -135,7 +135,7 @@ impl Handler<GossipQuery> for DisseminationComponent {
         let rumours_limit = ((msg.network_size as f64).log2()).ceil() as usize;
         let r = Rumours { rumours: self.rumours.take_n(GOSSIP_LIMIT) };
         let deleted = self.rumours.cleanup(rumours_limit);
-        info!("<<{} {}>>", deleted.to_string().green(), "rumours disseminated".cyan());
+        debug!("<<{} {}>>", deleted.to_string().green(), "rumours disseminated".cyan());
         r
     }
 }
