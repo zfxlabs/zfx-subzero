@@ -567,7 +567,7 @@ mod test {
     use crate::alpha::transfer::TransferOperation;
     use crate::cell::Cell;
 
-    use actix::ResponseFuture;
+    use actix::{Addr, ResponseFuture};
     use ed25519_dalek::Keypair;
     use rand::rngs::OsRng;
 
@@ -702,8 +702,7 @@ mod test {
         }
     }
 
-    #[actix_rt::test]
-    async fn smoke_test_sleet() {
+    async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Cell) {
         let mut client = DummyClient::new();
         client.responses = vec![(mock_validator_id(), true)];
         let sender = client.start();
@@ -711,7 +710,8 @@ mod test {
         let hail_mock = HailMock::new();
         let receiver = hail_mock.start();
 
-        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
+        let sleet =
+            Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero());
         let sleet_addr = sleet.start();
 
         let mut csprng = OsRng {};
@@ -721,37 +721,29 @@ mod test {
         let live_committee = make_live_committee(vec![genesis_tx.clone()]);
         sleet_addr.send(live_committee).await.unwrap();
 
+        (sleet_addr, sender, receiver, root_kp, genesis_tx)
+    }
+
+    #[actix_rt::test]
+    async fn smoke_test_sleet() {
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
         let cell = generate_transfer(&root_kp, genesis_tx.clone(), 1);
         let hash = cell.hash();
-        sleet_addr.send(GenerateTx { cell }).await.unwrap();
+        sleet.send(GenerateTx { cell }).await.unwrap();
 
-        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), 2);
         assert!(hashes.ids.contains(&hash));
 
-        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
         assert!(accepted.is_empty());
     }
 
     #[actix_rt::test]
     async fn test_sleet_accept() {
         const MIN_TXS_NEEDED: usize = 8;
-        let mut client = DummyClient::new();
-        client.responses = vec![(mock_validator_id(), true)];
-        let sender = client.start();
 
-        let hail_mock = HailMock::new();
-        let receiver = hail_mock.start();
-
-        let sleet = Sleet::new(sender.recipient(), receiver.clone().recipient(), Id::zero());
-        let sleet_addr = sleet.start();
-
-        let mut csprng = OsRng {};
-        let root_kp = Keypair::generate(&mut csprng);
-        let genesis_tx = generate_coinbase(&root_kp, 1000);
-
-        let live_committee = make_live_committee(vec![genesis_tx.clone()]);
-        sleet_addr.send(live_committee).await.unwrap();
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
 
         let mut spend_cell = genesis_tx.clone();
         let mut cell0: Cell = genesis_tx.clone(); // value irrelevant, will be initialised later
@@ -762,13 +754,13 @@ mod test {
             }
             println!("Cell: {}", cell.clone());
 
-            sleet_addr.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
             spend_cell = cell;
         }
-        let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1);
 
-        let accepted = receiver.send(GetAcceptedCells).await.unwrap();
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
         assert!(accepted.len() == 1);
         assert!(accepted == vec![cell0]);
@@ -811,7 +803,7 @@ mod test {
             spend_cell = cell;
         }
         let hashes = sleet_addr.send(GetCellHashes).await.unwrap();
-        //assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1);
+        assert_eq!(hashes.ids.len(), MIN_TXS_NEEDED + 1 + 2 + 2);
 
         let accepted = receiver.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
