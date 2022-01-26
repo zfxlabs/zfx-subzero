@@ -21,7 +21,7 @@ pub async fn pull_rumours(dc: &Addr<DisseminationComponent>, network_size: usize
 #[derive(Debug, Clone, Message, Serialize, Deserialize)]
 #[rtype(result = "GossipAck")]
 pub enum Gossip {
-    Leaver { id: Id },
+    Joiner { id: Id },
 }
 
 #[derive(Debug, Clone, MessageResponse)]
@@ -159,7 +159,7 @@ mod tests {
 
         let slice = rand::thread_rng().gen::<[u8; 32]>(); // Random 32byte byte slice
         let id = Id::new(&slice);
-        pm.push(Gossip::Leaver { id });
+        pm.push(Gossip::Joiner { id });
         assert!(!pm.empty());
         assert_eq!(pm.len(), 1);
 
@@ -170,7 +170,7 @@ mod tests {
         pm.cleanup(0);
         assert!(pm.empty());
 
-        pm.push(Gossip::Leaver { id });
+        pm.push(Gossip::Joiner { id });
         // One item in the queue, one item in the response
         let r2 = pm.take_n(1);
         assert_eq!(r2.len(), 1);
@@ -190,7 +190,7 @@ mod tests {
         for _ in 0..100 {
             let slice = rand::thread_rng().gen::<[u8; 32]>(); // Random 32byte byte slice
             let id = Id::new(&slice);
-            pm.push(Gossip::Leaver { id });
+            pm.push(Gossip::Joiner { id });
         }
         assert_eq!(pm.len(), 100);
         for _ in 0..10 {
@@ -218,14 +218,14 @@ mod tests {
         let slice = rand::thread_rng().gen::<[u8; 32]>(); // Random 32byte byte slice
         let stored_id = Id::new(&slice);
 
-        match dc_addr.send(Gossip::Leaver { id: stored_id.clone() }).await.unwrap() {
+        match dc_addr.send(Gossip::Joiner { id: stored_id.clone() }).await.unwrap() {
             GossipAck {} => (),
             _ => panic!("unexpected send result"),
         }
 
         let mut rumours = pull_rumours(&dc_addr, NETWORK_SIZE).await;
         assert_eq!(rumours.len(), 1);
-        let Gossip::Leaver { id } = rumours.pop().unwrap();
+        let Gossip::Joiner { id } = rumours.pop().unwrap();
         assert_eq!(id, stored_id);
     }
 
@@ -240,7 +240,7 @@ mod tests {
             let slice = rand::thread_rng().gen::<[u8; 32]>(); // Random 32byte byte slice
             let id = Id::new(&slice);
             ids.push(id);
-            match dc_addr.send(Gossip::Leaver { id: id.clone() }).await.unwrap() {
+            match dc_addr.send(Gossip::Joiner { id: id.clone() }).await.unwrap() {
                 GossipAck {} => (),
                 _ => panic!("unexpected send result"),
             }
@@ -259,7 +259,7 @@ mod tests {
                 panic!("no rumours could be pulled");
             }
             for g in rumours {
-                let Gossip::Leaver { id } = g;
+                let Gossip::Joiner { id } = g;
                 assert!(ids.contains(&id));
             }
         }
