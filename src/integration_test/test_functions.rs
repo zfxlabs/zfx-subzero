@@ -207,8 +207,8 @@ pub fn create_transfer_request(
 pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
     let mut live_nodes: HashSet<&PublicKeyHash> = HashSet::new();
     let mut timer = 0;
-    let mut delay = 2;
-    let mut timeout = 120;
+    let timeout = 120;
+    let delay = 2;
     let nodes_size = nodes.nodes.len();
 
     while live_nodes.len() < nodes_size && timer <= timeout {

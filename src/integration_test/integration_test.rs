@@ -1,28 +1,20 @@
 #[cfg(test)]
 #[cfg(feature = "integration_tests")]
 mod integration_test {
-    use crate::alpha::coinbase::CoinbaseOperation;
-    use crate::alpha::stake::StakeOperation;
+    use std::panic;
+    use std::thread::sleep;
+    use std::time::Duration;
+    use tracing::info;
+
     use crate::alpha::transfer::TransferOperation;
-    use crate::alpha::Error;
     use crate::cell::inputs::Input;
     use crate::cell::outputs::{Output, Outputs};
-    use crate::cell::types::{CellHash, PublicKeyHash, FEE};
+    use crate::cell::types::{CellHash, FEE};
     use crate::cell::Cell;
-    use crate::ice::Status;
-    use crate::integration_test::stress_test::run_integration_stress_test;
     use crate::integration_test::test_functions::*;
     use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
     use crate::zfx_id::Id;
     use crate::Result;
-    use futures_util::FutureExt;
-    use std::borrow::{Borrow, BorrowMut};
-    use std::collections::HashSet;
-    use std::panic;
-    use std::sync::{Arc, Mutex};
-    use std::thread::{sleep, Thread};
-    use std::time::Duration;
-    use tracing::info;
 
     const TRANSFER_RUN_TIMES: i32 = 5;
 
@@ -55,11 +47,6 @@ mod integration_test {
 
         nodes.kill_all();
         Result::Ok(())
-    }
-
-    // #[actix_rt::test]
-    async fn run_integration_stress_test_suite() -> Result<()> {
-        run_integration_stress_test().await
     }
 
     /// Transfer balance from one node to another

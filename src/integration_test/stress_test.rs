@@ -1,25 +1,14 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
-use std::thread::{sleep, Thread};
+use std::thread::sleep;
 use std::time::Duration;
 
 use futures_util::FutureExt;
 use tokio::task::JoinHandle;
 use tracing::info;
 
-use crate::alpha::coinbase::CoinbaseOperation;
-use crate::alpha::stake::StakeOperation;
-use crate::alpha::transfer::TransferOperation;
-use crate::alpha::Error;
-use crate::cell::inputs::Input;
-use crate::cell::outputs::{Output, Outputs};
-use crate::cell::types::{CellHash, PublicKeyHash, FEE};
-use crate::cell::Cell;
-use crate::ice::Status;
+use crate::cell::outputs::Output;
+use crate::cell::types::FEE;
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
-use crate::zfx_id::Id;
 use crate::Result;
 
 pub async fn run_integration_stress_test() -> Result<()> {
@@ -101,7 +90,7 @@ fn send(
             - iterations * FULL_AMOUNT;
 
         for i in 1..iterations + 1 {
-            test_send_cells_from_random_nodes(AMOUNT, from, to, &mut context).await;
+            send_and_check_cell(from, to, AMOUNT, &mut context).await;
             info!("Iteration = {}", i);
         }
 
@@ -117,10 +106,10 @@ fn send(
     handle
 }
 
-async fn test_send_cells_from_random_nodes(
-    amount: u64,
+async fn send_and_check_cell(
     from: &TestNode,
     to: &TestNode,
+    amount: u64,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
     sleep(Duration::from_millis(10)); // make a controlled delay between transfers

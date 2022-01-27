@@ -1,6 +1,4 @@
 use crate::cell::types::CellHash;
-use crate::integration_test::test_actix_node::TestActixThread;
-use crate::server::node::{run, SubZeroNode};
 use ed25519_dalek::Keypair;
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
@@ -8,7 +6,7 @@ use std::net::SocketAddr;
 use std::process::{Child, Command};
 use std::time::Duration;
 use std::{panic, thread};
-use tracing::{debug, info};
+use tracing::info;
 
 pub const KEYPAIR_NODE_0 : &str = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416";
 pub const KEYPAIR_NODE_1 : &str = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd";
@@ -87,7 +85,7 @@ impl TestNodes {
     }
 
     pub fn kill_all(&mut self) {
-        for mut node in &mut self.nodes {
+        for node in &mut self.nodes {
             node.kill();
         }
     }
@@ -97,14 +95,13 @@ impl TestNodes {
     }
 
     pub fn start_node(&mut self, id: usize) {
-        // if let ThreadNodeState::Stopped = self.nodes[id].state {
         if let ProcessNodeState::Stopped = self.nodes[id].state {
             self.nodes[id].start();
         }
     }
 
     pub fn start_all(&mut self) {
-        for mut node in &mut self.nodes {
+        for node in &mut self.nodes {
             node.start();
         }
     }
@@ -124,12 +121,6 @@ pub struct TestNode {
     pub address_as_str: String,
     pub bootstrap_address: String,
     pub state: ProcessNodeState,
-    pub zfx_node: Option<SubZeroNode>,
-}
-
-pub enum ThreadNodeState {
-    Stopped,
-    Running(TestActixThread),
 }
 
 pub enum ProcessNodeState {
@@ -153,7 +144,6 @@ impl TestNode {
             address_as_str: address,
             bootstrap_address,
             state: ProcessNodeState::Stopped,
-            zfx_node: None,
         }
     }
 
