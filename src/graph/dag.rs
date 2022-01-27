@@ -355,4 +355,28 @@ mod test {
         assert_eq!(dag.conviction(3).unwrap(), 0);
         assert_eq!(dag.conviction(5).unwrap(), 0);
     }
+
+    #[actix_rt::test]
+    async fn test_conviction2() {
+        #[rustfmt::skip]
+        let mut dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1]),
+            (4, &[3]),
+            (5, &[4]),
+            (6, &[5]),
+            (7, &[6]),
+            (8, &[7]),
+            (9, &[8]),
+            (10, &[9]),
+            (11, &[10]),
+        ]);
+        dag.set_chit(0, 1).unwrap();
+        dag.set_chit(1, 1).unwrap();
+        for i in 3..=11 {
+            dag.set_chit(i, 1).unwrap();
+        }
+        assert_eq!(dag.conviction(0).unwrap(), 11);
+    }
 }
