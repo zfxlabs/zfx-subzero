@@ -48,8 +48,8 @@ jobs:
         with:
           command: build
 
-      - name: Run unit and integration tests
+      - name: Run tests
         uses: actions-rs/cargo@v1
         timeout-minutes: 30
         with:
-          command: test --features integration_tests
+          command: test
