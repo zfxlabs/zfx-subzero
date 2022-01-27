@@ -129,18 +129,23 @@ impl Sleet {
             return Ok(vec![]);
         }
         let mut parents = vec![];
+        // vertices to exclude from selection, because they are accessible from a parent
+        let mut accessible = vec![];
         let leaves = self.dag.leaves();
-        for leaf in leaves {
+        'outer: for leaf in leaves {
             for elt in self.dag.dfs(&leaf) {
-                if self.is_strongly_preferred(elt.clone())? {
+                if parents.len() >= p {
+                    // Found `p` preferred parents.
+                    break 'outer;
+                }
+                if self.is_strongly_preferred(elt.clone())?
+                    && !parents.contains(elt)
+                    && !accessible.contains(elt)
+                {
                     parents.push(elt.clone());
-                    if parents.len() >= p {
-                        // Found `p` preferred parents.
-                        break;
-                    } else {
-                        // Found a preferred parent for this leaf so skip.
-                        continue;
-                    }
+                    accessible.extend(self.dag.dfs(elt));
+                    // Found a preferred parent for this leaf so skip.
+                    break;
                 }
             }
         }
@@ -610,6 +615,24 @@ mod test {
         }
     }
 
+    #[derive(Debug, Clone, Serialize, Deserialize, Message)]
+    #[rtype(result = "()")]
+    pub struct DumpDAG;
+
+    impl Handler<DumpDAG> for Sleet {
+        type Result = ();
+
+        fn handle(&mut self, _msg: DumpDAG, _ctx: &mut Context<Self>) -> Self::Result {
+            println!("\n\ndigraph G {{\n");
+            for (v, edges) in self.dag.iter() {
+                for e in edges.iter() {
+                    println!("\"{}\" -> \"{}\"", hex::encode(v), hex::encode(e));
+                }
+            }
+            println!("}}\n");
+        }
+    }
+
     fn mock_validator_id() -> Id {
         Id::one()
     }
@@ -730,6 +753,7 @@ mod test {
     }
 
     async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Cell) {
+        tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
         let mut client = DummyClient::new();
         client.responses = vec![(mock_validator_id(), true)];
         let sender = client.start();
@@ -824,8 +848,8 @@ mod test {
     }
 
     #[actix_rt::test]
-    async fn test_sleet_accept() {
-        const MIN_CHILDREN_NEEDED: usize = 8;
+    async fn test_sleet_accept_one() {
+        const MIN_CHILDREN_NEEDED: usize = BETA1 as usize;
 
         let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
 
@@ -843,6 +867,7 @@ mod test {
         }
         let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), MIN_CHILDREN_NEEDED + 1);
+        let _ = sleet.send(DumpDAG).await.unwrap();
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
@@ -852,11 +877,11 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sleet_accept_with_conflict() {
-        const CHILDREN_NEEDED: usize = 10;
+        const CHILDREN_NEEDED: usize = BETA1 as usize - 1;
         let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
         let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
-        println!("First cell: {}", first_cell.clone());
+        println!("First cell: {} {}", hex::encode(first_cell.hash()), first_cell.clone());
         sleet.send(GenerateTx { cell: first_cell.clone() }).await.unwrap();
 
         // Spends the same outputs, will conflict with `first_cell`
@@ -864,6 +889,11 @@ mod test {
         // Make sure the mock validator votes against
         set_validator_response(client.clone(), false).await;
         sleet.send(GenerateTx { cell: conflicting_cell.clone() }).await.unwrap();
+        println!(
+            "Conflicting cell: {} {}",
+            hex::encode(conflicting_cell.hash()),
+            conflicting_cell.clone()
+        );
         sleep_ms(100).await;
         set_validator_response(client.clone(), true).await;
 
@@ -879,8 +909,12 @@ mod test {
         // + 2: `genesis_tx` and `first_cell`, the voted down tx won't be added to `live_cells`
         assert_eq!(hashes.ids.len(), CHILDREN_NEEDED + 2);
 
+        let _ = sleet.send(DumpDAG).await.unwrap();
+
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
-        println!("Accepted: {:?}", accepted);
+        for a in accepted.iter() {
+            println!("Accepted: {}", a);
+        }
         assert!(accepted.len() == 1);
         assert!(accepted == vec![first_cell]);
     }
