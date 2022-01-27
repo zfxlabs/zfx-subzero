@@ -1,6 +1,8 @@
 use actix_rt::signal;
 use futures::{future, select, task::Poll, FutureExt};
+use std::borrow::Borrow;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tracing::info;
 
 static CAUGHT_SIGINT: AtomicBool = AtomicBool::new(false);
 
@@ -37,6 +39,7 @@ impl TestActixThread {
         let thread_handler = std::thread::spawn(move || {
             TestActixThread::run_actix(async move {
                 f();
+                info!("Node has been started");
                 tx.send(actix_rt::System::current()).unwrap();
             });
         });
@@ -45,8 +48,8 @@ impl TestActixThread {
         TestActixThread { thread_handler: Some(thread_handler), actix_system }
     }
 
-    pub fn shutdown(&self) {
-        self.actix_system.stop();
+    pub fn shutdown(&mut self) {
+        // info!("Node has been stopped");
     }
 
     fn run_actix<F: std::future::Future>(f: F) {
@@ -59,6 +62,7 @@ impl TestActixThread {
                 if actix_rt::System::is_registered() {
                     let exit_code = if CAUGHT_SIGINT.load(Ordering::SeqCst) { 130 } else { 1 };
                     actix_rt::System::current().stop_with_code(exit_code);
+                    info!("Node has been shut down due to panic");
                 }
                 default_hook(info);
             }));
@@ -90,7 +94,9 @@ impl TestActixThread {
 
 impl Drop for TestActixThread {
     fn drop(&mut self) {
-        self.shutdown();
+        // self.shutdown();
+        self.actix_system.stop();
         self.thread_handler.take().unwrap().join().unwrap();
+        info!("Node has been dropped");
     }
 }

@@ -5,9 +5,11 @@ use std::time::Duration;
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use tracing::info;
 
 use crate::alpha::transfer::TransferOperation;
-use crate::cell::types::{CellHash, PublicKeyHash};
+use crate::cell::outputs::Output;
+use crate::cell::types::{CellHash, PublicKeyHash, FEE};
 use crate::cell::{Cell, CellType};
 use crate::ice::Status;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
@@ -45,11 +47,33 @@ pub async fn send_cell(
     if let Some(Response::GenerateTxAck(ack)) =
         client::oneshot(from.address, create_transfer_request(&from, &to, amount, cell)).await?
     {
-        sleep(Duration::from_secs(2));
         return Ok(ack.cell_hash);
     } else {
         Ok(None)
     }
+}
+
+pub async fn get_cell_outputs_of_node(
+    owner: &TestNode,
+    context: &mut IntegrationTestContext,
+) -> Result<Vec<Output>> {
+    let mut outputs: Vec<Output> = vec![];
+    for cell_hash in context.get_latest_cells_of(get_cell_hashes(owner.address).await?) {
+        if let Ok(cell_option) = get_cell_from_hash(cell_hash.clone(), owner.address).await {
+            if cell_option.is_some() {
+                cell_option
+                    .unwrap()
+                    .outputs_of_owner(&owner.public_key)
+                    .iter()
+                    .cloned()
+                    .filter(|o| o.cell_type != CellType::Stake)
+                    .for_each(|o| {
+                        outputs.push(o.clone());
+                    });
+            }
+        }
+    }
+    return Ok(outputs);
 }
 
 pub async fn get_cell(
@@ -97,7 +121,8 @@ pub async fn get_cell_in_amount_range(
         if let Ok(cell_option) = get_cell_from_hash(cell_hash.clone(), node.address).await {
             if cell_option.is_some() {
                 let cell = cell_option.unwrap();
-                let balance = get_outputs_capacity_of_owner(&cell, &node);
+                let balance = get_outputs_capacity_of_owner_including_fee(&node, &cell);
+
                 if balance > min_amount && balance < max_amount {
                     // return the first match transaction
                     return Ok(Some(cell));
@@ -106,6 +131,11 @@ pub async fn get_cell_in_amount_range(
         }
     }
     Ok(None)
+}
+
+pub fn get_outputs_capacity_of_owner_including_fee(node: &&TestNode, cell: &Cell) -> u64 {
+    let balance = get_outputs_capacity_of_owner(&cell, &node);
+    return if balance > FEE { balance - FEE } else { 0 };
 }
 
 pub fn get_outputs_capacity_of_owner(cell: &Cell, owner: &TestNode) -> u64 {
@@ -119,16 +149,22 @@ pub async fn get_cell_from_hash(
     cell_hash: CellHash,
     node_address: SocketAddr,
 ) -> Result<Option<Cell>> {
-    if let Some(Response::CellAck(cell_ack)) = client::oneshot(
-        node_address,
-        Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
-    )
-    .await?
-    {
-        if let Some(cell) = cell_ack.cell {
-            return Result::Ok(Some(cell));
+    let mut attempts = 200;
+    while attempts > 0 {
+        if let Some(Response::CellAck(cell_ack)) = client::oneshot(
+            node_address,
+            Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
+        )
+        .await?
+        {
+            if let Some(cell) = cell_ack.cell {
+                return Result::Ok(Some(cell));
+            }
         }
+        attempts -= 1;
+        sleep(Duration::from_millis(5));
     }
+
     return Ok(None);
 }
 
@@ -168,25 +204,11 @@ pub fn create_transfer_request(
     Request::GenerateTx(sleet::GenerateTx { cell: transfer_op.transfer(&from.keypair).unwrap() })
 }
 
-pub fn run_nodes(nodes: &mut Vec<TestNode>) {
-    tracing_subscriber::fmt()
-        .with_level(false)
-        .with_target(false)
-        .without_time()
-        .compact()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-
-    for node in nodes {
-        node.start()
-    }
-}
-
 pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
     let mut live_nodes: HashSet<&PublicKeyHash> = HashSet::new();
     let mut timer = 0;
     let mut delay = 2;
-    let mut timeout = 60;
+    let mut timeout = 120;
     let nodes_size = nodes.nodes.len();
 
     while live_nodes.len() < nodes_size && timer <= timeout {
@@ -197,6 +219,7 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
             match check_node_status(node.address).await? {
                 Some(s) => {
                     if s.bootstrapped {
+                        info!("Node {} bootstrapped", &node.address);
                         live_nodes.insert(&node.public_key)
                     } else {
                         live_nodes.remove(&node.public_key)
@@ -206,5 +229,6 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
             };
         }
     }
+    info!("All nodes have been started up and bootstrapped");
     Ok(())
 }

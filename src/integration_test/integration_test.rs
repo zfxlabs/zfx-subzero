@@ -10,29 +10,38 @@ mod integration_test {
     use crate::cell::types::{CellHash, PublicKeyHash, FEE};
     use crate::cell::Cell;
     use crate::ice::Status;
+    use crate::integration_test::stress_test::run_integration_stress_test;
     use crate::integration_test::test_functions::*;
     use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
     use crate::zfx_id::Id;
     use crate::Result;
+    use futures_util::FutureExt;
     use std::borrow::{Borrow, BorrowMut};
     use std::collections::HashSet;
-    use std::thread::sleep;
+    use std::panic;
+    use std::sync::{Arc, Mutex};
+    use std::thread::{sleep, Thread};
     use std::time::Duration;
     use tracing::info;
 
-    const TRANSFER_RUN_TIMES: i32 = 3;
+    const TRANSFER_RUN_TIMES: i32 = 5;
 
     #[actix_rt::test]
     async fn run_integration_test_suite() -> Result<()> {
+        tracing_subscriber::fmt()
+            .with_level(false)
+            .with_target(false)
+            .without_time()
+            .compact()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+
         let mut context = IntegrationTestContext::new();
         let mut nodes = TestNodes::new();
-
-        run_nodes(&mut nodes.nodes);
-
-        sleep(Duration::from_secs(5));
-        test_get_txs_when_quorum_not_reached_yet(&nodes, &mut context).await?;
+        nodes.start_all();
 
         wait_until_nodes_start(&nodes).await?;
+
         for _ in 0..TRANSFER_RUN_TIMES {
             test_send_cell(&nodes, &mut context).await?;
         }
@@ -44,7 +53,13 @@ mod integration_test {
         test_spend_unspendable_cell(&nodes, &mut context).await?;
         test_send_cell_when_has_faulty_node(&mut nodes, &mut context).await?;
 
+        nodes.kill_all();
         Result::Ok(())
+    }
+
+    // #[actix_rt::test]
+    async fn run_integration_stress_test_suite() -> Result<()> {
+        run_integration_stress_test().await
     }
 
     /// Transfer balance from one node to another
@@ -218,25 +233,6 @@ mod integration_test {
         Result::Ok(())
     }
 
-    /// Try to get some information from a node,
-    /// when the network hasn't reached a quorum yet
-    /// (must be run right after the network started up!)
-    async fn test_get_txs_when_quorum_not_reached_yet(
-        nodes: &TestNodes,
-        context: &mut IntegrationTestContext,
-    ) -> Result<()> {
-        info!("Run test_get_txs_when_quorum_not_reached_yet: Get data from any node when network is not ready");
-
-        let from = nodes.get_node(0).unwrap();
-
-        let tx_hashes = get_cell_hashes(from.address).await?;
-        assert!(tx_hashes.is_empty());
-
-        context.count_test_run();
-
-        Result::Ok(())
-    }
-
     /// Try to send a transfer when 1 node is down
     /// and validate that transfer was not successful
     async fn test_send_cell_when_has_faulty_node(
@@ -258,10 +254,6 @@ mod integration_test {
         assert!(spent_cell_hash.is_some());
 
         assert_cell_presence_in_all_running_nodes(spent_cell_hash.unwrap(), false, nodes).await?;
-
-        nodes.start_node(1);
-
-        wait_until_nodes_start(nodes).await?;
 
         context.count_test_run();
 
