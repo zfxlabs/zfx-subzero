@@ -233,7 +233,10 @@ where
         for edge in adj.iter() {
             match self.visited.entry(edge) {
                 Entry::Occupied(_) => (),
-                Entry::Vacant(_) => self.stack.push(edge),
+                Entry::Vacant(v) => {
+                    self.stack.push(edge);
+                    let _ = v.insert(true);
+                }
             }
         }
         Some(next)
@@ -329,6 +332,72 @@ mod test {
             7,5,
             4,1,
             8,3]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs3() {
+        #[rustfmt::skip]
+        let mut dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1]),
+            (4, &[3,1]),
+            (5, &[4,1]),
+            (6, &[5,1]),
+            (7, &[6,1]),
+            (8, &[7,1]),
+            (9, &[8,1]),
+            (10, &[9,1]),
+            (11, &[10,1]),
+        ]);
+        let res: Vec<_> = dag.dfs(&11).cloned().collect();
+
+        assert_eq!(res, [11, 1, 0, 10, 9, 8, 7, 6, 5, 4, 3]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_arrays() {
+        let a0 = [0; 32];
+        let a1 = [1; 32];
+        let a2 = [2; 32];
+
+        let mut dag = DAG::new();
+        dag.insert_vx(a0, vec![]).unwrap();
+        dag.insert_vx(a1, vec![a0]).unwrap();
+        dag.insert_vx(a2, vec![a0, a1]).unwrap();
+
+        let res: Vec<[u8; 32]> = dag.dfs(&a2).cloned().collect();
+        assert_eq!(res, [a2, a1, a0]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_u8() {
+        let a0 = 0u8;
+        let a1 = 1u8;
+        let a2 = 2u8;
+
+        let mut dag = DAG::new();
+        dag.insert_vx(a0, vec![]).unwrap();
+        dag.insert_vx(a1, vec![a0]).unwrap();
+        dag.insert_vx(a2, vec![a0, a1]).unwrap();
+
+        let res: Vec<u8> = dag.dfs(&a2).cloned().collect();
+        assert_eq!(res, [a2, a1, a0]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_arrays2() {
+        let a0 = [0; 32];
+        let a1 = [1; 32];
+        let a2 = [2; 32];
+
+        let mut dag = DAG::new();
+        dag.insert_vx(a0, vec![]).unwrap();
+        dag.insert_vx(a1, vec![a0]).unwrap();
+        dag.insert_vx(a2, vec![a1, a0]).unwrap();
+
+        let res: Vec<[u8; 32]> = dag.dfs(&a2).cloned().collect();
+        assert_eq!(res, [a2, a0, a1]);
     }
 
     #[actix_rt::test]
