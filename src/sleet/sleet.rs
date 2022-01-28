@@ -753,7 +753,7 @@ mod test {
     }
 
     async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Cell) {
-        tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
+        // tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
         let mut client = DummyClient::new();
         client.responses = vec![(mock_validator_id(), true)];
         let sender = client.start();
@@ -877,7 +877,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sleet_accept_with_conflict() {
-        const CHILDREN_NEEDED: usize = BETA1 as usize - 1;
+        const CHILDREN_NEEDED: usize = BETA2 as usize;
         let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
         let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
@@ -909,14 +909,19 @@ mod test {
         // + 2: `genesis_tx` and `first_cell`, the voted down tx won't be added to `live_cells`
         assert_eq!(hashes.ids.len(), CHILDREN_NEEDED + 2);
 
-        let _ = sleet.send(DumpDAG).await.unwrap();
+        // let _ = sleet.send(DumpDAG).await.unwrap();
+
+        // Wait a bit for 'Hail' to receive the message
+        sleep_ms(10).await;
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         for a in accepted.iter() {
             println!("Accepted: {}", a);
         }
-        assert!(accepted.len() == 1);
-        assert!(accepted == vec![first_cell]);
+        // The conflicting transaction is accepted after BETA2 queries,
+        // and its non-conflictiong children after BETA1
+        assert!(accepted.len() == 11);
+        assert!(accepted.contains(&first_cell));
     }
 
     #[actix_rt::test]
@@ -946,7 +951,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_sleet_many_conflicts() {
-        const N: usize = 8;
+        const N: usize = BETA2 as usize;
 
         let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
@@ -964,13 +969,16 @@ mod test {
             let conflict_cell = generate_transfer(&root_kp, spend_cell.clone(), 50 + 1 + i as u64);
             // println!("conflicting cell: {}", conflict_cell.clone());
             sleet.send(GenerateTx { cell: conflict_cell.clone() }).await.unwrap();
-            sleep_ms(100).await;
+            sleep_ms(10).await;
             set_validator_response(client.clone(), true).await;
 
             spend_cell = cell;
         }
         let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), N + 1);
+
+        // Wait a bit for 'Hail' to receive the message
+        sleep_ms(10).await;
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {}", accepted.len());
