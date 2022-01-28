@@ -615,6 +615,7 @@ mod test {
         }
     }
 
+    // For debugging: the output can be fed to `dot` to draw the graph
     #[derive(Debug, Clone, Serialize, Deserialize, Message)]
     #[rtype(result = "()")]
     pub struct DumpDAG;
@@ -657,6 +658,7 @@ mod test {
         pub responses: Vec<(Id, bool)>,
     }
 
+    // Client substitute for answering `QueryTx` queries
     impl DummyClient {
         pub fn new() -> Self {
             Self { responses: vec![] }
@@ -718,6 +720,7 @@ mod test {
         }
     }
 
+    // Receives accepted transactions from Sleet and stores them in a vector
     struct HailMock {
         pub accepted: Vec<Cell>,
     }
@@ -753,6 +756,7 @@ mod test {
     }
 
     async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Cell) {
+        // Uncomment to see Sleet's logs
         // tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
         let mut client = DummyClient::new();
         client.responses = vec![(mock_validator_id(), true)];
