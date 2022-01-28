@@ -78,7 +78,7 @@ pub async fn get_cell_outputs_of_node(
 
 pub async fn get_cell(
     min_amount: u64,
-    context: &mut IntegrationTestContext,
+    context: &IntegrationTestContext,
     node: &TestNode,
 ) -> Result<Option<Cell>> {
     let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node.address).await?);
