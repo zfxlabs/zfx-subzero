@@ -51,8 +51,11 @@ pub struct Sleet {
     conflict_graph: ConflictGraph,
     /// A mapping of a cell hashes to unspent cells.
     live_cells: HashMap<CellHash, Cell>,
-    /// The map contains transaction already accepted
+    /// The map contains transactions already accepted
     accepted_txs: HashSet<TxHash>,
+    /// The map contains transactions rejected
+    /// Note: we rely heavily on the fact that transacrions have the same hash as the wrapped cell
+    rejected_txs: HashSet<TxHash>,
     /// The consensus graph.
     dag: DAG<TxHash>,
 }
@@ -74,6 +77,7 @@ impl Sleet {
             conflict_graph: ConflictGraph::new(CellIds::empty()),
             live_cells: HashMap::default(),
             accepted_txs: HashSet::new(),
+            rejected_txs: HashSet::new(),
             dag: DAG::new(),
         }
     }
