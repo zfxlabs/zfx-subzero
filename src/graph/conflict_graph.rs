@@ -127,14 +127,17 @@ impl ConflictGraph {
         Ok(())
     }
 
-    pub fn accept_cell(&mut self, cell: Cell) -> Result<()> {
+    pub fn accept_cell(&mut self, cell: Cell) -> Result<Vec<CellHash>> {
         // Once a transaction is accepted we wish to remove all the conflicts from the graph
         // in order to free up space for future entries.
+        // The conflicting cells are returned in order to allow Sleet to make
+        // the necessary adjustment to other data structures
+        let mut conflicting_hashes: HashSet<CellHash> = HashSet::new();
         match self.conflicting_cells(&cell.hash()) {
             Some(conflict_set) => {
                 // If the transaction does not conflict then we are done.
                 if conflict_set.is_singleton() {
-                    return Ok(());
+                    return Ok(vec![]);
                 }
 
                 // First fetch all the conflicting cell ids produced by the conflicting cells,
@@ -146,6 +149,7 @@ impl ConflictGraph {
                     }
                     let cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
                     conflicting_cell_ids.push(cell_ids);
+                    let _ = conflicting_hashes.insert(conflicting_cell_hash.clone());
                 }
 
                 // Next remove each vertex from the graph which is a conflicting `cell_id`.
@@ -190,7 +194,7 @@ impl ConflictGraph {
                 }
                 self.cs = cs;
 
-                Ok(())
+                Ok(conflicting_hashes.iter().cloned().collect())
             }
             // If the transaction has no conflict set then it is invalid.
             None => Err(Error::UndefinedCell),
