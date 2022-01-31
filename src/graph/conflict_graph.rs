@@ -142,17 +142,19 @@ impl ConflictGraph {
 
                 // First fetch all the conflicting cell ids produced by the conflicting cells,
                 // excluding the `cell` being accepted.
-                let mut conflicting_cell_ids = vec![];
+                // TODO: check why duplicates are possible here!
+                let mut conflicting_cell_ids = HashSet::new();
                 for conflicting_cell_hash in conflict_set.conflicts.iter() {
                     if cell.hash().eq(conflicting_cell_hash) {
                         continue;
                     }
                     let cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
-                    conflicting_cell_ids.push(cell_ids);
+                    let _ = conflicting_cell_ids.insert(cell_ids);
                     let _ = conflicting_hashes.insert(conflicting_cell_hash.clone());
                 }
 
                 // Next remove each vertex from the graph which is a conflicting `cell_id`.
+
                 for conflicting_cell_id in conflicting_cell_ids.iter() {
                     self.dh.remove(&conflicting_cell_id).unwrap();
                 }
@@ -451,7 +453,6 @@ mod test {
         assert_eq!(conflicts_removed, expected);
     }
 
-    #[ignore] // FIXME this is not passing
     #[actix_rt::test]
     async fn test_accept_cell2() {
         let (kp1, kp2, pkh1, pkh2) = generate_keys();
