@@ -1,11 +1,11 @@
 use super::{Error, Result};
 
 use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct DAG<V> {
-    /// `g` defines a directed acyclic graph with only inbound edges.
+    /// `g` defines a directed acyclic graph by the outbound edges from a vertex
     g: HashMap<V, Vec<V>>,
     /// `inv` defines a directed acyclic graph with the inverted edges of `g`.
     inv: HashMap<V, Vec<V>>,
@@ -60,6 +60,37 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         self.set_chit(vx, 0)
     }
 
+    /// Removes a vertex from the DAG. Outgoing and incoming edges are removed as well.
+    pub fn remove_vx(&mut self, vx: V) -> Result<Vec<V>> {
+        let mut children = HashSet::new();
+
+        // Remove the edge pointing to this vertex from the child vertices
+        for child in self.inv.get(&vx).unwrap().iter() {
+            let _ = children.insert(child.clone());
+            match self.g.entry(child.clone()) {
+                Entry::Vacant(_) => return Err(Error::VacantEntry),
+                Entry::Occupied(mut o) => {
+                    let vec = o.get_mut();
+                    vec.retain(|e| *e != vx.clone());
+                }
+            }
+        }
+
+        // Remove this vertex from its parents
+        for parent in self.g.get(&vx).unwrap().iter() {
+            match self.inv.entry(parent.clone()) {
+                Entry::Vacant(_) => return Err(Error::VacantEntry),
+                Entry::Occupied(mut o) => {
+                    let vec = o.get_mut();
+                    vec.retain(|e| *e != vx.clone());
+                }
+            }
+        }
+        let _ = self.g.remove(&vx);
+        let _ = self.inv.remove(&vx);
+
+        Ok(children.iter().cloned().collect::<Vec<_>>())
+    }
     /// Gets the chit of a particular node.
     pub fn get_chit(&self, vx: V) -> Result<u8> {
         match self.chits.get(&vx) {
@@ -337,7 +368,7 @@ mod test {
     #[actix_rt::test]
     async fn dfs3() {
         #[rustfmt::skip]
-        let mut dag = make_dag(&[
+        let dag = make_dag(&[
             (0, &[]),
             (1, &[0]), (2, &[0]),
             (3, &[1]),
@@ -447,5 +478,24 @@ mod test {
             dag.set_chit(i, 1).unwrap();
         }
         assert_eq!(dag.conviction(0).unwrap(), 11);
+    }
+
+    #[actix_rt::test]
+    async fn test_remove() {
+        #[rustfmt::skip]
+        let mut dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1, 2]),
+            (4, &[3]), (5, &[3])
+        ]);
+
+        let mut ch = dag.remove_vx(3).unwrap();
+        ch.sort();
+        assert_eq!(ch, [4, 5]);
+        assert_eq!(dag.get(&4).unwrap().len(), 0);
+        assert_eq!(dag.get(&5).unwrap().len(), 0);
+        assert_eq!(dag.inv.get(&1).unwrap().len(), 0);
+        assert_eq!(dag.inv.get(&2).unwrap().len(), 0);
     }
 }
