@@ -11,7 +11,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 pub struct ConflictGraph {
     dh: HashMap<CellIds, Vec<Cell>>,
-    // Maintains an ordered set of transactions for conflict set preference.
+    // Maintains a set of transactions for conflict set preference.
     cs: HashMap<CellHash, ConflictSet<CellHash>>,
 }
 
@@ -22,7 +22,6 @@ impl ConflictGraph {
         ConflictGraph {
             dh: adj,
             // Note: genesis cannot conflict.
-            // cs: vec![],
             cs: HashMap::new(),
         }
     }
@@ -48,7 +47,7 @@ impl ConflictGraph {
             let cell_hash = cell.hash();
             let produced_cell_ids = CellIds::from_outputs(cell_hash, cell.outputs())?;
             // First we make sure that the produced `cell_ids` exist within the hypergraph.
-            match self.dh.entry(produced_cell_ids.clone()) {
+            match self.dh.entry(produced_cell_ids) {
                 // If the produced cell ids already exist then we have an error - a duplicate
                 // transaction exists in the hypergraph. This implies that the transaction
                 // had the same hash as another transaction through the hash in `from_outputs`.
@@ -63,11 +62,9 @@ impl ConflictGraph {
                 return Err(Error::DuplicateCell);
             }
             self.cs.insert(cell_hash, ConflictSet::new(cell_hash));
-            // let now4 = std::time::Instant::now();
 
             // For each set of intersecting vertices (CellId bundles) an arc is produced relating the
             // CellIds to the new transaction.
-            let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
             let mut conflicts = vec![];
             for cell_ids in intersecting_vertices.iter() {
                 match self.dh.entry(cell_ids.clone()) {
@@ -135,7 +132,8 @@ impl ConflictGraph {
         // The conflicting cells are returned in order to allow Sleet to make
         // the necessary adjustment to other data structures
         let mut conflicting_hashes: HashSet<CellHash> = HashSet::new();
-        match self.conflicting_cells(&cell.hash()) {
+        let cell_hash = cell.hash();
+        match self.conflicting_cells(&cell_hash).cloned() {
             Some(conflict_set) => {
                 // If the transaction does not conflict then we are done.
                 if conflict_set.is_singleton() {
@@ -147,10 +145,10 @@ impl ConflictGraph {
                 // TODO: check why duplicates are possible here!
                 let mut conflicting_cell_ids = HashSet::new();
                 for conflicting_cell_hash in conflict_set.conflicts.iter() {
-                    if cell.hash().eq(conflicting_cell_hash) {
+                    if cell_hash.eq(conflicting_cell_hash) {
                         continue;
                     }
-                    let cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
+                    let cell_ids = CellIds::from_outputs(cell_hash, cell.outputs())?;
                     let _ = conflicting_cell_ids.insert(cell_ids);
                     let _ = conflicting_hashes.insert(conflicting_cell_hash.clone());
                 }
@@ -165,27 +163,25 @@ impl ConflictGraph {
                 // longer exist).
                 for (_, arcs) in self.dh.iter_mut() {
                     arcs.retain(|arc| {
-                        arc.clone() == cell.clone() || !conflict_set.conflicts.contains(&arc.hash())
+                        *arc == cell || !conflict_set.conflicts.contains(&arc.hash())
                     });
                 }
 
                 // Next remove the conflicting transactions from the conflict sets, preserving
                 // the ordering.
-                let cell_hash = cell.hash();
                 self.cs.insert(cell_hash, ConflictSet::new(cell_hash));
-                conflict_set.conflicts.iter()
-                    .for_each(|cs| {
-                        self.cs.remove(cs);
-                    });
-                Ok(conflicting_hashes.iter().cloned().collect())
+                conflict_set.conflicts.iter().for_each(|cs| {
+                    self.cs.remove(cs);
+                });
+                Ok(conflicting_hashes.iter().map(|h| *h).collect())
             }
             // If the transaction has no conflict set then it is invalid.
             None => Err(Error::UndefinedCell),
         }
     }
 
-    pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<ConflictSet<CellHash>> {
-        self.cs.get(cell_hash).cloned()
+    pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<&ConflictSet<CellHash>> {
+        self.cs.get(cell_hash)
     }
 
     pub fn is_singleton(&self, cell_hash: &CellHash) -> Result<bool> {
@@ -232,7 +228,7 @@ impl ConflictGraph {
                     }
                     Ok(())
                 }
-                None => { Err(Error::UndefinedCellHash(cell_hash.clone()))}
+                None => Err(Error::UndefinedCellHash(cell_hash.clone())),
             }
         } else {
             Err(Error::EmptyConflictGraph)
