@@ -261,6 +261,12 @@ impl ConflictGraph {
             Err(Error::EmptyConflictGraph)
         }
     }
+
+    /// Returns the number of cells in the conflict graph
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.cs.len()
+    }
 }
 
 #[cfg(test)]
