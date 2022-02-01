@@ -245,7 +245,7 @@ mod test {
 
     use crate::cell::inputs::{Input, Inputs};
     use crate::cell::outputs::{Output, Outputs};
-    use crate::cell::types::CellHash;
+    use crate::cell::types::{Capacity, CellHash};
     use crate::cell::{Cell, CellIds};
 
     use crate::sleet::conflict_set::ConflictSet;
@@ -254,6 +254,99 @@ mod test {
     use std::convert::TryInto;
 
     use ed25519_dalek::Keypair;
+    use rand::{thread_rng, Rng};
+
+    #[actix_rt::test]
+    async fn test_conflict_graph_with_many_cells() {
+        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+
+        // Some root unspent outputs for `genesis`. We assume this input refers to a cell with funds
+        // but for the purposes of the conflict graph it doesn't matter.
+        let genesis_op = CoinbaseOperation::new(vec![
+            (pkh1.clone(), 1000),
+            (pkh2.clone(), 1000),
+            (pkh2.clone(), 500),
+        ]);
+        let genesis_tx: Cell = genesis_op.try_into().unwrap();
+        let genesis_output_cell_ids =
+            CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
+
+        let mut dh: ConflictGraph = ConflictGraph::new(genesis_output_cell_ids.clone());
+
+        let mut inputs = vec![
+            Input::new(&kp1, genesis_tx.hash(), 0).unwrap(),
+            Input::new(&kp2, genesis_tx.hash(), 1).unwrap(),
+            Input::new(&kp2, genesis_tx.hash(), 2).unwrap(),
+        ];
+        let mut origin_txs = vec![];
+        let mut original_spent_amounts = vec![];
+
+        // A transaction that spends `genesis` and produces a new output for `pkh2`.
+        for i in 0..inputs.len() {
+            let amount = (10 + i) as Capacity;
+            let tx = Cell::new(
+                Inputs::new(vec![inputs[i].clone()]),
+                Outputs::new(vec![transfer::transfer_output(pkh2.clone(), amount).unwrap()]),
+            );
+            dh.insert_cell(tx.clone()).unwrap();
+            let tx_hash = tx.hash();
+            let c = dh.conflicting_cells(&tx_hash).unwrap();
+            assert_eq!(c.pref, tx_hash);
+
+            origin_txs.push(tx_hash.clone());
+            original_spent_amounts.push(amount);
+        }
+
+        let mut iteration = 0;
+        while iteration < 20 {
+            if !original_spent_amounts.contains(&(iteration as Capacity)) {
+                let n = thread_rng().gen_range(0, 3);
+                let origin_tx_hash = *origin_txs.get(n).unwrap();
+
+                // A transaction that spends the same inputs but produces a distinct output should conflict.
+                let tx2 = Cell::new(
+                    Inputs::new(vec![inputs[n].clone()]),
+                    Outputs::new(vec![transfer::transfer_output(pkh2.clone(), iteration).unwrap()]),
+                );
+                dh.insert_cell(tx2.clone()).unwrap().clone();
+                let c = dh.conflicting_cells(&tx2.hash()).unwrap();
+                assert_eq!(c.pref, origin_tx_hash);
+            }
+            iteration += 1;
+        }
+
+        let mut new_hash = origin_txs.get(0).unwrap().clone();
+        let mut previous_hash = new_hash.clone();
+        while iteration < 25 {
+            // A transaction that spends a distinct input should not conflict.
+            let tx = Cell::new(
+                Inputs::new(vec![Input::new(&kp1, new_hash, 0).unwrap()]),
+                Outputs::new(vec![transfer::transfer_output(pkh1.clone(), iteration).unwrap()]),
+            );
+            dh.insert_cell(tx.clone()).unwrap();
+            let tx_hash = tx.hash();
+            let conflict_cell = dh.conflicting_cells(&tx_hash).unwrap();
+            assert_eq!(conflict_cell.pref, tx_hash);
+
+            previous_hash = new_hash.clone();
+            new_hash = tx_hash;
+            iteration += 1;
+        }
+
+        // Spend another round of cells, having input with the previous cell, which has been spent already,
+        // and check that it conflicts with the latest successful spent cell.
+        while iteration < 30 {
+            let tx = Cell::new(
+                Inputs::new(vec![Input::new(&kp1, previous_hash, 0).unwrap()]),
+                Outputs::new(vec![transfer::transfer_output(pkh1.clone(), iteration).unwrap()]),
+            );
+            dh.insert_cell(tx.clone()).unwrap();
+            let tx_hash = tx.hash();
+            let conflict_cell = dh.conflicting_cells(&tx_hash).unwrap();
+            assert_eq!(conflict_cell.pref, new_hash);
+            iteration += 1;
+        }
+    }
 
     #[actix_rt::test]
     async fn test_conflict_graph() {
