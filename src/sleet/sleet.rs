@@ -640,6 +640,22 @@ mod test {
         }
     }
 
+    fn generate_transfer_to_new_recipient(keypair: &Keypair, from: Cell, amount: u64) -> Cell {
+        let enc = bincode::serialize(&keypair.public).unwrap();
+        let pkh = blake3::hash(&enc).as_bytes().clone();
+
+        let mut csprng = OsRng {};
+        let recv_k = Keypair::generate(&mut csprng);
+        let enc2 = bincode::serialize(&recv_k.public).unwrap();
+        let recv_pkh = blake3::hash(&enc2).as_bytes().clone();
+
+        let transfer_op = TransferOperation::new(from, recv_pkh, pkh, amount);
+        match transfer_op.transfer(&keypair) {
+            Ok(tr) => tr,
+            Err(e) => panic!("{}", e),
+        }
+    }
+
     // For debugging: the output can be fed to `dot` to draw the graph
     #[derive(Debug, Clone, Serialize, Deserialize, Message)]
     #[rtype(result = "()")]
@@ -796,7 +812,7 @@ mod test {
 
         let mut csprng = OsRng {};
         let root_kp = Keypair::generate(&mut csprng);
-        let genesis_tx = generate_coinbase(&root_kp, 1000);
+        let genesis_tx = generate_coinbase(&root_kp, 10000);
 
         let live_committee = make_live_committee(vec![genesis_tx.clone()]);
         sleet_addr.send(live_committee).await.unwrap();
@@ -896,12 +912,34 @@ mod test {
         }
         let hashes = sleet.send(GetCellHashes).await.unwrap();
         assert_eq!(hashes.ids.len(), MIN_CHILDREN_NEEDED + 1);
-        let _ = sleet.send(DumpDAG).await.unwrap();
+        // let _ = sleet.send(DumpDAG).await.unwrap();
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         println!("Accepted: {:?}", accepted);
         assert!(accepted.len() == 1);
         assert!(accepted == vec![cell0]);
+    }
+
+    #[actix_rt::test]
+    async fn test_sleet_accept_many() {
+        const N: usize = 500;
+
+        let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+
+        let mut spend_cell = genesis_tx.clone();
+        for i in 0..N {
+            let cell = generate_transfer_to_new_recipient(&root_kp, spend_cell.clone(), 1);
+            println!("Cell: {}", cell.clone());
+
+            sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+            spend_cell = cell;
+        }
+        let hashes = sleet.send(GetCellHashes).await.unwrap();
+        assert_eq!(hashes.ids.len(), N + 1);
+        // let _ = sleet.send(DumpDAG).await.unwrap();
+
+        let accepted = hail.send(GetAcceptedCells).await.unwrap();
+        assert!(accepted.len() == N + 1 - BETA1 as usize);
     }
 
     #[actix_rt::test]
