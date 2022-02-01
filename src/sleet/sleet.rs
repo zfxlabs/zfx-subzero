@@ -575,10 +575,20 @@ impl Handler<QueryTx> for Sleet {
                 );
             }
         }
+
+        // We may have accepted or rejected the transaction already when the query comes in
+        let tx_hash = msg.tx.hash();
+        if self.accepted_txs.contains(&tx_hash) {
+            return QueryTxAck { id: self.node_id, tx_hash, outcome: true };
+        }
+        if self.rejected_txs.contains(&tx_hash) {
+            return QueryTxAck { id: self.node_id, tx_hash, outcome: false };
+        }
+
         // FIXME: If we are in the middle of querying this transaction, wait until a
         // decision or a synchronous timebound is reached on attempts.
-        match self.is_strongly_preferred(msg.tx.hash()) {
-            Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome },
+        match self.is_strongly_preferred(tx_hash.clone()) {
+            Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash, outcome },
             Err(e) => {
                 error!("[{}] Missing ancestor of {}\n {}", "sleet".cyan(), msg.tx, e);
                 // FIXME We're voting against the tx w/o having enough information
@@ -672,6 +682,37 @@ mod test {
                 }
             }
             println!("}}\n");
+        }
+    }
+
+    /// Get as much of Sleet's state as possible
+    #[derive(Debug, Clone, Message)]
+    #[rtype(result = "SleetStatus")]
+    pub struct GetStatus;
+
+    #[derive(Debug, Clone, MessageResponse)]
+    pub struct SleetStatus {
+        known_txs: sled::Db,
+        queried_txs: sled::Db,
+        conflict_graph_len: usize,
+        live_cells: HashMap<CellHash, Cell>,
+        accepted_txs: HashSet<TxHash>,
+        rejected_txs: HashSet<TxHash>,
+        dag_len: usize,
+    }
+    impl Handler<GetStatus> for Sleet {
+        type Result = SleetStatus;
+
+        fn handle(&mut self, _msg: GetStatus, _ctx: &mut Context<Self>) -> Self::Result {
+            SleetStatus {
+                known_txs: self.known_txs.clone(),
+                queried_txs: self.queried_txs.clone(),
+                conflict_graph_len: self.conflict_graph.len(),
+                live_cells: self.live_cells.clone(),
+                accepted_txs: self.accepted_txs.clone(),
+                rejected_txs: self.rejected_txs.clone(),
+                dag_len: self.dag.len(),
+            }
         }
     }
 
