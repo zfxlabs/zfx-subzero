@@ -12,7 +12,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 pub struct ConflictGraph {
     dh: HashMap<CellIds, Vec<Cell>>,
     // Maintains an ordered set of transactions for conflict set preference.
-    cs: Vec<(CellHash, ConflictSet<CellHash>)>,
+    cs: HashMap<CellHash, ConflictSet<CellHash>>,
 }
 
 impl ConflictGraph {
@@ -22,7 +22,8 @@ impl ConflictGraph {
         ConflictGraph {
             dh: adj,
             // Note: genesis cannot conflict.
-            cs: vec![],
+            // cs: vec![],
+            cs: HashMap::new(),
         }
     }
 
@@ -44,7 +45,8 @@ impl ConflictGraph {
         if consumed_cell_ids.len() > 0 {
             return Err(Error::UndefinedCell);
         } else {
-            let produced_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
+            let cell_hash = cell.hash();
+            let produced_cell_ids = CellIds::from_outputs(cell_hash, cell.outputs())?;
             // First we make sure that the produced `cell_ids` exist within the hypergraph.
             match self.dh.entry(produced_cell_ids.clone()) {
                 // If the produced cell ids already exist then we have an error - a duplicate
@@ -57,14 +59,11 @@ impl ConflictGraph {
                 }
             }
 
-            // Next we make sure that there is a conflict set for this cell.
-            for i in 0..self.cs.len() {
-                if self.cs[i].0 == cell.hash() {
-                    return Err(Error::DuplicateCell);
-                }
+            if self.cs.contains_key(&cell_hash) {
+                return Err(Error::DuplicateCell);
             }
-            let cell_i = self.cs.len();
-            self.cs.push((cell.hash(), ConflictSet::new(cell.hash())));
+            self.cs.insert(cell_hash, ConflictSet::new(cell_hash));
+            // let now4 = std::time::Instant::now();
 
             // For each set of intersecting vertices (CellId bundles) an arc is produced relating the
             // CellIds to the new transaction.
@@ -77,11 +76,11 @@ impl ConflictGraph {
 
                         // Save existing conflicting transactions.
                         for arc_cell in arcs.iter() {
-                            if arc_cell.clone() == cell.clone() {
+                            if *arc_cell == cell {
                                 return Err(Error::DuplicateCell);
                             }
                             if !arc_cell.inputs().is_disjoint(&cell.inputs()) {
-                                conflicts.push(arc_cell.clone());
+                                conflicts.push(arc_cell.hash());
                             }
                         }
                         arcs.push(cell.clone());
@@ -97,30 +96,33 @@ impl ConflictGraph {
             let mut pref = None;
             let mut last = None;
             let mut cnt = 0u8;
-            for conflicting_cell in conflicts.iter() {
-                for i in 0..self.cs.len() {
-                    if self.cs[i].0 == conflicting_cell.hash() {
-                        // Note: We do not change the properties of the conflict set since this one
-                        // came first and is thus preferred.
-                        self.cs[i].1.conflicts.insert(cell.hash());
+            for conflicting_cell_hash in conflicts.iter_mut() {
+                // Note: We do not change the properties of the conflict set since this one
+                // came first and is thus preferred.
+                match self.cs.get_mut(conflicting_cell_hash) {
+                    Some(set) => {
+                        set.conflicts.insert(cell_hash.clone());
                         // Save the properties of the first conflict set (the most preferred).
                         if pref.is_none() {
-                            pref = Some(self.cs[i].1.pref.clone());
-                            last = Some(self.cs[i].1.last.clone());
-                            cnt = self.cs[i].1.cnt.clone();
+                            pref = Some(set.pref.clone());
+                            last = Some(set.last.clone());
+                            cnt = set.cnt;
                         }
-                        ordered_conflicting_cells.push(conflicting_cell.clone());
+                        ordered_conflicting_cells.push(*conflicting_cell_hash);
                     }
+                    None => {}
                 }
             }
             // Update the conflict set of this transaction based on the ordered cells.
             if ordered_conflicting_cells.len() > 0 {
-                self.cs[cell_i].1.pref = pref.unwrap();
-                // FIXME: Not sure here.
-                self.cs[cell_i].1.last = last.unwrap();
-                self.cs[cell_i].1.cnt = cnt;
-                for ordered_cell in ordered_conflicting_cells.iter().cloned() {
-                    self.cs[cell_i].1.conflicts.insert(ordered_cell.hash());
+                if let Some(set) = self.cs.get_mut(&cell_hash) {
+                    set.pref = pref.unwrap();
+                    // FIXME: Not sure here.
+                    set.last = last.unwrap();
+                    set.cnt = cnt;
+                    for conflicting_cell_hash in ordered_conflicting_cells.iter() {
+                        set.conflicts.insert(*conflicting_cell_hash);
+                    }
                 }
             }
         }
@@ -169,28 +171,12 @@ impl ConflictGraph {
 
                 // Next remove the conflicting transactions from the conflict sets, preserving
                 // the ordering.
-                let mut cs: Vec<(CellHash, ConflictSet<CellHash>)> = vec![];
-                for i in 0..self.cs.len() {
-                    if self.cs[i].0 == cell.hash() {
-                        cs.push((cell.hash(), ConflictSet::new(cell.hash())));
-                    }
-                    let mut conflicts = false;
-                    for conflicting_cell_hash in conflict_set.conflicts.iter() {
-                        if self.cs[i].0.eq(conflicting_cell_hash) {
-                            conflicts = true;
-                            break;
-                        }
-                    }
-                    if conflicts {
-                        continue;
-                    } else {
-                        // TODO: Remove the conflicting transactions the existing preserved
-                        // conflict sets.
-                        cs.push((self.cs[i].0, self.cs[i].1.clone()));
-                    }
-                }
-                self.cs = cs;
-
+                let cell_hash = cell.hash();
+                self.cs.insert(cell_hash, ConflictSet::new(cell_hash));
+                conflict_set.conflicts.iter()
+                    .for_each(|cs| {
+                        self.cs.remove(cs);
+                    });
                 Ok(conflicting_hashes.iter().cloned().collect())
             }
             // If the transaction has no conflict set then it is invalid.
@@ -199,16 +185,7 @@ impl ConflictGraph {
     }
 
     pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<ConflictSet<CellHash>> {
-        if self.cs.len() > 0 {
-            for i in 0..self.cs.len() {
-                if self.cs[i].0.eq(cell_hash) {
-                    return Some(self.cs[i].1.clone());
-                }
-            }
-            None
-        } else {
-            None
-        }
+        self.cs.get(cell_hash).cloned()
     }
 
     pub fn is_singleton(&self, cell_hash: &CellHash) -> Result<bool> {
@@ -241,22 +218,22 @@ impl ConflictGraph {
 
     pub fn update_conflict_set(&mut self, cell_hash: &CellHash, d1: u8, d2: u8) -> Result<()> {
         if self.cs.len() > 0 {
-            for i in 0..self.cs.len() {
-                if self.cs[i].0.eq(cell_hash) {
+            match self.cs.get_mut(cell_hash) {
+                Some(cs) => {
                     if d1 > d2 {
-                        self.cs[i].1.pref = cell_hash.clone();
+                        cs.pref = cell_hash.clone();
                     }
-                    if !cell_hash.eq(&self.cs[i].1.last) {
-                        self.cs[i].1.last = cell_hash.clone();
+                    if !cell_hash.eq(&cs.last) {
+                        cs.last = cell_hash.clone();
                     } else {
-                        if self.cs[i].1.cnt < BETA2 {
-                            self.cs[i].1.cnt += 1;
+                        if cs.cnt < BETA2 {
+                            cs.cnt += 1;
                         }
                     }
-                    return Ok(());
+                    Ok(())
                 }
+                None => { Err(Error::UndefinedCellHash(cell_hash.clone()))}
             }
-            Err(Error::UndefinedCellHash(cell_hash.clone()))
         } else {
             Err(Error::EmptyConflictGraph)
         }
