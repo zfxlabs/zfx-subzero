@@ -53,7 +53,7 @@ pub struct Sleet {
     live_cells: HashMap<CellHash, Cell>,
     /// The map contains transactions already accepted
     accepted_txs: HashSet<TxHash>,
-    /// The map contains transactions rejected
+    /// The map contains transactions rejected because they conflict with an accepted transaction
     /// Note: we rely heavily on the fact that transacrions have the same hash as the wrapped cell
     rejected_txs: HashSet<TxHash>,
     /// The consensus graph.
@@ -210,6 +210,23 @@ impl Sleet {
         } else {
             Ok(false)
         }
+    }
+
+    /// Clean up the conflict graph and the DAG
+    /// Returns the children of rejected transactions
+    pub fn on_accept_tx(&mut self, tx_hash: &TxHash, tx: &Tx) -> Result<Vec<CellHash>> {
+        // We leave the children in the DAG, they should be strongly preferred
+        // and/or have other parents as well
+        let _children = self.dag.remove_vx(tx_hash.clone())?;
+        let rejected = self.conflict_graph.accept_cell(tx.cell.clone())?;
+        let mut children = HashSet::new();
+        for hash in rejected {
+            let _ = self.rejected_txs.insert(hash.clone());
+            let ch = self.dag.remove_vx(hash)?;
+            children.extend(ch.iter());
+        }
+
+        Ok(children.iter().cloned().collect())
     }
 
     // Accepted Frontier
@@ -398,6 +415,10 @@ impl Handler<NewAccepted> for Sleet {
         for tx_hash in msg.tx_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
             let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
+
+            // TODO we most likely will need to re-issue the children of rejected transactions
+            //      with better oarents
+            let _children_of_rejected = self.on_accept_tx(&tx_hash, &tx);
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
         }
