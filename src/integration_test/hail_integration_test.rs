@@ -23,7 +23,7 @@ mod hail_test {
         let mut context = IntegrationTestContext::new();
         let mut nodes = TestNodes::new();
 
-        run_nodes(&mut nodes.nodes);
+        nodes.start_all();
         wait_until_nodes_start(&nodes).await?;
 
         let node = nodes.get_node(0).unwrap();
