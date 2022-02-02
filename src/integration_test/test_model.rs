@@ -1,4 +1,6 @@
 use crate::cell::types::CellHash;
+use crate::integration_test::test_functions::wait_until_nodes_start;
+use crate::Error;
 use ed25519_dalek::Keypair;
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
@@ -104,6 +106,11 @@ impl TestNodes {
         for node in &mut self.nodes {
             node.start();
         }
+    }
+
+    pub async fn start_all_and_wait(&mut self) -> std::result::Result<(), Error> {
+        self.start_all();
+        wait_until_nodes_start(self).await
     }
 }
 

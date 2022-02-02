@@ -12,7 +12,13 @@ use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::Result;
 
-pub async fn run_integration_stress_test() -> Result<()> {
+pub async fn run_stress_test() -> Result<()> {
+    info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
+
+    let mut nodes = TestNodes::new();
+    nodes.start_all();
+    wait_until_nodes_start(&nodes).await?;
+
     let mut results_futures = vec![];
     results_futures.push(send(0, 1));
     results_futures.push(send(1, 2));
@@ -30,6 +36,8 @@ pub async fn run_integration_stress_test() -> Result<()> {
             has_error
         })
         .await;
+
+    nodes.kill_all();
 
     assert!(!has_error, "Stress test failed");
 
@@ -67,10 +75,9 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
             cells_of_node.iter().map(|o| o.capacity).sum::<u64>() - iterations * FULL_AMOUNT;
 
         let mut transferred_cells: Vec<Cell> = vec![];
-        for i in 1..iterations + 1 {
+        for _ in 1..iterations + 1 {
             transferred_cells
                 .push(send_with_timeout(from, to, AMOUNT, &mut context).await.unwrap());
-            info!("Iteration = {}", i);
         }
 
         let remaining_balance =
@@ -85,7 +92,6 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
 
         let cell_hashes =
             get_cell_hashes(test_nodes.get_node(from_node_id).unwrap().address).await.unwrap();
-        info!("Total hashes = {}", cell_hashes.len());
         for cell in transferred_cells {
             assert!(cell_hashes.contains(&cell.hash()));
         }
@@ -103,7 +109,7 @@ async fn send_with_timeout(
 ) -> Option<Cell> {
     let mut attempts = 5;
     while attempts > 0 {
-        match timeout(Duration::from_millis(500), send_and_check_cell(from, to, amount, context))
+        match timeout(Duration::from_millis(1000), send_and_check_cell(from, to, amount, context))
             .await
         {
             Ok(r) => match r {
@@ -125,7 +131,7 @@ async fn send_and_check_cell(
     amount: u64,
     context: &mut IntegrationTestContext,
 ) -> Result<Cell> {
-    sleep(Duration::from_millis(10)); // make a controlled delay between transfers
+    sleep(Duration::from_millis(100)); // make a controlled delay between transfers
 
     let cell = get_cell(amount, context, from).await?.unwrap();
     let cell_hash = cell.hash();
