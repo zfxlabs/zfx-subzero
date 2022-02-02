@@ -417,7 +417,7 @@ impl Handler<NewAccepted> for Sleet {
             let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
 
             // TODO we most likely will need to re-issue the children of rejected transactions
-            //      with better oarents
+            //      with better parents
             let _children_of_rejected = self.on_accept_tx(&tx_hash, &tx);
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
@@ -650,16 +650,22 @@ mod test {
         }
     }
 
-    fn generate_transfer_to_new_recipient(keypair: &Keypair, from: Cell, amount: u64) -> Cell {
-        let enc = bincode::serialize(&keypair.public).unwrap();
-        let pkh = blake3::hash(&enc).as_bytes().clone();
-
+    fn new_pkh() -> [u8; 32] {
         let mut csprng = OsRng {};
         let recv_k = Keypair::generate(&mut csprng);
         let enc2 = bincode::serialize(&recv_k.public).unwrap();
-        let recv_pkh = blake3::hash(&enc2).as_bytes().clone();
+        blake3::hash(&enc2).as_bytes().clone()
+    }
 
-        let transfer_op = TransferOperation::new(from, recv_pkh, pkh, amount);
+    fn generate_transfer_whith_recipient(
+        keypair: &Keypair,
+        from: Cell,
+        recipient: [u8; 32],
+        amount: u64,
+    ) -> Cell {
+        let enc = bincode::serialize(&keypair.public).unwrap();
+        let pkh = blake3::hash(&enc).as_bytes().clone();
+        let transfer_op = TransferOperation::new(from, recipient, pkh, amount);
         match transfer_op.transfer(&keypair) {
             Ok(tr) => tr,
             Err(e) => panic!("{}", e),
@@ -966,10 +972,11 @@ mod test {
         const N: usize = 500;
 
         let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
+        let addr = new_pkh();
 
         let mut spend_cell = genesis_tx.clone();
         for i in 0..N {
-            let cell = generate_transfer_to_new_recipient(&root_kp, spend_cell.clone(), 1);
+            let cell = generate_transfer_whith_recipient(&root_kp, spend_cell.clone(), addr, 1);
             println!("Cell: {}", cell.clone());
 
             sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
@@ -981,6 +988,12 @@ mod test {
 
         let accepted = hail.send(GetAcceptedCells).await.unwrap();
         assert!(accepted.len() == N + 1 - BETA1 as usize);
+
+        let SleetStatus { dag_len, conflict_graph_len, rejected_txs, .. } =
+            sleet.send(GetStatus).await.unwrap();
+        assert_eq!(dag_len, BETA1 as usize - 1);
+        assert_eq!(conflict_graph_len, 500);
+        assert_eq!(rejected_txs.len(), 0);
     }
 
     #[actix_rt::test]
