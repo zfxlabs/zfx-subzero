@@ -87,37 +87,34 @@ impl ConflictGraph {
             }
 
             // For all the transactions that we conflict with, we wish to add the conflicts to the
-            // conflicts sets of this transaction and any conflicting transactions, whilst saving
-            // the transactions by order of preference - this is determined by insertion order.
-            let mut ordered_conflicting_cells = vec![];
+            // conflicts sets of this transaction and any conflicting transactions.
+            let mut conflicting_cells = vec![];
             let mut pref = None;
             let mut last = None;
             let mut cnt = 0u8;
             for conflicting_cell_hash in conflicts.iter_mut() {
                 // Note: We do not change the properties of the conflict set since this one
                 // came first and is thus preferred.
-                match self.cs.get_mut(conflicting_cell_hash) {
-                    Some(set) => {
-                        set.conflicts.insert(cell_hash.clone());
-                        // Save the properties of the first conflict set (the most preferred).
-                        if pref.is_none() {
-                            pref = Some(set.pref.clone());
-                            last = Some(set.last.clone());
-                            cnt = set.cnt;
-                        }
-                        ordered_conflicting_cells.push(*conflicting_cell_hash);
+                if let Some(set) = self.cs.get_mut(conflicting_cell_hash) {
+                    set.conflicts.insert(cell_hash.clone());
+                    // Save the properties of the first conflict set (the most preferred).
+                    // The pref cell is the last one which hasn't got any conflicts
+                    if pref.is_none() {
+                        pref = Some(set.pref.clone());
+                        last = Some(set.last.clone());
+                        cnt = set.cnt;
                     }
-                    None => {}
+                    conflicting_cells.push(*conflicting_cell_hash);
                 }
             }
-            // Update the conflict set of this transaction based on the ordered cells.
-            if ordered_conflicting_cells.len() > 0 {
+            // Update the conflict set of this transaction.
+            if conflicting_cells.len() > 0 {
                 if let Some(set) = self.cs.get_mut(&cell_hash) {
                     set.pref = pref.unwrap();
                     // FIXME: Not sure here.
                     set.last = last.unwrap();
                     set.cnt = cnt;
-                    for conflicting_cell_hash in ordered_conflicting_cells.iter() {
+                    for conflicting_cell_hash in conflicting_cells.iter() {
                         set.conflicts.insert(*conflicting_cell_hash);
                     }
                 }
@@ -268,10 +265,10 @@ mod test {
             (pkh2.clone(), 500),
         ]);
         let genesis_tx: Cell = genesis_op.try_into().unwrap();
-        let genesis_output_cell_ids =
-            CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
 
-        let mut dh: ConflictGraph = ConflictGraph::new(genesis_output_cell_ids.clone());
+        let mut dh: ConflictGraph = ConflictGraph::new(
+            CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap().clone(),
+        );
 
         let mut inputs = vec![
             Input::new(&kp1, genesis_tx.hash(), 0).unwrap(),
@@ -281,9 +278,10 @@ mod test {
         let mut origin_txs = vec![];
         let mut original_spent_amounts = vec![];
 
-        // A transaction that spends `genesis` and produces a new output for `pkh2`.
+        // spend a cell with each input once to have non-conflicting cells
         for i in 0..inputs.len() {
             let amount = (10 + i) as Capacity;
+            // A transaction that spends `genesis` and produces a new output for `pkh2`.
             let tx = Cell::new(
                 Inputs::new(vec![inputs[i].clone()]),
                 Outputs::new(vec![transfer::transfer_output(pkh2.clone(), amount).unwrap()]),
@@ -297,6 +295,7 @@ mod test {
             original_spent_amounts.push(amount);
         }
 
+        // Try to spend non-conflicting cells several times and check that pref remains the same
         let mut iteration = 0;
         while iteration < 20 {
             if !original_spent_amounts.contains(&(iteration as Capacity)) {
@@ -304,17 +303,18 @@ mod test {
                 let origin_tx_hash = *origin_txs.get(n).unwrap();
 
                 // A transaction that spends the same inputs but produces a distinct output should conflict.
-                let tx2 = Cell::new(
+                let tx = Cell::new(
                     Inputs::new(vec![inputs[n].clone()]),
                     Outputs::new(vec![transfer::transfer_output(pkh2.clone(), iteration).unwrap()]),
                 );
-                dh.insert_cell(tx2.clone()).unwrap().clone();
-                let c = dh.conflicting_cells(&tx2.hash()).unwrap();
-                assert_eq!(c.pref, origin_tx_hash);
+                dh.insert_cell(tx.clone()).unwrap().clone();
+                let c = dh.conflicting_cells(&tx.hash()).unwrap();
+                assert_eq!(c.pref, origin_tx_hash); // pref must be the original one which succeeded last time
             }
             iteration += 1;
         }
 
+        // Spend cells with an input having a valid non-conflicting cell
         let mut new_hash = origin_txs.get(0).unwrap().clone();
         let mut previous_hash = new_hash.clone();
         while iteration < 25 {
@@ -326,6 +326,7 @@ mod test {
             dh.insert_cell(tx.clone()).unwrap();
             let tx_hash = tx.hash();
             let conflict_cell = dh.conflicting_cells(&tx_hash).unwrap();
+            // pref must be the one which was inserted recently without conflicts
             assert_eq!(conflict_cell.pref, tx_hash);
 
             previous_hash = new_hash.clone();
