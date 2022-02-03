@@ -88,6 +88,7 @@ pub struct SleetStatus {
     accepted_txs: HashSet<TxHash>,
     rejected_txs: HashSet<TxHash>,
     dag_len: usize,
+    accepted_frontier: HashSet<TxHash>,
 }
 impl Handler<GetStatus> for Sleet {
     type Result = SleetStatus;
@@ -101,6 +102,7 @@ impl Handler<GetStatus> for Sleet {
             accepted_txs: self.accepted_txs.clone(),
             rejected_txs: self.rejected_txs.clone(),
             dag_len: self.dag.len(),
+            accepted_frontier: self.get_accepted_frontier().unwrap(),
         }
     }
 }
@@ -370,14 +372,14 @@ async fn test_sleet_accept_many() {
 
     let SleetStatus { dag_len, conflict_graph_len, rejected_txs, .. } =
         sleet.send(GetStatus).await.unwrap();
-    assert_eq!(dag_len, BETA1 as usize - 1);
+    assert_eq!(dag_len, BETA1 as usize);
     assert_eq!(conflict_graph_len, 500);
     assert_eq!(rejected_txs.len(), 0);
 }
 
 #[actix_rt::test]
 async fn test_sleet_accept_with_conflict() {
-    const CHILDREN_NEEDED: usize = BETA2 as usize;
+    const CHILDREN_NEEDED: usize = BETA2 as usize + 1;
     let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
     let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
@@ -399,7 +401,7 @@ async fn test_sleet_accept_with_conflict() {
 
     let mut spend_cell = first_cell.clone();
     for i in 0..CHILDREN_NEEDED {
-        println!("Spending: {}", spend_cell.clone());
+        println!("Spending: {}\n {}", hex::encode(spend_cell.hash()), spend_cell.clone());
         let cell = generate_transfer(&root_kp, spend_cell.clone(), 1 + i as u64);
         sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
         println!("Cell: {}", cell.clone());
@@ -409,7 +411,7 @@ async fn test_sleet_accept_with_conflict() {
     // + 2: `genesis_tx` and `first_cell`, the voted down tx won't be added to `live_cells`
     assert_eq!(hashes.ids.len(), CHILDREN_NEEDED + 2);
 
-    // let _ = sleet.send(DumpDAG).await.unwrap();
+    let _ = sleet.send(DumpDAG).await.unwrap();
 
     // Wait a bit for 'Hail' to receive the message
     sleep_ms(10).await;
@@ -418,9 +420,11 @@ async fn test_sleet_accept_with_conflict() {
     for a in accepted.iter() {
         println!("Accepted: {}", a);
     }
+    let _ = sleet.send(DumpDAG).await.unwrap();
+
     // The conflicting transaction is accepted after BETA2 queries,
     // and its non-conflictiong children after BETA1
-    assert!(accepted.len() == 11);
+    assert_eq!(accepted.len(), 11);
     assert!(accepted.contains(&first_cell));
 }
 
