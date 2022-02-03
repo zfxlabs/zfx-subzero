@@ -172,7 +172,10 @@ impl ConflictGraph {
                 let mut cs: Vec<(CellHash, ConflictSet<CellHash>)> = vec![];
                 for i in 0..self.cs.len() {
                     if self.cs[i].0 == cell.hash() {
-                        cs.push((cell.hash(), ConflictSet::new(cell.hash())));
+                        // Retain the old confidence value for the new (singleton) conflict set
+                        let mut new_cset = ConflictSet::new(cell.hash());
+                        new_cset.cnt = conflict_set.cnt;
+                        cs.push((cell.hash(), new_cset));
                     }
                     let mut conflicts = false;
                     for conflicting_cell_hash in conflict_set.conflicts.iter() {

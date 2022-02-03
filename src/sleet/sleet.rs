@@ -416,6 +416,9 @@ impl Handler<NewAccepted> for Sleet {
 
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         let mut cells = vec![];
+
+        self.prune_at_accepted_frontier().unwrap();
+
         for tx_hash in msg.tx_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
             let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
@@ -426,7 +429,6 @@ impl Handler<NewAccepted> for Sleet {
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
         }
-        self.prune_at_accepted_frontier().unwrap();
         let _ = self.hail_recipient.do_send(AcceptedCells { cells });
     }
 }
