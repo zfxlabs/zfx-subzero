@@ -233,16 +233,16 @@ impl Sleet {
 
     /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
     /// up to a vertices considered final, collecting all the final nodes.
-    pub fn get_accepted_frontier(&self) -> Result<Vec<TxHash>> {
+    pub fn get_accepted_frontier(&self) -> Result<HashSet<TxHash>> {
+        let mut accepted_frontier = HashSet::new();
         if self.dag.is_empty() {
-            return Ok(vec![]);
+            return Ok(accepted_frontier);
         }
-        let mut accepted_frontier = vec![];
         let leaves = self.dag.leaves();
         for leaf in leaves {
             for tx_hash in self.dag.dfs(&leaf) {
                 if self.is_accepted(tx_hash)? {
-                    accepted_frontier.push(tx_hash.clone());
+                    let _ = accepted_frontier.insert(tx_hash.clone());
                     break;
                 }
             }
