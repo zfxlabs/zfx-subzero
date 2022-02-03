@@ -17,20 +17,20 @@ use crate::Result;
 
 const TRANSFER_DELAY: u64 = 10;
 
-pub async fn run_benchmark_test() -> Result<()> {
-    info!("Run benchmark test for sleet component: Transfer balance n-times from all 3 nodes in parallel");
+pub async fn run_cell_transfer_benchmark_test() -> Result<()> {
+    info!("Run benchmark test for transfer cells: Transfer balance n-times from all 3 nodes in parallel");
 
     let mut nodes = TestNodes::new();
     nodes.start_all();
     wait_until_nodes_start(&nodes).await?;
 
-    run_sleet_benchmark().await?;
+    run_cell_transfer_benchmark().await?;
 
     nodes.kill_all();
     Result::Ok(())
 }
 
-pub async fn run_sleet_benchmark() -> Result<()> {
+pub async fn run_cell_transfer_benchmark() -> Result<()> {
     let mut results_futures = vec![];
     results_futures.push(send(0, 1));
     results_futures.push(send(2, 0));
