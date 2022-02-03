@@ -61,36 +61,37 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Removes a vertex from the DAG. Outgoing and incoming edges are removed as well.
-    pub fn remove_vx(&mut self, vx: V) -> Result<Vec<V>> {
+    pub fn remove_vx(&mut self, vx: &V) -> Result<HashSet<V>> {
         let mut children = HashSet::new();
 
         // Remove the edge pointing to this vertex from the child vertices
-        for child in self.inv.get(&vx).unwrap().iter() {
+        for child in self.inv.get(vx).unwrap().iter() {
             let _ = children.insert(child.clone());
             match self.g.entry(child.clone()) {
                 Entry::Vacant(_) => return Err(Error::VacantEntry),
                 Entry::Occupied(mut o) => {
                     let vec = o.get_mut();
-                    vec.retain(|e| *e != vx.clone());
+                    vec.retain(|e| e != vx);
                 }
             }
         }
 
         // Remove this vertex from its parents
-        for parent in self.g.get(&vx).unwrap().iter() {
+        for parent in self.g.get(vx).unwrap().iter() {
             match self.inv.entry(parent.clone()) {
                 Entry::Vacant(_) => return Err(Error::VacantEntry),
                 Entry::Occupied(mut o) => {
                     let vec = o.get_mut();
-                    vec.retain(|e| *e != vx.clone());
+                    vec.retain(|e| e != vx);
                 }
             }
         }
-        let _ = self.g.remove(&vx);
-        let _ = self.inv.remove(&vx);
+        let _ = self.g.remove(vx);
+        let _ = self.inv.remove(vx);
 
-        Ok(children.iter().cloned().collect::<Vec<_>>())
+        Ok(children)
     }
+
     /// Gets the chit of a particular node.
     pub fn get_chit(&self, vx: V) -> Result<u8> {
         match self.chits.get(&vx) {
@@ -490,8 +491,10 @@ mod test {
             (4, &[3]), (5, &[3])
         ]);
 
-        let mut ch = dag.remove_vx(3).unwrap();
+        let ch = dag.remove_vx(&3).unwrap();
+        let mut ch: Vec<_> = ch.iter().cloned().collect();
         ch.sort();
+
         assert_eq!(ch, [4, 5]);
         assert_eq!(dag.get(&4).unwrap().len(), 0);
         assert_eq!(dag.get(&5).unwrap().len(), 0);

@@ -217,12 +217,12 @@ impl Sleet {
     pub fn on_accept_tx(&mut self, tx_hash: &TxHash, tx: &Tx) -> Result<Vec<CellHash>> {
         // We leave the children in the DAG, they should be strongly preferred
         // and/or have other parents as well
-        let _children = self.dag.remove_vx(tx_hash.clone())?;
+        let _children = self.dag.remove_vx(tx_hash)?;
         let rejected = self.conflict_graph.accept_cell(tx.cell.clone())?;
         let mut children = HashSet::new();
         for hash in rejected {
             let _ = self.rejected_txs.insert(hash.clone());
-            let ch = self.dag.remove_vx(hash)?;
+            let ch = self.dag.remove_vx(&hash)?;
             children.extend(ch.iter());
         }
 
