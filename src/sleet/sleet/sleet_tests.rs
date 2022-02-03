@@ -370,8 +370,9 @@ async fn test_sleet_accept_many() {
     let accepted = hail.send(GetAcceptedCells).await.unwrap();
     assert!(accepted.len() == N + 1 - BETA1 as usize);
 
-    let SleetStatus { dag_len, conflict_graph_len, rejected_txs, .. } =
+    let SleetStatus { dag_len, conflict_graph_len, rejected_txs, accepted_frontier, .. } =
         sleet.send(GetStatus).await.unwrap();
+    assert_eq!(accepted_frontier.len(), 1);
     assert_eq!(dag_len, BETA1 as usize);
     assert_eq!(conflict_graph_len, 500);
     assert_eq!(rejected_txs.len(), 0);
@@ -379,7 +380,7 @@ async fn test_sleet_accept_many() {
 
 #[actix_rt::test]
 async fn test_sleet_accept_with_conflict() {
-    const CHILDREN_NEEDED: usize = BETA2 as usize + 1;
+    const CHILDREN_NEEDED: usize = BETA2 as usize;
     let (sleet, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
     let first_cell = generate_transfer(&root_kp, genesis_tx.clone(), 100);
@@ -411,8 +412,6 @@ async fn test_sleet_accept_with_conflict() {
     // + 2: `genesis_tx` and `first_cell`, the voted down tx won't be added to `live_cells`
     assert_eq!(hashes.ids.len(), CHILDREN_NEEDED + 2);
 
-    let _ = sleet.send(DumpDAG).await.unwrap();
-
     // Wait a bit for 'Hail' to receive the message
     sleep_ms(10).await;
 
@@ -422,6 +421,10 @@ async fn test_sleet_accept_with_conflict() {
     }
     let _ = sleet.send(DumpDAG).await.unwrap();
 
+    let SleetStatus { dag_len, accepted_frontier, .. } = sleet.send(GetStatus).await.unwrap();
+    assert_eq!(accepted_frontier.len(), 1);
+    // TODO It's sometimes 11, sometimes 12, check it
+    assert!(dag_len < 13);
     // The conflicting transaction is accepted after BETA2 queries,
     // and its non-conflictiong children after BETA1
     assert_eq!(accepted.len(), 11);
@@ -487,6 +490,8 @@ async fn test_sleet_many_conflicts() {
     let accepted = hail.send(GetAcceptedCells).await.unwrap();
     println!("Accepted: {}", accepted.len());
     assert!(accepted.len() == 1);
+    let SleetStatus { accepted_frontier, .. } = sleet.send(GetStatus).await.unwrap();
+    assert_eq!(accepted_frontier.len(), 1);
     println!("Accepted: {:?}", accepted);
     assert!(accepted == vec![cell0]);
 }
