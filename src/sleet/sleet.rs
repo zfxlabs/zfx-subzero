@@ -222,12 +222,13 @@ impl Sleet {
         if self.dag.is_empty() {
             return Ok(accepted_frontier);
         }
+        let mut above_frontier: HashSet<TxHash> = HashSet::new();
         let leaves = self.dag.leaves();
         for leaf in leaves {
             for tx_hash in self.dag.dfs(&leaf) {
-                if self.is_accepted(tx_hash)? {
+                if !above_frontier.contains(tx_hash) && self.is_accepted(tx_hash)? {
                     let _ = accepted_frontier.insert(tx_hash.clone());
-                    break;
+                    above_frontier.extend(self.dag.dfs(tx_hash));
                 }
             }
         }
