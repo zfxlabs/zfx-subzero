@@ -417,14 +417,15 @@ async fn test_sleet_accept_with_conflict() {
 
     let accepted = hail.send(GetAcceptedCells).await.unwrap();
     for a in accepted.iter() {
-        println!("Accepted: {}", a);
+        println!("Accepted: {}", hex::encode(a.hash()));
     }
     let _ = sleet.send(DumpDAG).await.unwrap();
 
     let SleetStatus { dag_len, accepted_frontier, .. } = sleet.send(GetStatus).await.unwrap();
-    assert_eq!(accepted_frontier.len(), 1);
-    // TODO It's sometimes 11, sometimes 12, check it
-    assert!(dag_len < 13);
+    let accepted_frontier_len = accepted_frontier.len();
+    println!("dag_len: {}", dag_len);
+    println!("accepted_frontier_len: {}", accepted_frontier_len);
+    assert!(dag_len == 10 + accepted_frontier_len);
     // The conflicting transaction is accepted after BETA2 queries,
     // and its non-conflictiong children after BETA1
     assert_eq!(accepted.len(), 11);
