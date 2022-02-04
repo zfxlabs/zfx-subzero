@@ -8,10 +8,13 @@ use rand::thread_rng;
 use tokio::time::timeout;
 use tracing::info;
 
+use crate::alpha::block::Block;
 use crate::alpha::transfer::TransferOperation;
+use crate::alpha::types::BlockHeight;
 use crate::cell::outputs::Output;
-use crate::cell::types::{CellHash, PublicKeyHash, FEE};
+use crate::cell::types::{Capacity, CellHash, PublicKeyHash, FEE};
 use crate::cell::{Cell, CellType};
+use crate::hail::{GetBlock, GetBlockByHeight};
 use crate::ice::Status;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::protocol::Response;
@@ -181,6 +184,18 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
     }
 }
 
+pub async fn get_block(node_address: SocketAddr, height: BlockHeight) -> Result<Option<Block>> {
+    if let Some(Response::BlockAck(block)) = client::oneshot(
+        node_address,
+        Request::GetBlockByHeight(GetBlockByHeight { block_height: height }),
+    )
+    .await?
+    {
+        return Result::Ok(block.block);
+    }
+    return Result::Ok(None);
+}
+
 pub async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
     match timeout(Duration::from_secs(1), client::oneshot(node_address, Request::CheckStatus)).await
     {
@@ -206,6 +221,23 @@ pub fn create_transfer_request(
     Request::GenerateTx(sleet::GenerateTx { cell: transfer_op.transfer(&from.keypair).unwrap() })
 }
 
+pub async fn get_cell_hashes_with_max_capacity(node: &TestNode) -> Vec<(CellHash, Capacity)> {
+    let mut initial_cells_hashes: Vec<(CellHash, Capacity)> = vec![];
+    for cell_hash in get_cell_hashes(node.address).await.unwrap() {
+        let cell = get_cell_from_hash(cell_hash, node.address).await.unwrap();
+        let max_capacity = cell
+            .unwrap()
+            .outputs_of_owner(&node.public_key)
+            .iter()
+            .filter(|o| o.cell_type != CellType::Stake)
+            .map(|o| o.capacity)
+            .sum::<u64>();
+        if max_capacity > 0 {
+            initial_cells_hashes.push((cell_hash, max_capacity));
+        }
+    }
+    initial_cells_hashes
+}
 pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
     let mut live_nodes: HashSet<&PublicKeyHash> = HashSet::new();
     let mut timer = 0;

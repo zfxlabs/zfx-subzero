@@ -534,6 +534,24 @@ impl Handler<GetBlock> for Hail {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "BlockAck")]
+pub struct GetBlockByHeight {
+    pub block_height: BlockHeight,
+}
+
+impl Handler<GetBlockByHeight> for Hail {
+    type Result = BlockAck;
+
+    fn handle(&mut self, msg: GetBlockByHeight, _ctx: &mut Context<Self>) -> Self::Result {
+        let block = match self.live_blocks.iter().find(|e| e.1.height == msg.block_height) {
+            Some(entry) => Some(entry.1.clone()),
+            None => None,
+        };
+        BlockAck { block }
+    }
+}
+
 // Generate blocks
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]

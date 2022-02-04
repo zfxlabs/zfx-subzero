@@ -1,7 +1,8 @@
 #[cfg(test)]
 #[cfg(feature = "integration_tests")]
 mod integration_test {
-    use crate::integration_test::integration_test::run_all_integration_tests;
+    use crate::integration_test::hail_integration_test::run_hail_integration_test;
+    use crate::integration_test::sleet_integration_test::run_all_integration_tests;
     use crate::integration_test::stress_test::run_stress_test;
     use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
     use crate::Result;

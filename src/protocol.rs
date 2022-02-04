@@ -24,6 +24,7 @@ pub enum Request {
     QueryTx(sleet::QueryTx),
     // Hail
     GetBlock(hail::GetBlock),
+    GetBlockByHeight(hail::GetBlockByHeight),
     QueryBlock(hail::QueryBlock),
 }
 
