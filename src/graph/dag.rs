@@ -61,12 +61,14 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Removes a vertex from the DAG. Outgoing and incoming edges are removed as well.
+    /// Returns the child vertices (for Sleet to take further action where necessary)
     pub fn remove_vx(&mut self, vx: &V) -> Result<HashSet<V>> {
-        let mut children = HashSet::new();
+        let mut children_of_vx = HashSet::new();
 
         // Remove the edge pointing to this vertex from the child vertices
-        for child in self.inv.get(vx).unwrap().iter() {
-            let _ = children.insert(child.clone());
+        let children = self.inv.get(vx).ok_or(Error::UndefinedVertex)?;
+        for child in children {
+            let _ = children_of_vx.insert(child.clone());
             match self.g.entry(child.clone()) {
                 Entry::Vacant(_) => return Err(Error::VacantEntry),
                 Entry::Occupied(mut o) => {
@@ -77,7 +79,8 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         }
 
         // Remove this vertex from its parents
-        for parent in self.g.get(vx).unwrap().iter() {
+        let parents = self.g.get(vx).ok_or(Error::UndefinedVertex)?;
+        for parent in parents {
             match self.inv.entry(parent.clone()) {
                 Entry::Vacant(_) => return Err(Error::VacantEntry),
                 Entry::Occupied(mut o) => {
@@ -89,7 +92,7 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         let _ = self.g.remove(vx);
         let _ = self.inv.remove(vx);
 
-        Ok(children)
+        Ok(children_of_vx)
     }
 
     /// Gets the chit of a particular node.
