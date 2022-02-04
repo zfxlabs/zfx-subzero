@@ -243,10 +243,6 @@ impl Sleet {
             to_be_pruned.extend(self.dag.dfs(f));
         }
         for a in to_be_pruned.iter() {
-            // Sanity check
-            if !self.is_accepted(a)? {
-                panic!("Removing a not accepted tx: {}", hex::encode(a));
-            }
             if !frontier.contains(a) {
                 info!("Pruned {}", hex::encode(a));
                 let _ = self.dag.remove_vx(a);
