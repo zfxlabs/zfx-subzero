@@ -134,14 +134,17 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         queue.push_back(vx);
 
         // The resulting summation
-        let mut sum = 0;
+        let mut sum: u8 = 0;
         loop {
             if queue.len() == 0 {
                 break;
             }
             let elt = queue.pop_front().unwrap();
             let chit = self.get_chit(elt.clone())?;
-            sum += chit;
+            match sum.checked_add(chit) {
+                Some(n) => sum = n,
+                None => return Err(Error::ChitOverflow),
+            }
 
             let adj = self.inv.get(&elt).unwrap();
             for edge in adj.iter().cloned() {
