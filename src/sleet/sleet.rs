@@ -176,7 +176,7 @@ impl Sleet {
 
     /// Checks whether the transaction `TxHash` is accepted as final.
     pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> bool {
-        // It's a bug check a non-existent transaction
+        // It's a bug if we check a non-existent transaction
         let confidence = match self.conflict_graph.get_confidence(tx_hash) {
             Ok(c) => c,
             Err(e) => panic!("{}", e),
@@ -198,6 +198,19 @@ impl Sleet {
             }
         }
         return true;
+    }
+
+    /// Memoising version of `is_accepted`.
+    /// Rationale: `is_accepted` itself contains a DFS loop; also, its callsites are DFS loops
+    /// walking the graph "upwards", so most values have already been calculated in previous iterations
+    pub fn is_accepted_memo(&self, tx_hash: &TxHash, memo: &mut HashMap<TxHash, bool>) -> bool {
+        if let Some(res) = memo.get(tx_hash) {
+            *res
+        } else {
+            let res = self.is_accepted(tx_hash);
+            let _ = memo.insert(tx_hash.clone(), res);
+            res
+        }
     }
 
     /// Clean up the conflict graph and the DAG
@@ -225,9 +238,10 @@ impl Sleet {
         }
         let mut above_frontier: HashSet<TxHash> = HashSet::new();
         let leaves = self.dag.leaves();
+        let mut memo = HashMap::new();
         for leaf in leaves {
             for tx_hash in self.dag.dfs(&leaf) {
-                if !above_frontier.contains(tx_hash) && self.is_accepted(tx_hash) {
+                if !above_frontier.contains(tx_hash) && self.is_accepted_memo(tx_hash, &mut memo) {
                     let _ = accepted_frontier.insert(tx_hash.clone());
                     above_frontier.extend(self.dag.dfs(tx_hash));
                 }
@@ -254,8 +268,9 @@ impl Sleet {
     /// Check if a transaction or one of its ancestors have become accepted
     pub fn compute_accepted_txs(&mut self, tx_hash: &TxHash) -> Vec<TxHash> {
         let mut new = vec![];
+        let mut memo = HashMap::new();
         for t in self.dag.dfs(tx_hash) {
-            if !self.accepted_txs.contains(t) && self.is_accepted(t) {
+            if !self.accepted_txs.contains(t) && self.is_accepted_memo(t, &mut memo) {
                 new.push(t.clone());
                 let _ = self.accepted_txs.insert(t.clone());
             }
