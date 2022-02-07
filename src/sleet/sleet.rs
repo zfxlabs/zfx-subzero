@@ -175,28 +175,29 @@ impl Sleet {
     // Finality
 
     /// Checks whether the transaction `TxHash` is accepted as final.
-    pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> Result<bool> {
-        if self.conflict_graph.is_singleton(tx_hash)?
-            && self.conflict_graph.get_confidence(tx_hash)? >= BETA1
-        {
-            Ok(true)
+    pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> bool {
+        // It's a bug check a non-existent transaction
+        let confidence = match self.conflict_graph.get_confidence(tx_hash) {
+            Ok(c) => c,
+            Err(e) => panic!("{}", e),
+        };
+        if self.conflict_graph.is_singleton(tx_hash).unwrap() && confidence >= BETA1 {
+            true
+        } else if confidence >= BETA2 {
+            true
         } else {
-            if self.conflict_graph.get_confidence(tx_hash)? >= BETA2 {
-                Ok(true)
-            } else {
-                Ok(false)
-            }
+            false
         }
     }
 
     /// Checks whether the ancestry of the provided `TxHash` is final
-    pub fn is_accepted(&self, initial_tx_hash: &TxHash) -> Result<bool> {
+    pub fn is_accepted(&self, initial_tx_hash: &TxHash) -> bool {
         for tx in self.dag.dfs(initial_tx_hash) {
-            if !self.is_accepted_tx(tx)? {
-                return Ok(false);
+            if !self.is_accepted_tx(tx) {
+                return false;
             }
         }
-        return Ok(true);
+        return true;
     }
 
     /// Clean up the conflict graph and the DAG
@@ -217,27 +218,27 @@ impl Sleet {
 
     /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
     /// up to a vertices considered final, collecting all the final nodes.
-    pub fn get_accepted_frontier(&self) -> Result<HashSet<TxHash>> {
+    pub fn get_accepted_frontier(&self) -> HashSet<TxHash> {
         let mut accepted_frontier = HashSet::new();
         if self.dag.is_empty() {
-            return Ok(accepted_frontier);
+            return accepted_frontier;
         }
         let mut above_frontier: HashSet<TxHash> = HashSet::new();
         let leaves = self.dag.leaves();
         for leaf in leaves {
             for tx_hash in self.dag.dfs(&leaf) {
-                if !above_frontier.contains(tx_hash) && self.is_accepted(tx_hash)? {
+                if !above_frontier.contains(tx_hash) && self.is_accepted(tx_hash) {
                     let _ = accepted_frontier.insert(tx_hash.clone());
                     above_frontier.extend(self.dag.dfs(tx_hash));
                 }
             }
         }
-        Ok(accepted_frontier)
+        accepted_frontier
     }
 
     /// Remove transactions from the dag above the accepted frontier
-    pub fn prune_at_accepted_frontier(&mut self) -> Result<()> {
-        let frontier = self.get_accepted_frontier()?;
+    pub fn prune_at_accepted_frontier(&mut self) {
+        let frontier = self.get_accepted_frontier();
         let mut to_be_pruned = HashSet::new();
         for f in frontier.iter() {
             to_be_pruned.extend(self.dag.dfs(f));
@@ -248,19 +249,18 @@ impl Sleet {
                 let _ = self.dag.remove_vx(a);
             }
         }
-        Ok(())
     }
 
     /// Check if a transaction or one of its ancestors have become accepted
-    pub fn compute_accepted_txs(&mut self, tx_hash: &TxHash) -> Result<Vec<TxHash>> {
+    pub fn compute_accepted_txs(&mut self, tx_hash: &TxHash) -> Vec<TxHash> {
         let mut new = vec![];
         for t in self.dag.dfs(tx_hash) {
-            if !self.accepted_txs.contains(t) && self.is_accepted(t)? {
+            if !self.accepted_txs.contains(t) && self.is_accepted(t) {
                 new.push(t.clone());
                 let _ = self.accepted_txs.insert(t.clone());
             }
         }
-        Ok(new)
+        new
     }
 
     // Weighted sampling
@@ -386,16 +386,8 @@ impl Handler<QueryComplete> for Sleet {
             // The transaction or some of its ancestors may have become
             // accepted. Check this.
             let new_accepted = self.compute_accepted_txs(&msg.tx.hash());
-            match new_accepted {
-                Ok(new_accepted) => {
-                    if !new_accepted.is_empty() {
-                        ctx.notify(NewAccepted { tx_hashes: new_accepted });
-                    }
-                }
-                Err(e) => {
-                    // It's a bug if happens
-                    panic!("[sleet] Error checking whether transaction is accepted: {}", e);
-                }
+            if !new_accepted.is_empty() {
+                ctx.notify(NewAccepted { tx_hashes: new_accepted });
             }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
@@ -414,7 +406,7 @@ impl Handler<NewAccepted> for Sleet {
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         let mut cells = vec![];
 
-        self.prune_at_accepted_frontier().unwrap();
+        self.prune_at_accepted_frontier();
 
         for tx_hash in msg.tx_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
