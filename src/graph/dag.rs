@@ -60,6 +60,11 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         self.set_chit(vx, 0)
     }
 
+    /// Check if the given (parent) vertices exist
+    pub fn has_vertices(&self, vs: Vec<V>) -> bool {
+        vs.iter().all(|v| self.g.contains_key(v))
+    }
+
     /// Removes a vertex from the DAG. Outgoing and incoming edges are removed as well.
     /// Returns the child vertices (for Sleet to take further action where necessary)
     pub fn remove_vx(&mut self, vx: &V) -> Result<HashSet<V>> {
@@ -485,6 +490,23 @@ mod test {
             dag.set_chit(i, 1).unwrap();
         }
         assert_eq!(dag.conviction(0).unwrap(), 11);
+    }
+
+    #[actix_rt::test]
+    async fn test_has_vertices() {
+        let mut dag: DAG<u8> = DAG::new();
+
+        // Insert the genesis vertex
+        dag.insert_vx(0, vec![]).unwrap();
+        dag.insert_vx(1, vec![0]).unwrap();
+        dag.insert_vx(2, vec![0]).unwrap();
+        dag.insert_vx(3, vec![1, 2]).unwrap();
+
+        assert!(dag.has_vertices(vec![1, 2, 3]));
+        assert!(!dag.has_vertices(vec![1, 2, 3, 4]));
+        assert!(!dag.has_vertices(vec![4, 1, 2, 3]));
+        assert!(dag.has_vertices(vec![]));
+        assert!(!dag.has_vertices(vec![4]));
     }
 
     #[actix_rt::test]
