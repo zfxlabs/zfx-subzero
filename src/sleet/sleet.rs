@@ -18,7 +18,7 @@ use super::{Error, Result};
 use tracing::{debug, error, info};
 
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -570,40 +570,39 @@ pub struct QueryTxAck {
 }
 
 impl Handler<QueryTx> for Sleet {
-    type Result = QueryTxAck;
+    type Result = ResponseFuture<QueryTxAck>;
 
     fn handle(&mut self, msg: QueryTx, ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] Received query for transaction {}", "sleet".cyan(), hex::encode(msg.tx.hash()));
+        let id = self.node_id.clone();
+        let tx_hash = msg.tx.hash();
         match self.on_receive_tx(msg.tx.clone()) {
-            Ok(true) => ctx.notify(FreshTx { tx: msg.tx.clone() }),
-            Ok(false) => (),
+            Ok(is_new) => {
+                if is_new {
+                    ctx.notify(FreshTx { tx: msg.tx.clone() });
+                };
+
+                // We may have accepted or rejected the transaction already when the query comes in
+                if self.accepted_txs.contains(&tx_hash) {
+                    return Box::pin(async move { QueryTxAck { id, tx_hash, outcome: true } });
+                }
+                if self.rejected_txs.contains(&tx_hash) {
+                    return Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } });
+                }
+
+                // FIXME: If we are in the middle of querying this transaction, wait until a
+                // decision or a synchronous timebound is reached on attempts.
+                let outcome = self.is_strongly_preferred(tx_hash.clone()).unwrap();
+                Box::pin(async move { QueryTxAck { id, tx_hash, outcome } })
+            }
             Err(e) => {
-                error!(
+                info!(
                     "[{}] Couldn't insert queried transaction {:?}: {}",
                     "sleet".cyan(),
                     msg.tx,
                     e
                 );
-            }
-        }
-
-        // We may have accepted or rejected the transaction already when the query comes in
-        let tx_hash = msg.tx.hash();
-        if self.accepted_txs.contains(&tx_hash) {
-            return QueryTxAck { id: self.node_id, tx_hash, outcome: true };
-        }
-        if self.rejected_txs.contains(&tx_hash) {
-            return QueryTxAck { id: self.node_id, tx_hash, outcome: false };
-        }
-
-        // FIXME: If we are in the middle of querying this transaction, wait until a
-        // decision or a synchronous timebound is reached on attempts.
-        match self.is_strongly_preferred(tx_hash.clone()) {
-            Ok(outcome) => QueryTxAck { id: self.node_id, tx_hash, outcome },
-            Err(e) => {
-                error!("[{}] Missing ancestor of {}\n {}", "sleet".cyan(), msg.tx, e);
-                // FIXME We're voting against the tx w/o having enough information
-                QueryTxAck { id: self.node_id, tx_hash: msg.tx.hash(), outcome: false }
+                return Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } });
             }
         }
     }
