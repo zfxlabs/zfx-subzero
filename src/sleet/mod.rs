@@ -20,6 +20,7 @@ pub enum Error {
     InvalidConflictSet,
     Graph(graph::Error),
     InsufficientWeight,
+    MissingAncestry,
 }
 
 impl std::error::Error for Error {}
