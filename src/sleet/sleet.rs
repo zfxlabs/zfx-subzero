@@ -594,6 +594,8 @@ impl Handler<QueryTx> for Sleet {
             Ok(is_new) => {
                 if is_new {
                     ctx.notify(FreshTx { tx: msg.tx.clone() });
+                    // TODO we might want this to be a periodic check
+                    ctx.notify(CheckPending);
                 };
 
                 // We may have accepted or rejected the transaction already when the query comes in
@@ -647,6 +649,50 @@ impl Handler<QueryTx> for Sleet {
                 Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } })
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct CheckPending;
+
+impl Handler<CheckPending> for Sleet {
+    type Result = ();
+
+    fn handle(&mut self, _msg: CheckPending, ctx: &mut Context<Self>) -> Self::Result {
+        let mut remaining = vec![];
+        while let Some((tx, sender)) = self.pending_queries.pop() {
+            if self.dag.has_vertices(tx.parents.clone()) {
+                match self.on_receive_tx(tx.clone()) {
+                    Ok(is_new) => {
+                        if is_new {
+                            ctx.notify(FreshTx { tx: tx.clone() });
+                        }
+                        // TODO: do we need to wait for _our_ query to complete?
+                        let outcome = self.is_strongly_preferred(tx.hash()).unwrap();
+                        // The receiver might have timed out by now
+                        let _ = sender.send(outcome);
+                    }
+                    Err(e) => {
+                        error!(
+                            "[{}] Couldn't insert pending transaction\n{}:\n {}",
+                            "sleet".cyan(),
+                            tx,
+                            e
+                        );
+                        let _ = sender.send(false);
+                    }
+                }
+            } else if sender.is_closed() {
+                // The pending query timed out, drop the transaction
+                // as we were unable the get its ancestry
+                info!("Dropping pending transaction: {}", tx);
+            } else {
+                remaining.push((tx, sender));
+            }
+        }
+        remaining.reverse();
+        self.pending_queries = remaining;
     }
 }
 
