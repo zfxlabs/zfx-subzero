@@ -20,6 +20,9 @@ use tracing::{debug, error, info};
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
 use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
+use tokio::sync::oneshot;
+use tokio::time::{self, Duration};
+
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
@@ -32,6 +35,11 @@ const NPARENTS: usize = 3;
 pub const ALPHA: f64 = 0.5;
 pub const BETA1: u8 = 11;
 pub const BETA2: u8 = 20;
+
+// Constants
+
+/// Timeout for answering a `QueryTx` message
+const QUERY_RESPONSE_TIMEOUT_MS: u64 = 5000;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
@@ -56,6 +64,8 @@ pub struct Sleet {
     /// The map contains transactions rejected because they conflict with an accepted transaction
     /// Note: we rely heavily on the fact that transacrions have the same hash as the wrapped cell
     rejected_txs: HashSet<TxHash>,
+    /// Incoming queries pending that couldn't be processed because of missing ancestry
+    pending_queries: Vec<(Tx, oneshot::Sender<bool>)>,
     /// The consensus graph.
     dag: DAG<TxHash>,
 }
@@ -78,6 +88,7 @@ impl Sleet {
             live_cells: HashMap::default(),
             accepted_txs: HashSet::new(),
             rejected_txs: HashSet::new(),
+            pending_queries: vec![],
             dag: DAG::new(),
         }
     }
@@ -596,13 +607,33 @@ impl Handler<QueryTx> for Sleet {
                 Box::pin(async move { QueryTxAck { id, tx_hash, outcome } })
             }
             Err(e) => {
-                info!(
-                    "[{}] Couldn't insert queried transaction {:?}: {}",
-                    "sleet".cyan(),
-                    msg.tx,
-                    e
-                );
-                return Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } });
+                info!("[{}] Couldn't answer transaction query {:?}: {}", "sleet".cyan(), msg.tx, e);
+                let (sender, receiver) = oneshot::channel();
+                self.pending_queries.push((msg.tx, sender));
+                Box::pin(async move {
+                    let timeout = time::sleep(Duration::from_millis(QUERY_RESPONSE_TIMEOUT_MS));
+                    tokio::select! {
+                        r = receiver => {
+                            match r {
+                            Ok(outcome) => {
+                                // Sleet was able to process the transaction
+                                QueryTxAck { id, tx_hash, outcome }
+                            },
+                            Err(_) => {
+                                // This shouldn't happen, Sleet shouldn't drop the sending end
+                                error!("Sender for QueryTx outcome errored");
+                                QueryTxAck { id, tx_hash, outcome: false }
+
+                            },
+                        }
+                        },
+                        () = timeout => {
+                            // Sleet couldn't fetch all ancestors
+                            // TODO: we may also respond with a timeout-like message
+                            QueryTxAck { id, tx_hash, outcome: false }
+                        }
+                    }
+                })
             }
         }
     }
