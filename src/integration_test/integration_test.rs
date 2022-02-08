@@ -377,7 +377,7 @@ fn assert_cell(
     );
 }
 
-struct SendCellResult {
+pub struct SendCellResult {
     original_cell_balance: u64,
     original_cell_output_len: usize,
     original_cell_hash: CellHash,
