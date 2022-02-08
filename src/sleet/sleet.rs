@@ -102,6 +102,9 @@ impl Sleet {
             return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
         }
         if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
+            if !self.dag.has_vertices(sleet_tx.parents.clone()) {
+                return Err(Error::MissingAncestry);
+            }
             self.insert(sleet_tx.clone())?;
             let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
             Ok(true)
@@ -606,8 +609,12 @@ impl Handler<QueryTx> for Sleet {
                 let outcome = self.is_strongly_preferred(tx_hash.clone()).unwrap();
                 Box::pin(async move { QueryTxAck { id, tx_hash, outcome } })
             }
-            Err(e) => {
-                info!("[{}] Couldn't answer transaction query {:?}: {}", "sleet".cyan(), msg.tx, e);
+            Err(Error::MissingAncestry) => {
+                info!(
+                    "[{}] Couldn't answer transaction query (missing ancestry): {}",
+                    "sleet".cyan(),
+                    msg.tx
+                );
                 let (sender, receiver) = oneshot::channel();
                 self.pending_queries.push((msg.tx, sender));
                 Box::pin(async move {
@@ -634,6 +641,10 @@ impl Handler<QueryTx> for Sleet {
                         }
                     }
                 })
+            }
+            Err(e) => {
+                error!("[{}] Couldn't insert new transaction\n{}:\n {}", "sleet".cyan(), msg.tx, e);
+                Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } })
             }
         }
     }
