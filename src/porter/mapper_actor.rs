@@ -4,7 +4,7 @@ use igd::SearchOptions;
 use std::{net::Ipv4Addr, time::Duration};
 
 use actix::{Actor, Context};
-use tracing::{trace, warn, error};
+use tracing::{error, trace, warn};
 
 use super::{
     messages::{GetExternalIpMessage, MappingMessage},
@@ -145,21 +145,21 @@ mod test {
         assert!(current_external_ip.is_ok());
 
         let add_params = AddMappingEntry::new(
-            SocketAddrV4::new(Ipv4Addr::new(127,0,0,1), 24567),
+            SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 24567),
             24567,
             PortMappingProtocol::TCP,
             Duration::from_secs(60),
             "zfx_node_add_port_mapping_test".to_string(),
         );
-        
+
         let add_res =
             mapper_actor.send(MappingMessage::AddMapping(add_params.clone())).await.unwrap();
         assert!(add_res.is_ok());
 
         let refresh_params = RefreshMappingEntry::new(
-            Duration::from_secs(10), 
-            current_external_ip.unwrap(), 
-            add_params
+            Duration::from_secs(10),
+            current_external_ip.unwrap(),
+            add_params,
         );
 
         let refresh_res = refresh_actor

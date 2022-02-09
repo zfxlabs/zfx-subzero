@@ -133,10 +133,8 @@ mod test {
     async fn add_mapping() {
         use std::net::IpAddr;
 
-        let mut mapper = Mapper::new(
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 109)), 24567),
-            None,
-        );
+        let mut mapper =
+            Mapper::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 109)), 24567), None);
 
         let res = mapper
             .add_port_mapping(
@@ -153,10 +151,8 @@ mod test {
     async fn get_external_ip() {
         use std::net::IpAddr;
 
-        let mapper = Mapper::new(
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 109)), 24567),
-            None,
-        );
+        let mapper =
+            Mapper::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 109)), 24567), None);
 
         let res = mapper.get_external_ip().await;
 
@@ -167,10 +163,8 @@ mod test {
     async fn add_and_refresh() {
         use std::net::IpAddr;
 
-        let mut mapper = Mapper::new(
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 50, 1)), 24567),
-            None,
-        );
+        let mut mapper =
+            Mapper::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 50, 1)), 24567), None);
 
         let res = mapper
             .add_port_mapping(
