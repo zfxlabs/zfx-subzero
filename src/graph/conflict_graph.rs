@@ -164,14 +164,16 @@ impl ConflictGraph {
                     });
                 }
 
-                // Next remove the conflicting transactions from the conflict sets, preserving
-                // the ordering.
-                let mut new_cset = ConflictSet::new(cell_hash);
-                new_cset.cnt = conflict_set.cnt;
-                self.cs.insert(cell_hash, new_cset);
+                // Next remove the conflicting transactions from the conflict sets
                 conflict_set.conflicts.iter().for_each(|cs| {
                     self.cs.remove(cs);
                 });
+
+                let mut new_cset = ConflictSet::new(cell_hash);
+                // Retain the old confidence value for the new (singleton) conflict set
+                new_cset.cnt = conflict_set.cnt;
+                self.cs.insert(cell_hash, new_cset);
+
                 Ok(conflicting_hashes.iter().map(|h| *h).collect())
             }
             // If the transaction has no conflict set then it is invalid.
