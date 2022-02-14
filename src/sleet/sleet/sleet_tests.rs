@@ -11,6 +11,7 @@ use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 
 use std::convert::TryInto;
+use std::time::Instant;
 
 fn generate_coinbase(keypair: &Keypair, amount: u64) -> Cell {
     let enc = bincode::serialize(&keypair.public).unwrap();
@@ -246,6 +247,22 @@ async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Ke
     sleet_addr.send(live_committee).await.unwrap();
 
     (sleet_addr, sender, receiver, root_kp, genesis_tx)
+}
+
+async fn start_test_env_with_two_sleet_actors(
+) -> (Addr<Sleet>, Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Cell) {
+    // Uncomment to see Sleet's logs
+    // tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
+
+    let (sleet_addr, client, hail, root_kp, genesis_tx) = start_test_env().await;
+
+    let sleet2 = Sleet::new(client.clone().recipient(), hail.clone().recipient(), Id::one());
+    let sleet_addr2 = sleet2.start();
+
+    let live_committee = make_live_committee(vec![genesis_tx.clone()]);
+    sleet_addr2.send(live_committee).await.unwrap();
+
+    (sleet_addr, sleet_addr2, client, hail, root_kp, genesis_tx)
 }
 
 #[actix_rt::test]
@@ -495,6 +512,61 @@ async fn test_sleet_many_conflicts() {
     assert_eq!(accepted_frontier.len(), 1);
     println!("Accepted: {:?}", accepted);
     assert!(accepted == vec![cell0]);
+}
+
+#[actix_rt::test]
+async fn test_sleet_tx_no_parents() {
+    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    assert!(tx.parents.contains(&cell1.hash()));
+
+    // Query at sleet2 and wait till it times out
+    let now = Instant::now();
+    let QueryTxAck { outcome, .. } = sleet2.send(QueryTx { tx }).await.unwrap();
+    assert!(!outcome);
+    let elapsed = now.elapsed().as_millis();
+    assert!(elapsed >= QUERY_RESPONSE_TIMEOUT_MS as u128);
+}
+
+#[actix_rt::test]
+async fn test_sleet_tx_late_parents() {
+    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+
+    let (tx, rx) = oneshot::channel();
+    let sleet_clone = sleet2.clone();
+    tokio::spawn(async move {
+        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx2 }).await.unwrap();
+        assert!(outcome);
+        let _ = tx.send(outcome);
+    });
+
+    sleep_ms(1000).await;
+    let QueryTxAck { outcome, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    assert!(outcome);
+    assert!(rx.await.unwrap());
 }
 
 #[actix_rt::test]
