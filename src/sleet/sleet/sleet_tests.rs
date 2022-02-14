@@ -570,6 +570,87 @@ async fn test_sleet_tx_late_parents() {
 }
 
 #[actix_rt::test]
+async fn test_sleet_tx_two_late_parents() {
+    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+    let cell3 = generate_transfer(&root_kp, cell2.clone(), 3);
+    sleet1.send(GenerateTx { cell: cell3.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    let (_, tx3) = tx_storage::get_tx(&known_txs, cell3.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+    assert!(tx3.parents.contains(&tx2.hash()));
+
+    let (tx, rx3) = oneshot::channel();
+    let sleet_clone = sleet2.clone();
+    tokio::spawn(async move {
+        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx3 }).await.unwrap();
+        assert!(outcome);
+        let _ = tx.send(outcome);
+    });
+
+    let (tx, rx2) = oneshot::channel();
+    let sleet_clone = sleet2.clone();
+    tokio::spawn(async move {
+        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx2 }).await.unwrap();
+        assert!(outcome);
+        let _ = tx.send(outcome);
+    });
+
+    sleep_ms(1000).await;
+    let QueryTxAck { outcome: outcome1, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    assert!(outcome1);
+    assert!(rx3.await.unwrap());
+    assert!(rx2.await.unwrap());
+}
+
+#[actix_rt::test]
+async fn test_sleet_tx_missing_parent() {
+    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+    let cell3 = generate_transfer(&root_kp, cell2.clone(), 3);
+    sleet1.send(GenerateTx { cell: cell3.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    let (_, tx3) = tx_storage::get_tx(&known_txs, cell3.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+    assert!(tx3.parents.contains(&tx2.hash()));
+
+    let (tx, rx3) = oneshot::channel();
+    let sleet_clone = sleet2.clone();
+    tokio::spawn(async move {
+        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx3 }).await.unwrap();
+        assert!(!outcome);
+        let _ = tx.send(outcome);
+    });
+
+    // `tx2` will be missing, this causes the query for `tx3` to time out
+
+    sleep_ms(1000).await;
+    let QueryTxAck { outcome: outcome1, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    assert!(outcome1);
+    assert!(!rx3.await.unwrap());
+}
+
+#[actix_rt::test]
 async fn test_strongly_preferred() {
     let client = DummyClient::new();
     let sender = client.start();
