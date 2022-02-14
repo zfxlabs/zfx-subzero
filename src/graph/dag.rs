@@ -61,36 +61,40 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Removes a vertex from the DAG. Outgoing and incoming edges are removed as well.
-    pub fn remove_vx(&mut self, vx: V) -> Result<Vec<V>> {
-        let mut children = HashSet::new();
+    /// Returns the child vertices (for Sleet to take further action where necessary)
+    pub fn remove_vx(&mut self, vx: &V) -> Result<HashSet<V>> {
+        let mut children_of_vx = HashSet::new();
 
         // Remove the edge pointing to this vertex from the child vertices
-        for child in self.inv.get(&vx).unwrap().iter() {
-            let _ = children.insert(child.clone());
+        let children = self.inv.get(vx).ok_or(Error::UndefinedVertex)?;
+        for child in children {
+            let _ = children_of_vx.insert(child.clone());
             match self.g.entry(child.clone()) {
                 Entry::Vacant(_) => return Err(Error::VacantEntry),
                 Entry::Occupied(mut o) => {
                     let vec = o.get_mut();
-                    vec.retain(|e| *e != vx.clone());
+                    vec.retain(|e| e != vx);
                 }
             }
         }
 
         // Remove this vertex from its parents
-        for parent in self.g.get(&vx).unwrap().iter() {
+        let parents = self.g.get(vx).ok_or(Error::UndefinedVertex)?;
+        for parent in parents {
             match self.inv.entry(parent.clone()) {
                 Entry::Vacant(_) => return Err(Error::VacantEntry),
                 Entry::Occupied(mut o) => {
                     let vec = o.get_mut();
-                    vec.retain(|e| *e != vx.clone());
+                    vec.retain(|e| e != vx);
                 }
             }
         }
-        let _ = self.g.remove(&vx);
-        let _ = self.inv.remove(&vx);
+        let _ = self.g.remove(vx);
+        let _ = self.inv.remove(vx);
 
-        Ok(children.iter().cloned().collect::<Vec<_>>())
+        Ok(children_of_vx)
     }
+
     /// Gets the chit of a particular node.
     pub fn get_chit(&self, vx: V) -> Result<u8> {
         match self.chits.get(&vx) {
@@ -130,14 +134,17 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         queue.push_back(vx);
 
         // The resulting summation
-        let mut sum = 0;
+        let mut sum: u8 = 0;
         loop {
             if queue.len() == 0 {
                 break;
             }
             let elt = queue.pop_front().unwrap();
             let chit = self.get_chit(elt.clone())?;
-            sum += chit;
+            match sum.checked_add(chit) {
+                Some(n) => sum = n,
+                None => return Err(Error::ChitOverflow),
+            }
 
             let adj = self.inv.get(&elt).unwrap();
             for edge in adj.iter().cloned() {
@@ -490,8 +497,10 @@ mod test {
             (4, &[3]), (5, &[3])
         ]);
 
-        let mut ch = dag.remove_vx(3).unwrap();
+        let ch = dag.remove_vx(&3).unwrap();
+        let mut ch: Vec<_> = ch.iter().cloned().collect();
         ch.sort();
+
         assert_eq!(ch, [4, 5]);
         assert_eq!(dag.get(&4).unwrap().len(), 0);
         assert_eq!(dag.get(&5).unwrap().len(), 0);

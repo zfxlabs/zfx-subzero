@@ -166,7 +166,9 @@ impl ConflictGraph {
 
                 // Next remove the conflicting transactions from the conflict sets, preserving
                 // the ordering.
-                self.cs.insert(cell_hash, ConflictSet::new(cell_hash));
+                let mut new_cset = ConflictSet::new(cell_hash);
+                new_cset.cnt = conflict_set.cnt;
+                self.cs.insert(cell_hash, new_cset);
                 conflict_set.conflicts.iter().for_each(|cs| {
                     self.cs.remove(cs);
                 });
@@ -230,6 +232,12 @@ impl ConflictGraph {
         } else {
             Err(Error::EmptyConflictGraph)
         }
+    }
+
+    /// Returns the number of cells in the conflict graph
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.cs.len()
     }
 }
 

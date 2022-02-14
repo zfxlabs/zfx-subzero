@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use tokio::time::timeout;
 use tracing::info;
 
 use crate::alpha::transfer::TransferOperation;
@@ -78,7 +79,7 @@ pub async fn get_cell_outputs_of_node(
 
 pub async fn get_cell(
     min_amount: u64,
-    context: &mut IntegrationTestContext,
+    context: &IntegrationTestContext,
     node: &TestNode,
 ) -> Result<Option<Cell>> {
     let cell_hashes = context.get_latest_cells_of(get_cell_hashes(node.address).await?);
@@ -181,8 +182,9 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
 }
 
 pub async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
-    match client::oneshot(node_address, Request::CheckStatus).await {
-        Ok(r) => {
+    match timeout(Duration::from_secs(1), client::oneshot(node_address, Request::CheckStatus)).await
+    {
+        Ok(Ok(r)) => {
             if let Some(Response::Status(status)) = r {
                 Result::Ok(Some(status))
             } else {
