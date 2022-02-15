@@ -68,33 +68,47 @@ async fn main() -> Result<()> {
     }
 
     for amount in 0..n {
-        if let Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) = client::oneshot(
-            peer_ip,
-            Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
-        )
-        .await?
-        {
-            info!("spendable:\n{}\n", cell_in.clone());
-            let transfer_op =
-                TransferOperation::new(cell_in.clone(), pkh.clone(), pkh.clone(), amount + 1);
-            let transfer_tx = transfer_op.transfer(&keypair).unwrap();
-            cell_hash_bytes = transfer_tx.hash();
+        for retry in 1..11 {
             match client::oneshot(
                 peer_ip,
-                Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
+                Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
             )
             .await?
             {
-                Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(_hash) })) => {
-                    // info!("Ack hash: {}", hex::encode(_hash))
+                Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) => {
+                    info!("spendable:\n{}\n", cell_in.clone());
+                    let transfer_op = TransferOperation::new(
+                        cell_in.clone(),
+                        pkh.clone(),
+                        pkh.clone(),
+                        amount + 1,
+                    );
+                    let transfer_tx = transfer_op.transfer(&keypair).unwrap();
+                    cell_hash_bytes = transfer_tx.hash();
+                    match client::oneshot(
+                        peer_ip,
+                        Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
+                    )
+                    .await?
+                    {
+                        Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(_hash) })) => {
+                            // info!("Ack hash: {}", hex::encode(_hash))
+                        }
+                        other => panic!("Unexpected: {:?}", other),
+                    }
+                    // info!("sent tx:\n{:?}\n", tx.clone());
+                    info!("new cell_hash: {}", hex::encode(&cell_hash_bytes));
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                    break;
                 }
-                other => panic!("Unexpected: {:?}", other),
+                other => {
+                    info!("retrying to fetch {} ({:?})", hex::encode(&cell_hash_bytes), other);
+                    if retry == 10 {
+                        panic!("too many retries");
+                    }
+                    tokio::time::sleep(Duration::from_secs(retry)).await;
+                }
             }
-            // info!("sent tx:\n{:?}\n", tx.clone());
-            info!("new cell_hash: {}", hex::encode(&cell_hash_bytes));
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        } else {
-            panic!("cell doesn't exist: {}", hex::encode(&cell_hash_bytes));
         }
     }
     Ok(())
