@@ -17,6 +17,7 @@ pub enum Error {
     UndefinedChit,
     UndefinedVertex,
     ChitReplace,
+    ChitOverflow,
     // Dependency graph
     EmptyConflictGraph,
     DuplicateCell,

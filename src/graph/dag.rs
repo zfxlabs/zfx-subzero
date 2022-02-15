@@ -1,11 +1,11 @@
 use super::{Error, Result};
 
 use std::collections::VecDeque;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 #[derive(Debug)]
 pub struct DAG<V> {
-    /// `g` defines a directed acyclic graph with only inbound edges.
+    /// `g` defines a directed acyclic graph by the outbound edges from a vertex
     g: HashMap<V, Vec<V>>,
     /// `inv` defines a directed acyclic graph with the inverted edges of `g`.
     inv: HashMap<V, Vec<V>>,
@@ -60,6 +60,46 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         self.set_chit(vx, 0)
     }
 
+    /// Check if the given (parent) vertices exist
+    pub fn has_vertices(&self, vs: Vec<V>) -> bool {
+        vs.iter().all(|v| self.g.contains_key(v))
+    }
+
+    /// Removes a vertex from the DAG. Outgoing and incoming edges are removed as well.
+    /// Returns the child vertices (for Sleet to take further action where necessary)
+    pub fn remove_vx(&mut self, vx: &V) -> Result<HashSet<V>> {
+        let mut children_of_vx = HashSet::new();
+
+        // Remove the edge pointing to this vertex from the child vertices
+        let children = self.inv.get(vx).ok_or(Error::UndefinedVertex)?;
+        for child in children {
+            let _ = children_of_vx.insert(child.clone());
+            match self.g.entry(child.clone()) {
+                Entry::Vacant(_) => return Err(Error::VacantEntry),
+                Entry::Occupied(mut o) => {
+                    let vec = o.get_mut();
+                    vec.retain(|e| e != vx);
+                }
+            }
+        }
+
+        // Remove this vertex from its parents
+        let parents = self.g.get(vx).ok_or(Error::UndefinedVertex)?;
+        for parent in parents {
+            match self.inv.entry(parent.clone()) {
+                Entry::Vacant(_) => return Err(Error::VacantEntry),
+                Entry::Occupied(mut o) => {
+                    let vec = o.get_mut();
+                    vec.retain(|e| e != vx);
+                }
+            }
+        }
+        let _ = self.g.remove(vx);
+        let _ = self.inv.remove(vx);
+
+        Ok(children_of_vx)
+    }
+
     /// Gets the chit of a particular node.
     pub fn get_chit(&self, vx: V) -> Result<u8> {
         match self.chits.get(&vx) {
@@ -99,14 +139,17 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         queue.push_back(vx);
 
         // The resulting summation
-        let mut sum = 0;
+        let mut sum: u8 = 0;
         loop {
             if queue.len() == 0 {
                 break;
             }
             let elt = queue.pop_front().unwrap();
             let chit = self.get_chit(elt.clone())?;
-            sum += chit;
+            match sum.checked_add(chit) {
+                Some(n) => sum = n,
+                None => return Err(Error::ChitOverflow),
+            }
 
             let adj = self.inv.get(&elt).unwrap();
             for edge in adj.iter().cloned() {
@@ -233,7 +276,10 @@ where
         for edge in adj.iter() {
             match self.visited.entry(edge) {
                 Entry::Occupied(_) => (),
-                Entry::Vacant(_) => self.stack.push(edge),
+                Entry::Vacant(v) => {
+                    self.stack.push(edge);
+                    let _ = v.insert(true);
+                }
             }
         }
         Some(next)
@@ -332,6 +378,72 @@ mod test {
     }
 
     #[actix_rt::test]
+    async fn dfs3() {
+        #[rustfmt::skip]
+        let dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1]),
+            (4, &[3,1]),
+            (5, &[4,1]),
+            (6, &[5,1]),
+            (7, &[6,1]),
+            (8, &[7,1]),
+            (9, &[8,1]),
+            (10, &[9,1]),
+            (11, &[10,1]),
+        ]);
+        let res: Vec<_> = dag.dfs(&11).cloned().collect();
+
+        assert_eq!(res, [11, 1, 0, 10, 9, 8, 7, 6, 5, 4, 3]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_arrays() {
+        let a0 = [0; 32];
+        let a1 = [1; 32];
+        let a2 = [2; 32];
+
+        let mut dag = DAG::new();
+        dag.insert_vx(a0, vec![]).unwrap();
+        dag.insert_vx(a1, vec![a0]).unwrap();
+        dag.insert_vx(a2, vec![a0, a1]).unwrap();
+
+        let res: Vec<[u8; 32]> = dag.dfs(&a2).cloned().collect();
+        assert_eq!(res, [a2, a1, a0]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_u8() {
+        let a0 = 0u8;
+        let a1 = 1u8;
+        let a2 = 2u8;
+
+        let mut dag = DAG::new();
+        dag.insert_vx(a0, vec![]).unwrap();
+        dag.insert_vx(a1, vec![a0]).unwrap();
+        dag.insert_vx(a2, vec![a0, a1]).unwrap();
+
+        let res: Vec<u8> = dag.dfs(&a2).cloned().collect();
+        assert_eq!(res, [a2, a1, a0]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_arrays2() {
+        let a0 = [0; 32];
+        let a1 = [1; 32];
+        let a2 = [2; 32];
+
+        let mut dag = DAG::new();
+        dag.insert_vx(a0, vec![]).unwrap();
+        dag.insert_vx(a1, vec![a0]).unwrap();
+        dag.insert_vx(a2, vec![a1, a0]).unwrap();
+
+        let res: Vec<[u8; 32]> = dag.dfs(&a2).cloned().collect();
+        assert_eq!(res, [a2, a0, a1]);
+    }
+
+    #[actix_rt::test]
     async fn test_conviction() {
         let mut dag: DAG<u8> = DAG::new();
 
@@ -354,5 +466,67 @@ mod test {
         assert_eq!(dag.conviction(2).unwrap(), 1);
         assert_eq!(dag.conviction(3).unwrap(), 0);
         assert_eq!(dag.conviction(5).unwrap(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_conviction2() {
+        #[rustfmt::skip]
+        let mut dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1]),
+            (4, &[3]),
+            (5, &[4]),
+            (6, &[5]),
+            (7, &[6]),
+            (8, &[7]),
+            (9, &[8]),
+            (10, &[9]),
+            (11, &[10]),
+        ]);
+        dag.set_chit(0, 1).unwrap();
+        dag.set_chit(1, 1).unwrap();
+        for i in 3..=11 {
+            dag.set_chit(i, 1).unwrap();
+        }
+        assert_eq!(dag.conviction(0).unwrap(), 11);
+    }
+
+    #[actix_rt::test]
+    async fn test_has_vertices() {
+        let mut dag: DAG<u8> = DAG::new();
+
+        // Insert the genesis vertex
+        dag.insert_vx(0, vec![]).unwrap();
+        dag.insert_vx(1, vec![0]).unwrap();
+        dag.insert_vx(2, vec![0]).unwrap();
+        dag.insert_vx(3, vec![1, 2]).unwrap();
+
+        assert!(dag.has_vertices(vec![1, 2, 3]));
+        assert!(!dag.has_vertices(vec![1, 2, 3, 4]));
+        assert!(!dag.has_vertices(vec![4, 1, 2, 3]));
+        assert!(dag.has_vertices(vec![]));
+        assert!(!dag.has_vertices(vec![4]));
+    }
+
+    #[actix_rt::test]
+    async fn test_remove() {
+        #[rustfmt::skip]
+        let mut dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1, 2]),
+            (4, &[3]), (5, &[3])
+        ]);
+
+        let ch = dag.remove_vx(&3).unwrap();
+        let mut ch: Vec<_> = ch.iter().cloned().collect();
+        ch.sort();
+
+        assert_eq!(ch, [4, 5]);
+        assert_eq!(dag.get(&4).unwrap().len(), 0);
+        assert_eq!(dag.get(&5).unwrap().len(), 0);
+        assert_eq!(dag.inv.get(&1).unwrap().len(), 0);
+        assert_eq!(dag.inv.get(&2).unwrap().len(), 0);
     }
 }

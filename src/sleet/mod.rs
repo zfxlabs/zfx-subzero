@@ -14,10 +14,13 @@ pub enum Error {
     Actix(actix::MailboxError),
     Sled(sled::Error),
     Cell(cell::Error),
+    /// Coinbase transactions cannot be sent to the mempool
+    InvalidCoinbaseTransaction(cell::Cell),
     InvalidTxHash(TxHash),
     InvalidConflictSet,
     Graph(graph::Error),
     InsufficientWeight,
+    MissingAncestry,
 }
 
 impl std::error::Error for Error {}

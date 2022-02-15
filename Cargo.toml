@@ -45,6 +45,7 @@ serde_derive = "1.0.132"
 hex = "*"
 tai64 = { version = "4.0.0", features = ["serde"] }
 base58check = "*"
+dirs = "4.0.0"
 
 [features]
 integration_tests = []
