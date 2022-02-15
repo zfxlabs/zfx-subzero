@@ -164,30 +164,33 @@ async fn set_validator_response(client: Addr<DummyClient>, response: bool) {
     client.send(SetResponses { responses: vec![(mock_validator_id(), response)] }).await.unwrap();
 }
 
-impl Handler<Fanout> for DummyClient {
-    type Result = ResponseFuture<Vec<Response>>;
+impl Handler<ClientNetworkRequest> for DummyClient {
+    type Result = ResponseFuture<ClientNetworkResponse>;
 
-    fn handle(
-        &mut self,
-        Fanout { ips: _, request }: Fanout,
-        _ctx: &mut Context<Self>,
-    ) -> Self::Result {
+    fn handle(&mut self, msg: ClientNetworkRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let responses = self.responses.clone();
-        Box::pin(async move {
-            match request {
-                Request::QueryTx(QueryTx { tx }) => responses
-                    .iter()
-                    .map(|(id, outcome)| {
-                        Response::QueryTxAck(QueryTxAck {
-                            id: id.clone(),
-                            tx_hash: tx.hash(),
-                            outcome: outcome.clone(),
-                        })
-                    })
-                    .collect(),
-                r => panic!("unexpected request: {:?}", r),
+        match msg {
+            ClientNetworkRequest::Fanout { ips: _, request } => {
+                let responses = self.responses.clone();
+                Box::pin(async move {
+                    let r = match request {
+                        Request::QueryTx(QueryTx { tx }) => responses
+                            .iter()
+                            .map(|(id, outcome)| {
+                                Response::QueryTxAck(QueryTxAck {
+                                    id: id.clone(),
+                                    tx_hash: tx.hash(),
+                                    outcome: outcome.clone(),
+                                })
+                            })
+                            .collect(),
+                        x => panic!("unexpected request: {:?}", x),
+                    };
+                    ClientNetworkResponse::Fanout(r)
+                })
             }
-        })
+            ClientNetworkRequest::Oneshot { ip: _, request: _ } => panic!("unexpected message"),
+        }
     }
 }
 
