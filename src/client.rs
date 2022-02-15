@@ -23,34 +23,37 @@ impl Actor for Client {
     }
 }
 
-/// Sends a single request and waits for a response.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Result<Option<Response>>")]
-pub struct Oneshot {
-    pub ip: SocketAddr,
-    pub request: Request,
+#[rtype(result = "ClientNetworkResponse")]
+pub enum ClientNetworkRequest {
+    /// Sends a single request and waits for a response.
+    Oneshot {
+        ip: SocketAddr,
+        request: Request,
+    },
+    Fanout {
+        ips: Vec<SocketAddr>,
+        request: Request,
+    },
 }
 
-impl Handler<Oneshot> for Client {
-    type Result = ResponseFuture<Result<Option<Response>>>;
-
-    fn handle(&mut self, msg: Oneshot, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone()).await })
-    }
+pub enum ClientNetworkResponse {
+    Oneshot(Result<Option<Response>>),
+    Fanout(Vec<Response>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Vec<Response>")]
-pub struct Fanout {
-    pub ips: Vec<SocketAddr>,
-    pub request: Request,
-}
+impl Handler<ClientNetworkRequest> for Client {
+    type Result = ResponseFuture<ClientNetworkResponse>;
 
-impl Handler<Fanout> for Client {
-    type Result = ResponseFuture<Vec<Response>>;
-
-    fn handle(&mut self, msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone()).await })
+    fn handle(&mut self, msg: ClientNetworkRequest, _ctx: &mut Context<Self>) -> Self::Result {
+        match msg {
+            ClientNetworkRequest::Oneshot { ip, request } => Box::pin(async move {
+                ClientNetworkResponse::Oneshot(oneshot(ip.clone(), request.clone()).await)
+            }),
+            ClientNetworkRequest::Fanout { ips, request } => Box::pin(async move {
+                ClientNetworkResponse::Fanout(fanout(ips.clone(), request.clone()).await)
+            }),
+        }
     }
 }
 

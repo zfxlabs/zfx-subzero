@@ -4,7 +4,7 @@ use crate::zfx_id::Id;
 use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
-use crate::client::Fanout;
+use crate::client::{ClientNetworkRequest, ClientNetworkResponse};
 use crate::graph::conflict_graph::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
@@ -44,7 +44,7 @@ const QUERY_RESPONSE_TIMEOUT_MS: u64 = 5000;
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The client used to make external requests.
-    sender: Recipient<Fanout>,
+    sender: Recipient<ClientNetworkRequest>,
     /// Connection to Hail
     hail_recipient: Recipient<AcceptedCells>,
     /// The identity of this validator.
@@ -73,7 +73,7 @@ pub struct Sleet {
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new(
-        sender: Recipient<Fanout>,
+        sender: Recipient<ClientNetworkRequest>,
         hail_recipient: Recipient<AcceptedCells>,
         node_id: Id,
     ) -> Self {
@@ -475,7 +475,7 @@ impl Handler<FreshTx> for Sleet {
         }
 
         // Fanout queries to sampled validators
-        let send_to_client = self.sender.send(Fanout {
+        let send_to_client = self.sender.send(ClientNetworkRequest::Fanout {
             ips: validator_ips.clone(),
             request: Request::QueryTx(QueryTx { tx: msg.tx.clone() }),
         });
@@ -485,7 +485,7 @@ impl Handler<FreshTx> for Sleet {
 
         let update_self = send_to_client.map(move |result, _actor, ctx| {
             match result {
-                Ok(acks) => {
+                Ok(ClientNetworkResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
                     if acks.len() == validator_ips.len() {
@@ -494,6 +494,7 @@ impl Handler<FreshTx> for Sleet {
                         Ok(ctx.notify(QueryIncomplete { tx: msg.tx.clone(), acks }))
                     }
                 }
+                Ok(ClientNetworkResponse::Oneshot(_)) => panic!("unexpected response"),
                 Err(e) => Err(Error::Actix(e)),
             }
         });
