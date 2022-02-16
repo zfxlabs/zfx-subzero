@@ -87,6 +87,11 @@ impl Handler<Request> for Router {
                     let query_tx_ack = sleet.send(query_tx).await.unwrap();
                     Response::QueryTxAck(query_tx_ack)
                 }
+                Request::GetTxAncestors(get_ancestors) => {
+                    debug!("routing QueryTx -> Sleet");
+                    let ancestors = sleet.send(get_ancestors).await.unwrap();
+                    Response::TxAncestors(ancestors)
+                }
                 // Hail external requests
                 Request::GetBlock(get_block) => {
                     debug!("routing GetBlock -> Hail");
