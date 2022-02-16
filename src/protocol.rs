@@ -22,6 +22,7 @@ pub enum Request {
     GetCell(sleet::GetCell),
     GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
+    GetTxAncestors(sleet::GetTxAncestors),
     // Hail
     GetBlock(hail::GetBlock),
     QueryBlock(hail::QueryBlock),
@@ -42,6 +43,7 @@ pub enum Response {
     CellAck(sleet::CellAck),
     GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
+    TxAncestors(sleet::TxAncestors),
     // Hail
     BlockAck(hail::BlockAck),
     QueryBlockAck(hail::QueryBlockAck),

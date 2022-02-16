@@ -17,6 +17,7 @@ use super::{Error, Result};
 
 use tracing::{debug, error, info};
 
+use actix::WrapFuture;
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
 use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
@@ -630,7 +631,9 @@ impl Handler<QueryTx> for Sleet {
                     msg.tx
                 );
                 let (sender, receiver) = oneshot::channel();
-                self.pending_queries.push((msg.tx, sender));
+                self.pending_queries.push((msg.tx.clone(), sender));
+                // Ask the querying node to send us the ancestors of the queried transaction
+                ctx.notify(AskForAncestors { tx_hash: msg.tx.hash(), ip: msg.ip });
                 Box::pin(async move {
                     let timeout = time::sleep(Duration::from_millis(QUERY_RESPONSE_TIMEOUT_MS));
                     tokio::select! {
@@ -705,6 +708,56 @@ impl Handler<CheckPending> for Sleet {
         }
         remaining.reverse();
         self.pending_queries = remaining;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct AskForAncestors {
+    pub tx_hash: TxHash,
+    pub ip: SocketAddr,
+}
+
+impl Handler<AskForAncestors> for Sleet {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(
+        &mut self,
+        AskForAncestors { tx_hash, ip }: AskForAncestors,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        self.sender
+            .send(ClientNetworkRequest::Oneshot {
+                ip,
+                request: Request::GetTxAncestors(GetTxAncestors { tx_hash }),
+            })
+            .into_actor(self)
+            .map(|_res, _act, _ctx| /* TODO */ ())
+            .boxed_local()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "TxAncestors")]
+pub struct GetTxAncestors {
+    tx_hash: TxHash,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct TxAncestors {
+    pub ancestors: Vec<Tx>,
+}
+
+impl Handler<GetTxAncestors> for Sleet {
+    type Result = TxAncestors;
+
+    fn handle(
+        &mut self,
+        GetTxAncestors { tx_hash }: GetTxAncestors,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        // TODO
+        TxAncestors { ancestors: vec![] }
     }
 }
 
