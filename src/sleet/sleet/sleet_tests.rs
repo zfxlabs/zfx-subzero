@@ -112,6 +112,10 @@ fn mock_validator_id() -> Id {
     Id::one()
 }
 
+fn mock_ip() -> SocketAddr {
+    "0.0.0.0:1".parse().unwrap()
+}
+
 async fn sleep_ms(m: u64) {
     tokio::time::sleep(std::time::Duration::from_millis(m)).await;
 }
@@ -120,7 +124,7 @@ fn make_live_committee(cells: Vec<Cell>) -> LiveCommittee {
     let mut validators = HashMap::new();
 
     // We have one overweight validator for tests
-    validators.insert(mock_validator_id(), ("0.0.0.0:1".parse().unwrap(), 0.7));
+    validators.insert(mock_validator_id(), (mock_ip(), 0.7));
     let mut live_cells = HashMap::new();
     for c in cells {
         live_cells.insert(c.hash(), c.clone());
@@ -239,7 +243,8 @@ async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Ke
     let hail_mock = HailMock::new();
     let receiver = hail_mock.start();
 
-    let sleet = Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero());
+    let sleet =
+        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero(), mock_ip());
     let sleet_addr = sleet.start();
 
     let mut csprng = OsRng {};
@@ -259,7 +264,8 @@ async fn start_test_env_with_two_sleet_actors(
 
     let (sleet_addr, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
-    let sleet2 = Sleet::new(client.clone().recipient(), hail.clone().recipient(), Id::one());
+    let sleet2 =
+        Sleet::new(client.clone().recipient(), hail.clone().recipient(), Id::one(), mock_ip());
     let sleet_addr2 = sleet2.start();
 
     let live_committee = make_live_committee(vec![genesis_tx.clone()]);
@@ -665,7 +671,7 @@ async fn test_strongly_preferred() {
 
     let genesis_tx = generate_coinbase(&root_kp, 1000);
     let genesis_cell_ids = CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
-    let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero());
+    let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero(), mock_ip());
     sleet.conflict_graph = ConflictGraph::new(genesis_cell_ids);
 
     // Generate a genesis set of coins
