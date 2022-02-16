@@ -49,6 +49,7 @@ pub struct Sleet {
     hail_recipient: Recipient<AcceptedCells>,
     /// The identity of this validator.
     node_id: Id,
+    node_ip: SocketAddr,
     /// The weighted validator set.
     committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions in storage.
@@ -76,11 +77,13 @@ impl Sleet {
         sender: Recipient<ClientNetworkRequest>,
         hail_recipient: Recipient<AcceptedCells>,
         node_id: Id,
+        node_ip: SocketAddr,
     ) -> Self {
         Sleet {
             sender,
             hail_recipient,
             node_id,
+            node_ip,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
             queried_txs: sled::Config::new().temporary(true).open().unwrap(),

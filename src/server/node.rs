@@ -61,8 +61,12 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
 
         // Create the `sleet` actor
         // FIXME: Sleet has to be initialised with the genesis utxo ids.
-        let sleet =
-            Sleet::new(client_addr.clone().recipient(), hail_addr.clone().recipient(), node_id);
+        let sleet = Sleet::new(
+            client_addr.clone().recipient(),
+            hail_addr.clone().recipient(),
+            node_id,
+            listener_ip,
+        );
         let sleet_addr = sleet.start();
 
         // Create the `alpha` actor
