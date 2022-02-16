@@ -178,7 +178,7 @@ impl Handler<ClientNetworkRequest> for DummyClient {
                 let responses = self.responses.clone();
                 Box::pin(async move {
                     let r = match request {
-                        Request::QueryTx(QueryTx { tx }) => responses
+                        Request::QueryTx(QueryTx { tx, .. }) => responses
                             .iter()
                             .map(|(id, outcome)| {
                                 Response::QueryTxAck(QueryTxAck {
@@ -541,7 +541,8 @@ async fn test_sleet_tx_no_parents() {
 
     // Query at sleet2 and wait till it times out
     let now = Instant::now();
-    let QueryTxAck { outcome, .. } = sleet2.send(QueryTx { tx }).await.unwrap();
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx }).await.unwrap();
     assert!(!outcome);
     let elapsed = now.elapsed().as_millis();
     assert!(elapsed >= QUERY_RESPONSE_TIMEOUT_MS as u128);
@@ -567,13 +568,15 @@ async fn test_sleet_tx_late_parents() {
     let (tx, rx) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx2 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
         assert!(outcome);
         let _ = tx.send(outcome);
     });
 
     sleep_ms(1000).await;
-    let QueryTxAck { outcome, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
     assert!(outcome);
     assert!(rx.await.unwrap());
 }
@@ -602,7 +605,8 @@ async fn test_sleet_tx_two_late_parents() {
     let (tx, rx3) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx3 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx3 }).await.unwrap();
         assert!(outcome);
         let _ = tx.send(outcome);
     });
@@ -610,13 +614,15 @@ async fn test_sleet_tx_two_late_parents() {
     let (tx, rx2) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx2 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
         assert!(outcome);
         let _ = tx.send(outcome);
     });
 
     sleep_ms(1000).await;
-    let QueryTxAck { outcome: outcome1, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    let QueryTxAck { outcome: outcome1, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
     assert!(outcome1);
     assert!(rx3.await.unwrap());
     assert!(rx2.await.unwrap());
@@ -646,7 +652,8 @@ async fn test_sleet_tx_missing_parent() {
     let (tx, rx3) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx3 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx3 }).await.unwrap();
         assert!(!outcome);
         let _ = tx.send(outcome);
     });
@@ -654,7 +661,8 @@ async fn test_sleet_tx_missing_parent() {
     // `tx2` will be missing, this causes the query for `tx3` to time out
 
     sleep_ms(1000).await;
-    let QueryTxAck { outcome: outcome1, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    let QueryTxAck { outcome: outcome1, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
     assert!(outcome1);
     assert!(!rx3.await.unwrap());
 }

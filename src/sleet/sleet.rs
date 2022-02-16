@@ -480,7 +480,11 @@ impl Handler<FreshTx> for Sleet {
         // Fanout queries to sampled validators
         let send_to_client = self.sender.send(ClientNetworkRequest::Fanout {
             ips: validator_ips.clone(),
-            request: Request::QueryTx(QueryTx { tx: msg.tx.clone() }),
+            request: Request::QueryTx(QueryTx {
+                id: self.node_id.clone(),
+                ip: self.node_ip.clone(),
+                tx: msg.tx.clone(),
+            }),
         });
 
         // Wrap the future so that subsequent chained handlers can access te actor.
@@ -577,6 +581,10 @@ impl Handler<GenerateTx> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
 pub struct QueryTx {
+    /// The node's own ID
+    pub id: Id,
+    /// The node's own listening address, for sending queries back (`GetAncestors` in particular)
+    pub ip: SocketAddr,
     pub tx: Tx,
 }
 
