@@ -38,7 +38,7 @@ pub enum ClientNetworkRequest {
 }
 
 pub enum ClientNetworkResponse {
-    Oneshot(Result<Option<Response>>),
+    Oneshot(Option<Response>),
     Fanout(Vec<Response>),
 }
 
@@ -48,7 +48,8 @@ impl Handler<ClientNetworkRequest> for Client {
     fn handle(&mut self, msg: ClientNetworkRequest, _ctx: &mut Context<Self>) -> Self::Result {
         match msg {
             ClientNetworkRequest::Oneshot { ip, request } => Box::pin(async move {
-                ClientNetworkResponse::Oneshot(oneshot(ip.clone(), request.clone()).await)
+                let response = oneshot(ip.clone(), request.clone()).await;
+                ClientNetworkResponse::Oneshot(err_to_none(response))
             }),
             ClientNetworkRequest::Fanout { ips, request } => Box::pin(async move {
                 ClientNetworkResponse::Fanout(fanout(ips.clone(), request.clone()).await)
@@ -77,22 +78,8 @@ pub async fn fanout(ips: Vec<SocketAddr>, request: Request) -> Vec<Response> {
     // futures.
     for ip in ips.iter().cloned() {
         let request = request.clone();
-        let client_fut = tokio::spawn(async move {
-            match oneshot(ip, request.clone()).await {
-                Ok(result) => result,
-                // NOTE: The error here is logged and `None` is returned
-                Err(err) => match err {
-                    Error::ChannelError(s) => {
-                        debug!("{}", s);
-                        None
-                    }
-                    err => {
-                        debug!("{:?}", err);
-                        None
-                    }
-                },
-            }
-        });
+        let client_fut =
+            tokio::spawn(async move { err_to_none(oneshot(ip, request.clone()).await) });
         client_futs.push(client_fut)
     }
     // join the futures and collect the responses
@@ -112,4 +99,23 @@ pub async fn fanout(ips: Vec<SocketAddr>, request: Request) -> Vec<Response> {
             responses
         })
         .await
+}
+
+/// Helper function to simplify the return value of the `oneshot` function
+#[inline]
+fn err_to_none<T>(x: Result<Option<T>>) -> Option<T> {
+    match x {
+        Ok(result) => result,
+        // NOTE: The error here is logged and `None` is returned
+        Err(err) => match err {
+            Error::ChannelError(s) => {
+                debug!("{}", s);
+                None
+            }
+            err => {
+                debug!("{:?}", err);
+                None
+            }
+        },
+    }
 }
