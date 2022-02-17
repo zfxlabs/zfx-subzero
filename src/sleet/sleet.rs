@@ -732,7 +732,41 @@ impl Handler<AskForAncestors> for Sleet {
                 request: Request::GetTxAncestors(GetTxAncestors { tx_hash }),
             })
             .into_actor(self)
-            .map(|_res, _act, _ctx| /* TODO */ ())
+            .map(|res, act, ctx| match res {
+                Ok(ClientNetworkResponse::Oneshot(Some(Response::TxAncestors(TxAncestors {
+                    ancestors,
+                })))) => {
+                    for ancestor in ancestors {
+                        match act.on_receive_tx(ancestor.clone()) {
+                            Ok(is_new) => {
+                                if is_new {
+                                    // Start querying
+                                    ctx.notify(FreshTx { tx: ancestor });
+                                };
+                            }
+                            Err(Error::MissingAncestry) => {
+                                // TODO check if this can happen here
+                                info!(
+                                    "[{}] Couldn't insert transaction (missing ancestry): {}",
+                                    "sleet".cyan(),
+                                    ancestor
+                                );
+                            }
+                            Err(e) => {
+                                error!(
+                                    "[{}] Couldn't insert new transaction\n{}:\n {}",
+                                    "sleet".cyan(),
+                                    ancestor,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    // Check if there are pending transactions whose ancestry just arrived
+                    ctx.notify(CheckPending);
+                }
+                other => error!("[{}] Unexpected response {:?}", "sleet".cyan(), other),
+            })
             .boxed_local()
     }
 }
@@ -756,8 +790,13 @@ impl Handler<GetTxAncestors> for Sleet {
         GetTxAncestors { tx_hash }: GetTxAncestors,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
-        // TODO
-        TxAncestors { ancestors: vec![] }
+        let mut ancestors = vec![];
+        let tx_hashes = self.dag.get_ancestors(&tx_hash);
+        for hash in tx_hashes {
+            let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
+            ancestors.push(tx);
+        }
+        TxAncestors { ancestors }
     }
 }
 

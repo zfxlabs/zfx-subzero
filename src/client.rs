@@ -37,6 +37,7 @@ pub enum ClientNetworkRequest {
     },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientNetworkResponse {
     Oneshot(Option<Response>),
     Fanout(Vec<Response>),
