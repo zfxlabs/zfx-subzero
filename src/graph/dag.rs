@@ -225,6 +225,32 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     pub fn invert(&self) -> DAG<V> {
         DAG { g: self.inv.clone(), inv: self.g.clone(), chits: self.chits.clone() }
     }
+
+    /// Get all the ancestors, partially ordered (parents precede children)
+    pub fn get_ancestors(&self, v: &V) -> Vec<V> {
+        let mut result: Vec<V> = vec![];
+        let mut visited = HashSet::new();
+        let _ = visited.insert(v.clone());
+
+        let mut parents = self.g.get(v).unwrap().clone();
+        let mut grandparents = vec![];
+        loop {
+            for a in parents.iter() {
+                if !visited.contains(a) {
+                    result.push(a.clone());
+                    let _ = visited.insert(a.clone());
+                }
+                grandparents.extend(self.g.get(a).unwrap().iter().cloned());
+            }
+            if grandparents.is_empty() {
+                break;
+            }
+            parents = grandparents;
+            grandparents = vec![];
+        }
+        result.reverse();
+        result
+    }
 }
 
 /// Iterator for depth-first traversal of the ancestors of a vertex
@@ -528,5 +554,22 @@ mod test {
         assert_eq!(dag.get(&5).unwrap().len(), 0);
         assert_eq!(dag.inv.get(&1).unwrap().len(), 0);
         assert_eq!(dag.inv.get(&2).unwrap().len(), 0);
+    }
+
+    #[actix_rt::test]
+    async fn test_get_ancestors() {
+        #[rustfmt::skip]
+        let mut dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]), (42, &[0,1]),
+            (3, &[1]), (4, &[1]),
+            (5, &[3,4,2])
+        ]);
+
+        let anc = dag.get_ancestors(&5);
+        assert_eq!(anc[..2], [0, 1]);
+        assert!(anc[2..].contains(&3));
+        assert!(anc[2..].contains(&4));
+        assert!(anc[2..].contains(&2));
     }
 }
