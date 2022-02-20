@@ -91,7 +91,8 @@ pub async fn spend_many(
         iterations,
         delay,
         get_cell_hashes_with_max_capacity(from).await,
-    ).await
+    )
+    .await
 }
 
 pub async fn spend_many_from_cell_hashes(
@@ -110,7 +111,8 @@ pub async fn spend_many_from_cell_hashes(
         let updated_cells_hashes =
             spend_from(from, to, amount, cells_hashes.clone()).await?.clone();
         // extract the recently spent cell
-        let spent_cell_hash = updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c)).unwrap().0;
+        let spent_cell_hash =
+            updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c)).unwrap().0;
         cells_hashes = updated_cells_hashes;
         accepted_cell_hashes.push(spent_cell_hash);
     }
@@ -263,8 +265,7 @@ async fn from_timeout(node_address: SocketAddr, request: Request) -> Option<Resp
     let mut attempts = 1000;
     while attempts > 0 {
         if let Ok(Ok(r)) =
-            timeout(Duration::from_millis(10), client::oneshot(node_address, request.clone()))
-                .await
+            timeout(Duration::from_millis(10), client::oneshot(node_address, request.clone())).await
         {
             if r.is_some() {
                 result = r;

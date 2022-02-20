@@ -1,6 +1,7 @@
 #[cfg(test)]
 #[cfg(feature = "integration_tests")]
 mod integration_test {
+    use crate::integration_test::cell_transfer_benchmark::run_cell_transfer_benchmark_test;
     use crate::integration_test::hail_integration_test::run_hail_integration_test;
     use crate::integration_test::sleet_integration_test::run_all_integration_tests;
     use crate::integration_test::stress_test::run_stress_test;
@@ -8,7 +9,6 @@ mod integration_test {
     use crate::Result;
     use std::thread::sleep;
     use std::time::Duration;
-    use crate::integration_test::cell_transfer_benchmark::run_cell_transfer_benchmark_test;
 
     #[actix_rt::test]
     async fn run_integration_test_suite() -> Result<()> {

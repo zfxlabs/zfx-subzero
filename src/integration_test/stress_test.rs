@@ -86,7 +86,7 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
                 (iterations, expected_residue as u64)
             })
             .collect::<Vec<(u64, u64)>>();
-        let mut iterations : u64 = residue_per_max_iterations.iter().map(|(i, _)| i).sum::<u64>();
+        let mut iterations: u64 = residue_per_max_iterations.iter().map(|(i, _)| i).sum::<u64>();
 
         // FIXME: temporal solution until the issue with DAG in sleet is fixed
         if iterations > ITERATION_LIMIT {
@@ -110,7 +110,7 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
             transferred_balance = transferred_balance
                 + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
 
-            assert!(cell_hashes.contains(&cell_hash));   // verify that all spent cells are in the node
+            assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
         }
 
         for cell_hash in transfer_result.1 {

@@ -36,8 +36,15 @@ pub async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> 
     let to = nodes.get_node(1).unwrap();
     let mut cells_hashes = vec![*get_cell_hashes_with_max_capacity(from).await.get(0).unwrap()];
 
-    let result =
-        spend_many_from_cell_hashes(&from, &to, 1 as Capacity, 20, Duration::from_millis(100), cells_hashes).await?;
+    let result = spend_many_from_cell_hashes(
+        &from,
+        &to,
+        1 as Capacity,
+        20,
+        Duration::from_millis(100),
+        cells_hashes,
+    )
+    .await?;
     let mut accepted_cell_hashes = result.0;
 
     sleep(Duration::from_secs(3));

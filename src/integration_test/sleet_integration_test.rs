@@ -286,8 +286,7 @@ async fn assert_cell_presence_in_all_running_nodes(
 
     while attempts > 0 {
         for node in running_nodes {
-            if let Ok(c) = get_cell_from_hash(spent_cell_hash.clone(), node.address).await
-            {
+            if let Ok(c) = get_cell_from_hash(spent_cell_hash.clone(), node.address).await {
                 spent_cell = c;
                 if (check_is_present && spent_cell.is_some())
                     || (!check_is_present && spent_cell.is_none())
