@@ -7,20 +7,19 @@ use tracing::info;
 use crate::alpha::transfer::TransferOperation;
 use crate::cell::inputs::Input;
 use crate::cell::outputs::{Output, Outputs};
-use crate::cell::types::{CellHash, FEE};
+use crate::cell::types::{Capacity, CellHash, FEE};
 use crate::cell::Cell;
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::zfx_id::Id;
 use crate::Result;
 
-const TRANSFER_RUN_TIMES: i32 = 5;
+const TRANSFER_RUN_TIMES: usize = 5;
 
 pub async fn run_all_integration_tests() -> Result<()> {
     let mut context = IntegrationTestContext::new();
     let mut nodes = TestNodes::new();
-    nodes.start_all();
-    wait_until_nodes_start(&nodes).await?;
+    nodes.start_all_and_wait().await?;
 
     for _ in 0..TRANSFER_RUN_TIMES {
         test_send_cell(&nodes, &mut context).await?;
@@ -39,7 +38,7 @@ pub async fn run_all_integration_tests() -> Result<()> {
 
 /// Transfer balance from one node to another
 /// and validate its content
-pub async fn test_send_cell(nodes: &TestNodes, context: &mut IntegrationTestContext) -> Result<()> {
+async fn test_send_cell(nodes: &TestNodes, context: &mut IntegrationTestContext) -> Result<()> {
     info!("Run test_send_cell: Transfer balance from one node to another");
 
     let from = nodes.get_node(0).unwrap();
@@ -67,7 +66,7 @@ pub async fn test_send_cell(nodes: &TestNodes, context: &mut IntegrationTestCont
 /// Transfer balance to un-spendable cell,
 /// the one which had been already spent earlier
 /// and validate that it didn't go through
-pub async fn test_spend_unspendable_cell(
+async fn test_spend_unspendable_cell(
     nodes: &TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
@@ -97,7 +96,7 @@ pub async fn test_spend_unspendable_cell(
 
 /// Transfer the same balance 2 times
 /// and validate that it fails the second time
-pub async fn test_send_same_cell_twice(
+async fn test_send_same_cell_twice(
     nodes: &TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
@@ -118,7 +117,7 @@ pub async fn test_send_same_cell_twice(
 
 /// Transfer balance with modified recipient public key
 /// and verify that transaction fails
-pub async fn test_send_cell_to_recipient_with_random_key(
+async fn test_send_cell_to_recipient_with_random_key(
     nodes: &TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
@@ -141,7 +140,9 @@ pub async fn test_send_cell_to_recipient_with_random_key(
     Result::Ok(())
 }
 
-pub async fn test_send_cell_with_modified_owner(
+/// Modify owner of all outputs of the cell and try to send it
+/// Then verify that the transfer was not successful
+async fn test_send_cell_with_modified_owner(
     nodes: &TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
@@ -186,7 +187,7 @@ pub async fn test_send_cell_with_modified_owner(
 
 /// Transfer balance to non-existing recipient
 /// and check it was successful because a transfer can be made to any valid public key
-pub async fn test_send_cell_to_non_existing_recipient(
+async fn test_send_cell_to_non_existing_recipient(
     nodes: &TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
@@ -207,7 +208,7 @@ pub async fn test_send_cell_to_non_existing_recipient(
 
 /// Try to send a transfer when 1 node is down
 /// and validate that transfer was not successful
-pub async fn test_send_cell_when_has_faulty_node(
+async fn test_send_cell_when_has_faulty_node(
     nodes: &mut TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
@@ -232,7 +233,7 @@ pub async fn test_send_cell_when_has_faulty_node(
     Result::Ok(())
 }
 
-pub async fn send_cell_and_get_result(
+async fn send_cell_and_get_result(
     from: &TestNode,
     to: &TestNode,
     amount: u64,
@@ -272,7 +273,7 @@ pub async fn send_cell_and_get_result(
 
 /// Verify that all running nodes have a cell with
 /// particular hash. Runs several attempts before can fail.
-pub async fn assert_cell_presence_in_all_running_nodes(
+async fn assert_cell_presence_in_all_running_nodes(
     spent_cell_hash: CellHash,
     check_is_present: bool,
     nodes: &TestNodes,
@@ -285,11 +286,7 @@ pub async fn assert_cell_presence_in_all_running_nodes(
 
     while attempts > 0 {
         for node in running_nodes {
-            if let Ok(Ok(c)) = timeout(
-                Duration::from_secs(2),
-                get_cell_from_hash(spent_cell_hash.clone(), node.address),
-            )
-            .await
+            if let Ok(c) = get_cell_from_hash(spent_cell_hash.clone(), node.address).await
             {
                 spent_cell = c;
                 if (check_is_present && spent_cell.is_some())
