@@ -57,6 +57,80 @@ pub async fn send_cell(
     }
 }
 
+pub async fn spend_from(
+    from: &TestNode,
+    to: &TestNode,
+    amount: Capacity,
+    mut spendable_cell_hashes: Vec<(CellHash, Capacity)>,
+) -> Result<Vec<(CellHash, Capacity)>> {
+    let total_to_spend = amount + FEE;
+    let mut updated_spendable_cell_hashes = spendable_cell_hashes.clone();
+    if let Some((cell_hash, capacity)) =
+        spendable_cell_hashes.iter().find(|(_, c)| *c > total_to_spend)
+    {
+        let spent_cell_hash = spend_cell_from_hash(from, to, *cell_hash, amount).await?.unwrap();
+
+        let new_capacity = capacity - total_to_spend;
+        updated_spendable_cell_hashes.retain(|(h, _)| h != cell_hash);
+        updated_spendable_cell_hashes.push((spent_cell_hash, new_capacity));
+    }
+    Ok(updated_spendable_cell_hashes)
+}
+
+pub async fn spend_many(
+    from: &TestNode,
+    to: &TestNode,
+    amount: Capacity,
+    iterations: usize,
+    delay: Duration,
+) -> Result<(Vec<CellHash>, Vec<(CellHash, Capacity)>)> {
+    spend_many_from_cell_hashes(
+        from,
+        to,
+        amount,
+        iterations,
+        delay,
+        get_cell_hashes_with_max_capacity(from).await,
+    ).await
+}
+
+pub async fn spend_many_from_cell_hashes(
+    from: &TestNode,
+    to: &TestNode,
+    amount: Capacity,
+    iterations: usize,
+    delay: Duration,
+    initial_cell_hashes: Vec<(CellHash, Capacity)>,
+) -> Result<(Vec<CellHash>, Vec<(CellHash, Capacity)>)> {
+    let mut cells_hashes = initial_cell_hashes;
+    let mut accepted_cell_hashes = vec![];
+
+    for _ in 0..iterations {
+        sleep(delay);
+        let updated_cells_hashes =
+            spend_from(from, to, amount, cells_hashes.clone()).await?.clone();
+        // extract the recently spent cell
+        let spent_cell_hash = updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c)).unwrap().0;
+        cells_hashes = updated_cells_hashes;
+        accepted_cell_hashes.push(spent_cell_hash);
+    }
+
+    Ok((accepted_cell_hashes, cells_hashes))
+}
+
+pub async fn spend_cell_from_hash(
+    from: &TestNode,
+    to: &TestNode,
+    cell_hash: CellHash,
+    amount: u64,
+) -> Result<Option<CellHash>> {
+    if let Some(cell) = get_cell_from_hash(cell_hash, from.address).await? {
+        Ok(send_cell(from, to, cell, amount).await?)
+    } else {
+        panic!("cell doesn't exist: {}", hex::encode(&cell_hash));
+    }
+}
+
 pub async fn get_cell_outputs_of_node(
     owner: &TestNode,
     context: &mut IntegrationTestContext,
@@ -174,7 +248,7 @@ pub async fn get_cell_from_hash(
 
 pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
     if let Some(Response::CellHashes(cell_hashes)) =
-        client::oneshot(node_address, Request::GetCellHashes).await?
+        from_timeout(node_address, Request::GetCellHashes).await
     {
         let mut cell_hashes_mut = cell_hashes.ids.iter().cloned().collect::<Vec<CellHash>>();
         cell_hashes_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
@@ -184,12 +258,30 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
     }
 }
 
+async fn from_timeout(node_address: SocketAddr, request: Request) -> Option<Response> {
+    let mut result: Option<Response> = None;
+    let mut attempts = 1000;
+    while attempts > 0 {
+        if let Ok(Ok(r)) =
+            timeout(Duration::from_millis(10), client::oneshot(node_address, request.clone()))
+                .await
+        {
+            if r.is_some() {
+                result = r;
+                break;
+            }
+        }
+        attempts = attempts - 1;
+    }
+    result
+}
+
 pub async fn get_block(node_address: SocketAddr, height: BlockHeight) -> Result<Option<Block>> {
-    if let Some(Response::BlockAck(block)) = client::oneshot(
+    if let Some(Response::BlockAck(block)) = from_timeout(
         node_address,
         Request::GetBlockByHeight(GetBlockByHeight { block_height: height }),
     )
-    .await?
+    .await
     {
         return Result::Ok(block.block);
     }
