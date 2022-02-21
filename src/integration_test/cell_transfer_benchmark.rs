@@ -55,7 +55,7 @@ pub async fn run_cell_transfer_benchmark() -> Result<()> {
             let avg = (*max + *min) / 2;
 
             info!("Min = {:.2?}, Max = {:.2?}, Avg = {:.2?}", min, max, avg);
-            assert!(avg.as_millis() < 30, "Average cell processing time took too long");
+            assert!(avg.as_millis() < 50, format!("Average cell processing time took too long: {:.2?}", avg));
         }
         Err(_) => {
             panic!("Failed to finish benchmark test within the timeout")
