@@ -53,7 +53,7 @@ pub async fn spend_cell(
     amount: u64,
 ) -> Result<Option<CellHash>> {
     debug!(
-        "[integration_test]: Sending a cell with amount {:?}, from = {}, to: {}",
+        "Sending a cell with amount {:?}, from = {}, to: {}",
         amount, from.address_as_str, to.address_as_str
     );
 
@@ -230,11 +230,7 @@ pub async fn get_cell_from_hash(
     cell_hash: CellHash,
     node_address: SocketAddr,
 ) -> Result<Option<Cell>> {
-    debug!(
-        "[integration_test]: Request to get cell from hash {:?}, from = {}",
-        hex::encode(cell_hash),
-        node_address
-    );
+    debug!("Request to get cell from hash {:?}, from = {}", hex::encode(cell_hash), node_address);
 
     if let Some(Response::CellAck(cell_ack)) = filtered_request_with_timeout(
         node_address,
@@ -259,7 +255,7 @@ pub async fn get_cell_from_hash(
 
 /// Get all accepted cell hashes from the node
 pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
-    debug!("[integration_test]: Requesting cell hashes from = {}", node_address);
+    debug!("Requesting cell hashes from = {}", node_address);
     if let Some(Response::CellHashes(cell_hashes)) =
         request_with_timeout(node_address, Request::GetCellHashes).await
     {
@@ -273,10 +269,7 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
 
 /// Get block by height
 pub async fn get_block(node_address: SocketAddr, height: BlockHeight) -> Result<Option<Block>> {
-    debug!(
-        "[integration_test]: Request to get block with height {:?}, from = {}",
-        height, node_address
-    );
+    debug!("Request to get block with height {:?}, from = {}", height, node_address);
 
     if let Some(Response::BlockAck(block)) = filtered_request_with_timeout(
         node_address,

@@ -56,7 +56,7 @@ async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
     // as the default confidence level is 11,
     // we expect 10 accepted blocks having 1 cell from first 10 transferred cells
     // according to the transferred order
-    for i in 1..11 {
+    for i in 1..12 {
         if let Some(block) = get_block(from.address, i).await? {
             info!("Block height = {}", i);
             block.cells.iter().for_each(|c| {
@@ -73,13 +73,13 @@ async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
                 let block_ref = previous_block.unwrap();
                 let previous_block_hash = block_ref.hash().unwrap();
                 // FIXME: uncomment when hail is working properly. In rare scenarios VRF can be different from expected
-                /*let expected_vrfs = get_expected_vrfs(&nodes, &block_ref);
+                let expected_vrfs = get_expected_vrfs(&nodes, &block_ref);
 
                 assert!(
                     expected_vrfs.contains(&block.vrf_out),
                     format!("VRF for block wih height {} was not generated correctly", i)
-                );*/
-                //assert_eq!(previous_block_hash, block.predecessor.unwrap());
+                );
+                assert_eq!(previous_block_hash, block.predecessor.unwrap());
             }
             previous_block = Some(block);
             last_block_height = i;
