@@ -97,7 +97,8 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Vec<Duration>> {
             if let Some((mut cell_hash, mut capacity)) =
                 initial_cells_hashes.iter_mut().find(|(_, c)| *c > i + FEE)
             {
-                let (spent_cell_hash, elapsed) = spend_cell(from, to, cell_hash, i).await.unwrap();
+                let (spent_cell_hash, elapsed) =
+                    spend_cell_from_hash(from, to, cell_hash, i).await.unwrap();
                 cell_hash = spent_cell_hash;
                 capacity -= i + FEE;
                 elapsed_time.push(elapsed);
@@ -111,7 +112,7 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Vec<Duration>> {
     handle
 }
 
-async fn spend_cell(
+async fn spend_cell_from_hash(
     from: &TestNode,
     to: &TestNode,
     cell_hash: CellHash,
@@ -120,7 +121,7 @@ async fn spend_cell(
     sleep(Duration::from_millis(TRANSFER_DELAY));
     if let Some(cell) = get_cell_from_hash(cell_hash, from.address).await? {
         let now = Instant::now();
-        let spent_cell = send_cell(from, to, cell, amount).await?.unwrap();
+        let spent_cell = spend_cell(from, to, cell, amount).await?.unwrap();
         Ok((spent_cell, now.elapsed()))
     } else {
         panic!("cell doesn't exist: {}", hex::encode(&cell_hash));

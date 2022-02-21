@@ -6,7 +6,7 @@ use std::time::Duration;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::time::timeout;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::alpha::block::Block;
 use crate::alpha::transfer::TransferOperation;
@@ -42,21 +42,54 @@ pub fn register_cell_in_test_context(
     }
 }
 
-pub async fn send_cell(
+/// Spend a cell with amount and send it from one node to another.
+///
+/// Returns a hash of the spent cell, or None if request wasn't successful
+/// or transfer was not accepted.
+pub async fn spend_cell(
     from: &TestNode,
     to: &TestNode,
     cell: Cell,
     amount: u64,
 ) -> Result<Option<CellHash>> {
-    if let Some(Response::GenerateTxAck(ack)) =
-        client::oneshot(from.address, create_transfer_request(&from, &to, amount, cell)).await?
+    debug!(
+        "[integration_test]: Sending a cell with amount {:?}, from = {}, to: {}",
+        amount, from.address_as_str, to.address_as_str
+    );
+
+    if let Ok(Ok(Some(Response::GenerateTxAck(ack)))) = timeout(
+        Duration::from_secs(5),
+        client::oneshot(from.address, create_transfer_request(&from, &to, amount, cell)),
+    )
+    .await
     {
-        return Ok(ack.cell_hash);
+        Ok(ack.cell_hash)
     } else {
         Ok(None)
     }
 }
 
+/// Spend a cell with amount and send it from one node to another.
+/// If cell with hash doesn't exist, it will panic.
+///
+/// Returns a hash of the spent cell, or None if request wasn't successful
+/// or transfer was not accepted.
+pub async fn spend_cell_from_hash(
+    from: &TestNode,
+    to: &TestNode,
+    cell_hash: CellHash,
+    amount: u64,
+) -> Result<Option<CellHash>> {
+    if let Some(cell) = get_cell_from_hash(cell_hash, from.address).await? {
+        Ok(spend_cell(from, to, cell, amount).await?)
+    } else {
+        panic!("cell doesn't exist: {}", hex::encode(&cell_hash));
+    }
+}
+
+/// Spend any cell from a list of spendable cells with indicated amount
+/// and send it from one node to another.
+/// Returns an updated list of spendable cell hashes with new balance
 pub async fn spend_from(
     from: &TestNode,
     to: &TestNode,
@@ -77,6 +110,11 @@ pub async fn spend_from(
     Ok(updated_spendable_cell_hashes)
 }
 
+/// Spend many random cells from one node and send them to another.
+///
+/// `Iteration` indicates number of transfers and `delay` - is a delay between transfers of cells.
+///
+/// Returns and list of spent cells and a list of spendable-cells with updated balance.
 pub async fn spend_many(
     from: &TestNode,
     to: &TestNode,
@@ -95,6 +133,12 @@ pub async fn spend_many(
     .await
 }
 
+/// Spend many random cells from the indicated list of initial spendable cells
+/// and send them from one node to another.
+///
+/// `Iteration` indicates number of transfers and `delay` - is a delay between transfers of cells.
+///
+/// Returns and list of spent cells and a list of spendable-cells with updated balance.
 pub async fn spend_many_from_cell_hashes(
     from: &TestNode,
     to: &TestNode,
@@ -120,19 +164,7 @@ pub async fn spend_many_from_cell_hashes(
     Ok((accepted_cell_hashes, cells_hashes))
 }
 
-pub async fn spend_cell_from_hash(
-    from: &TestNode,
-    to: &TestNode,
-    cell_hash: CellHash,
-    amount: u64,
-) -> Result<Option<CellHash>> {
-    if let Some(cell) = get_cell_from_hash(cell_hash, from.address).await? {
-        Ok(send_cell(from, to, cell, amount).await?)
-    } else {
-        panic!("cell doesn't exist: {}", hex::encode(&cell_hash));
-    }
-}
-
+/// Get outputs belonging to the indicated `owner`
 pub async fn get_cell_outputs_of_node(
     owner: &TestNode,
     context: &mut IntegrationTestContext,
@@ -156,6 +188,7 @@ pub async fn get_cell_outputs_of_node(
     return Ok(outputs);
 }
 
+/// Find and get a cell which has min spendable amount
 pub async fn get_cell(
     min_amount: u64,
     context: &IntegrationTestContext,
@@ -166,6 +199,8 @@ pub async fn get_cell(
     get_cell_with_min_amount(min_amount, node, &cell_hashes).await
 }
 
+/// Finds and get a non-spendable cell which has min spendable amount.
+/// The test context will filter out those cells which are spendable.
 pub async fn get_not_spendable_cell(
     min_amount: u64,
     context: &mut IntegrationTestContext,
@@ -183,7 +218,104 @@ pub async fn get_not_spendable_cell(
     .await
 }
 
-pub async fn get_cell_with_min_amount(
+/// Retrieve outputs from the cell belonging to the owner and return the total balance
+pub fn get_outputs_capacity_of_owner(cell: &Cell, owner: &TestNode) -> u64 {
+    cell.outputs_of_owner(&owner.public_key)
+        .iter()
+        .filter_map(|o| if o.cell_type != CellType::Stake { Some(o.capacity) } else { None })
+        .sum()
+}
+
+pub async fn get_cell_from_hash(
+    cell_hash: CellHash,
+    node_address: SocketAddr,
+) -> Result<Option<Cell>> {
+    debug!(
+        "[integration_test]: Request to get cell from hash {:?}, from = {}",
+        hex::encode(cell_hash),
+        node_address
+    );
+
+    if let Some(Response::CellAck(cell_ack)) = filtered_request_with_timeout(
+        node_address,
+        Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
+        |r| {
+            if let Response::CellAck(cell_ack) = r {
+                cell_ack.cell.is_some()
+            } else {
+                false
+            }
+        },
+    )
+    .await
+    {
+        if let Some(cell) = cell_ack.cell {
+            return Result::Ok(Some(cell));
+        }
+    }
+
+    return Result::Ok(None);
+}
+
+/// Get all accepted cell hashes from the node
+pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
+    debug!("[integration_test]: Requesting cell hashes from = {}", node_address);
+    if let Some(Response::CellHashes(cell_hashes)) =
+        request_with_timeout(node_address, Request::GetCellHashes).await
+    {
+        let mut cell_hashes_mut = cell_hashes.ids.iter().cloned().collect::<Vec<CellHash>>();
+        cell_hashes_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
+        Result::Ok(cell_hashes_mut)
+    } else {
+        Result::Ok(vec![])
+    }
+}
+
+/// Get block by height
+pub async fn get_block(node_address: SocketAddr, height: BlockHeight) -> Result<Option<Block>> {
+    debug!(
+        "[integration_test]: Request to get block with height {:?}, from = {}",
+        height, node_address
+    );
+
+    if let Some(Response::BlockAck(block)) = filtered_request_with_timeout(
+        node_address,
+        Request::GetBlockByHeight(GetBlockByHeight { block_height: height }),
+        |r| {
+            if let Response::BlockAck(b) = r {
+                b.block.is_some()
+            } else {
+                false
+            }
+        },
+    )
+    .await
+    {
+        return Result::Ok(block.block);
+    }
+    return Result::Ok(None);
+}
+
+/// Get all cell hashes of the node with balances
+pub async fn get_cell_hashes_with_max_capacity(node: &TestNode) -> Vec<(CellHash, Capacity)> {
+    let mut initial_cells_hashes: Vec<(CellHash, Capacity)> = vec![];
+    for cell_hash in get_cell_hashes(node.address).await.unwrap() {
+        let cell = get_cell_from_hash(cell_hash, node.address).await.unwrap();
+        let max_capacity = cell
+            .unwrap()
+            .outputs_of_owner(&node.public_key)
+            .iter()
+            .filter(|o| o.cell_type != CellType::Stake)
+            .map(|o| o.capacity)
+            .sum::<u64>();
+        if max_capacity > 0 {
+            initial_cells_hashes.push((cell_hash, max_capacity));
+        }
+    }
+    initial_cells_hashes
+}
+
+async fn get_cell_with_min_amount(
     min_amount: u64,
     node: &TestNode,
     cell_hashes: &HashSet<CellHash>,
@@ -191,7 +323,7 @@ pub async fn get_cell_with_min_amount(
     get_cell_in_amount_range(min_amount, u64::MAX, node, cell_hashes).await
 }
 
-pub async fn get_cell_in_amount_range(
+async fn get_cell_in_amount_range(
     min_amount: u64,
     max_amount: u64,
     node: &TestNode,
@@ -213,97 +345,75 @@ pub async fn get_cell_in_amount_range(
     Ok(None)
 }
 
-pub fn get_outputs_capacity_of_owner_including_fee(node: &&TestNode, cell: &Cell) -> u64 {
+fn get_outputs_capacity_of_owner_including_fee(node: &&TestNode, cell: &Cell) -> u64 {
     let balance = get_outputs_capacity_of_owner(&cell, &node);
     return if balance > FEE { balance - FEE } else { 0 };
 }
 
-pub fn get_outputs_capacity_of_owner(cell: &Cell, owner: &TestNode) -> u64 {
-    cell.outputs_of_owner(&owner.public_key)
-        .iter()
-        .filter_map(|o| if o.cell_type != CellType::Stake { Some(o.capacity) } else { None })
-        .sum()
+async fn request_with_timeout(node_address: SocketAddr, request: Request) -> Option<Response> {
+    filtered_request_with_timeout_and_attempts(
+        node_address,
+        request,
+        Duration::from_millis(10),
+        1000,
+        |r| true,
+    )
+    .await
 }
 
-pub async fn get_cell_from_hash(
-    cell_hash: CellHash,
+async fn request_with_timeout_and_attempts(
     node_address: SocketAddr,
-) -> Result<Option<Cell>> {
-    let mut attempts = 200;
-    while attempts > 0 {
-        if let Some(Response::CellAck(cell_ack)) = client::oneshot(
-            node_address,
-            Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
-        )
-        .await?
-        {
-            if let Some(cell) = cell_ack.cell {
-                return Result::Ok(Some(cell));
-            }
-        }
-        attempts -= 1;
-        sleep(Duration::from_millis(5));
-    }
-
-    return Ok(None);
+    request: Request,
+    duration: Duration,
+    attempts: usize,
+) -> Option<Response> {
+    filtered_request_with_timeout_and_attempts(node_address, request, duration, attempts, |r| true)
+        .await
 }
 
-pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
-    if let Some(Response::CellHashes(cell_hashes)) =
-        from_timeout(node_address, Request::GetCellHashes).await
-    {
-        let mut cell_hashes_mut = cell_hashes.ids.iter().cloned().collect::<Vec<CellHash>>();
-        cell_hashes_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
-        Result::Ok(cell_hashes_mut)
-    } else {
-        Result::Ok(vec![])
-    }
+async fn filtered_request_with_timeout<P>(
+    node_address: SocketAddr,
+    request: Request,
+    predicate: P,
+) -> Option<Response>
+where
+    P: Fn(Response) -> bool,
+{
+    filtered_request_with_timeout_and_attempts(
+        node_address,
+        request,
+        Duration::from_millis(10),
+        1000,
+        predicate,
+    )
+    .await
 }
 
-async fn from_timeout(node_address: SocketAddr, request: Request) -> Option<Response> {
+async fn filtered_request_with_timeout_and_attempts<P>(
+    node_address: SocketAddr,
+    request: Request,
+    duration: Duration,
+    attempts: usize,
+    predicate: P,
+) -> Option<Response>
+where
+    P: Fn(Response) -> bool,
+{
     let mut result: Option<Response> = None;
-    let mut attempts = 1000;
-    while attempts > 0 {
-        if let Ok(Ok(r)) =
-            timeout(Duration::from_millis(10), client::oneshot(node_address, request.clone())).await
-        {
-            if r.is_some() {
+    let mut updated_attempts = attempts;
+    while updated_attempts > 0 {
+        if let Ok(Ok(r)) = timeout(duration, client::oneshot(node_address, request.clone())).await {
+            if r.is_some() && predicate(r.clone().unwrap()) {
                 result = r;
                 break;
             }
         }
-        attempts = attempts - 1;
+        updated_attempts = updated_attempts - 1;
     }
     result
 }
 
-pub async fn get_block(node_address: SocketAddr, height: BlockHeight) -> Result<Option<Block>> {
-    if let Some(Response::BlockAck(block)) = from_timeout(
-        node_address,
-        Request::GetBlockByHeight(GetBlockByHeight { block_height: height }),
-    )
-    .await
-    {
-        return Result::Ok(block.block);
-    }
-    return Result::Ok(None);
-}
-
-pub async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
-    match timeout(Duration::from_secs(1), client::oneshot(node_address, Request::CheckStatus)).await
-    {
-        Ok(Ok(r)) => {
-            if let Some(Response::Status(status)) = r {
-                Result::Ok(Some(status))
-            } else {
-                Result::Ok(None)
-            }
-        }
-        _ => Result::Ok(None),
-    }
-}
-
-pub fn create_transfer_request(
+fn create_transfer_request(
     from: &TestNode,
     to: &TestNode,
     spend_amount: u64,
@@ -314,23 +424,7 @@ pub fn create_transfer_request(
     Request::GenerateTx(sleet::GenerateTx { cell: transfer_op.transfer(&from.keypair).unwrap() })
 }
 
-pub async fn get_cell_hashes_with_max_capacity(node: &TestNode) -> Vec<(CellHash, Capacity)> {
-    let mut initial_cells_hashes: Vec<(CellHash, Capacity)> = vec![];
-    for cell_hash in get_cell_hashes(node.address).await.unwrap() {
-        let cell = get_cell_from_hash(cell_hash, node.address).await.unwrap();
-        let max_capacity = cell
-            .unwrap()
-            .outputs_of_owner(&node.public_key)
-            .iter()
-            .filter(|o| o.cell_type != CellType::Stake)
-            .map(|o| o.capacity)
-            .sum::<u64>();
-        if max_capacity > 0 {
-            initial_cells_hashes.push((cell_hash, max_capacity));
-        }
-    }
-    initial_cells_hashes
-}
+/// Regularly check status of the nodes until all of them are bootstrapped.
 pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
     let mut live_nodes: HashSet<&PublicKeyHash> = HashSet::new();
     let mut timer = 0;
@@ -346,7 +440,7 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
             match check_node_status(node.address).await? {
                 Some(s) => {
                     if s.bootstrapped {
-                        info!("Node {} bootstrapped", &node.address);
+                        debug!("Node {} has been bootstrapped", &node.address);
                         live_nodes.insert(&node.public_key)
                     } else {
                         live_nodes.remove(&node.public_key)
@@ -356,6 +450,20 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
             };
         }
     }
-    info!("All nodes have been started up and bootstrapped");
+    debug!("All nodes have been started up and bootstrapped");
     Ok(())
+}
+
+async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
+    match timeout(Duration::from_secs(1), client::oneshot(node_address, Request::CheckStatus)).await
+    {
+        Ok(Ok(r)) => {
+            if let Some(Response::Status(status)) = r {
+                Result::Ok(Some(status))
+            } else {
+                Result::Ok(None)
+            }
+        }
+        _ => Result::Ok(None),
+    }
 }

@@ -6,7 +6,7 @@ use crate::cell::Cell;
 use futures_util::FutureExt;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Timeout};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::cell::types::{Capacity, FEE};
 use crate::integration_test::test_functions::*;
@@ -143,7 +143,7 @@ async fn send_with_timeout(
                 _ => {}
             },
             Err(_) => {
-                info!("Failed to send within timeout. Attempt = {}", attempts)
+                error!("Failed to send within timeout. Attempt = {}", attempts)
             }
         }
         attempts -= 1
@@ -163,7 +163,7 @@ async fn send_and_check_cell(
     let cell_hash = cell.hash();
     let previous_output_len = cell.outputs().len();
 
-    let spent_cell_hash = send_cell(from, to, cell, amount).await?;
+    let spent_cell_hash = spend_cell(from, to, cell, amount).await?;
     assert!(spent_cell_hash.is_some());
     let spent_cell = get_cell_from_hash(spent_cell_hash.unwrap(), from.address).await?;
     assert!(spent_cell.is_some());

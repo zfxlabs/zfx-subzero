@@ -17,8 +17,6 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 pub async fn run_hail_integration_test() -> Result<()> {
-    info!("Run hail test: Transfer balance n-times between nodes and validate blocks");
-
     let mut nodes = TestNodes::new();
 
     nodes.start_all_and_wait().await?;
@@ -31,7 +29,9 @@ pub async fn run_hail_integration_test() -> Result<()> {
     Result::Ok(())
 }
 
-pub async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
+async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
+    info!("Run successful hail test: Transfer balance n-times between nodes and validate blocks");
+
     let from = nodes.get_node(0).unwrap();
     let to = nodes.get_node(1).unwrap();
     let mut cells_hashes = vec![*get_cell_hashes_with_max_capacity(from).await.get(0).unwrap()];
@@ -90,12 +90,14 @@ pub async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> 
     Result::Ok(last_block_height)
 }
 
-pub async fn test_transfer_failure_and_check_block_not_generated(
+async fn test_transfer_failure_and_check_block_not_generated(
     nodes: &TestNodes,
     latest_block_height: u64,
 ) -> Result<()> {
-    let from = nodes.get_node(2).unwrap();
-    let to = nodes.get_node(0).unwrap();
+    info!("Run unsuccessful block generation test: Transfer invalid cell and check block was not created");
+
+    let from = nodes.get_node(0).unwrap();
+    let to = nodes.get_node(1).unwrap();
     let cell_hash = *get_cell_hashes_with_max_capacity(from).await.get(0).unwrap();
     let amount = 20;
 
@@ -104,7 +106,7 @@ pub async fn test_transfer_failure_and_check_block_not_generated(
         TransferOperation::new(cell.clone(), Id::generate().bytes(), from.public_key, amount);
     let odd_transfer = odd_transfer_op.transfer(&from.keypair).unwrap();
 
-    send_cell(&from, &to, odd_transfer, amount).await?;
+    spend_cell(&from, &to, odd_transfer, amount).await?;
 
     // previous block was generated but next one shouldn't
     assert!(get_block(from.address, latest_block_height + 1).await?.is_none());

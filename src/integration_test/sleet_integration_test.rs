@@ -83,7 +83,7 @@ async fn test_spend_unspendable_cell(
 
     // get un-spendable cell and try to spend it
     let cell = get_not_spendable_cell(spend_amount + 1, context, from).await?.unwrap();
-    let spent_cell_hash = send_cell(&from, &to, cell, spend_amount + 1).await?;
+    let spent_cell_hash = spend_cell(&from, &to, cell, spend_amount + 1).await?;
 
     if spent_cell_hash.is_some() {
         let spent_cell = get_cell_from_hash(spent_cell_hash.unwrap().clone(), from.address).await?;
@@ -109,7 +109,7 @@ async fn test_send_same_cell_twice(
     let result = send_cell_and_get_result(from, to, spend_amount, nodes, context).await?;
 
     let same_cell = get_cell_from_hash(result.original_cell_hash, from.address).await?.unwrap();
-    assert!(send_cell(&from, &to, same_cell.clone(), spend_amount).await?.is_none()); // check the duplicated cell was rejected
+    assert!(spend_cell(&from, &to, same_cell.clone(), spend_amount).await?.is_none()); // check the duplicated cell was rejected
 
     context.count_test_run();
     Result::Ok(())
@@ -132,7 +132,7 @@ async fn test_send_cell_to_recipient_with_random_key(
         TransferOperation::new(cell.clone(), Id::generate().bytes(), from.public_key, spend_amount);
     let odd_transfer = odd_transfer_op.transfer(&from.keypair).unwrap();
 
-    let spent_cell_hash = send_cell(&from, &to, odd_transfer, spend_amount).await?;
+    let spent_cell_hash = spend_cell(&from, &to, odd_transfer, spend_amount).await?;
     assert!(spent_cell_hash.is_none());
 
     context.count_test_run();
@@ -178,7 +178,7 @@ async fn test_send_cell_with_modified_owner(
         .collect::<Vec<Output>>();
     let new_cell = Cell::new(new_inputs, Outputs { outputs: new_outputs });
 
-    assert!(send_cell(&from, &to, new_cell, spend_amount - 1).await?.is_none());
+    assert!(spend_cell(&from, &to, new_cell, spend_amount - 1).await?.is_none());
 
     context.count_test_run();
 
@@ -223,7 +223,7 @@ async fn test_send_cell_when_has_faulty_node(
     let to = &nodes.nodes[2];
     let cell = get_cell(amount, context, from).await?.unwrap();
 
-    let spent_cell_hash = send_cell(from, to, cell, amount).await?;
+    let spent_cell_hash = spend_cell(from, to, cell, amount).await?;
     assert!(spent_cell_hash.is_some());
 
     assert_cell_presence_in_all_running_nodes(spent_cell_hash.unwrap(), false, nodes).await?;
@@ -245,7 +245,7 @@ async fn send_cell_and_get_result(
     let previous_output_len = cell.outputs().len();
     let previous_balance = get_outputs_capacity_of_owner(&cell, from);
 
-    let spent_cell_hash = send_cell(from, to, cell, amount).await?;
+    let spent_cell_hash = spend_cell(from, to, cell, amount).await?;
     assert!(spent_cell_hash.is_some());
 
     // check that same tx was registered in all nodes

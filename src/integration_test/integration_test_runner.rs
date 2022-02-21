@@ -17,7 +17,7 @@ mod integration_test {
             .with_target(false)
             .without_time()
             .compact()
-            .with_max_level(tracing::Level::INFO)
+            .with_max_level(tracing::Level::DEBUG)
             .init();
 
         run_all_integration_tests().await?;
