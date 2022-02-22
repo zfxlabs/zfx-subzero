@@ -133,13 +133,16 @@ fn make_live_committee(cells: Vec<Cell>) -> LiveCommittee {
 }
 
 struct DummyClient {
+    // For responding to `QueryTx`
     pub responses: Vec<(Id, bool)>,
+    // For answering `GetAncestors` messages
+    pub ancestors: Vec<Tx>,
 }
 
 // Client substitute for answering `QueryTx` queries
 impl DummyClient {
     pub fn new() -> Self {
-        Self { responses: vec![] }
+        Self { responses: vec![], ancestors: vec![] }
     }
 }
 impl Actor for DummyClient {
@@ -168,6 +171,26 @@ async fn set_validator_response(client: Addr<DummyClient>, response: bool) {
     client.send(SetResponses { responses: vec![(mock_validator_id(), response)] }).await.unwrap();
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+struct SetAncestors {
+    pub ancestors: Vec<Tx>,
+}
+impl Handler<SetAncestors> for DummyClient {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        SetAncestors { ancestors }: SetAncestors,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        self.ancestors = ancestors;
+    }
+}
+async fn set_ancestors(client: Addr<DummyClient>, ancestors: Vec<Tx>) {
+    client.send(SetAncestors { ancestors }).await.unwrap();
+}
+
 impl Handler<ClientNetworkRequest> for DummyClient {
     type Result = ResponseFuture<ClientNetworkResponse>;
 
@@ -193,7 +216,18 @@ impl Handler<ClientNetworkRequest> for DummyClient {
                     ClientNetworkResponse::Fanout(r)
                 })
             }
-            ClientNetworkRequest::Oneshot { ip: _, request: _ } => panic!("unexpected message"),
+            ClientNetworkRequest::Oneshot { ip: _, request } => {
+                let ancestors = self.ancestors.clone();
+                Box::pin(async move {
+                    let r = match request {
+                        Request::GetTxAncestors(GetTxAncestors { .. }) => {
+                            Response::TxAncestors(TxAncestors { ancestors })
+                        }
+                        x => panic!("unexpected request: {:?}", x),
+                    };
+                    ClientNetworkResponse::Oneshot(Some(r))
+                })
+            } // ClientNetworkRequest::Oneshot { ip: _, request: _ } => panic!("unexpected message"),
         }
     }
 }
