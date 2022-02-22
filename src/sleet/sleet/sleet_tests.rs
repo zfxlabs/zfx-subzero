@@ -221,6 +221,7 @@ impl Handler<ClientNetworkRequest> for DummyClient {
                 Box::pin(async move {
                     let r = match request {
                         Request::GetTxAncestors(GetTxAncestors { .. }) => {
+                            println!("GetAncestors");
                             Response::TxAncestors(TxAncestors { ancestors })
                         }
                         x => panic!("unexpected request: {:?}", x),
@@ -695,10 +696,59 @@ async fn test_sleet_tx_missing_parent() {
     // `tx2` will be missing, this causes the query for `tx3` to time out
 
     sleep_ms(1000).await;
-    sleep_ms(1000).await;
+    let QueryTxAck { outcome: outcome3, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx3 }).await.unwrap();
+    assert!(!outcome3);
+    assert!(rx1.await.unwrap());
+}
+
+#[actix_rt::test]
+async fn test_sleet_get_single_ancestor() {
+    let (sleet1, sleet2, client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+
+    set_ancestors(client, vec![tx1.clone()]).await;
+
     let QueryTxAck { outcome, .. } =
         sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
     assert!(outcome);
+}
+
+#[actix_rt::test]
+async fn test_sleet_get_wrong_ancestor() {
+    let (sleet1, sleet2, client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+
+    // Answer with the same tx, not the expected ancestry
+    set_ancestors(client, vec![tx2.clone()]).await;
+
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
+    assert!(!outcome);
 }
 
 #[actix_rt::test]
