@@ -76,8 +76,8 @@ mod test {
         std::iter::repeat(()).map(|()| rng.sample(Alphanumeric) as char).take(8).collect()
     }
 
-    #[test]
-    fn get_twice() {
+    #[actix_rt::test]
+    async fn get_twice() {
         let fname = rand_fname();
         let crt = generate_file_in_tmp_dir(&fname, String::from("crt"));
         let key = generate_file_in_tmp_dir(&fname, String::from("key"));
@@ -87,8 +87,8 @@ mod test {
         assert_eq!(stuff1, stuff2);
     }
 
-    #[test]
-    fn rcgen_test() {
+    #[actix_rt::test]
+    async fn rcgen_test() {
         let cert = rcgen::generate_simple_self_signed(vec!["foo".to_string()]).unwrap();
         let private_key = cert.serialize_private_key_pem();
         let cert = cert.serialize_pem().unwrap();

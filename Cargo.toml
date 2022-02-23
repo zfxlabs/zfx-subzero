@@ -56,6 +56,9 @@ ring = "0.16.20"
 pem = "1.0.1"
 x509-parser = ">= 0.10.0"
 
+derive_more = "0.99.9"
+lazy_static = "1.4"
+
 [features]
 integration_tests = []
 hail_test = []

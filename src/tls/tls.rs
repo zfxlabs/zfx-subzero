@@ -1,4 +1,5 @@
 use lazy_static::lazy_static;
+use std::convert::TryFrom;
 use std::{sync::Arc, time::SystemTime};
 use tokio_rustls::rustls::{
     self, client::ServerCertVerifier, server::ClientCertVerifier, Certificate, ClientConfig,
@@ -92,11 +93,11 @@ mod test {
     pub fn cert_and_key(name: &str) -> (Vec<u8>, Vec<u8>) {
         let crt_f = generate_file_in_tmp_dir(name, ".crt");
         let key_f = generate_file_in_tmp_dir(name, "key");
-        let (cert, key) = zfx_crypto::certificate::get_node_cert(&crt_f, &key_f).unwrap();
+        let (cert, key) = crate::tls::certificate::get_node_cert(&crt_f, &key_f).unwrap();
         (cert, key)
     }
-    #[test]
-    pub fn test0() {
+    #[actix_rt::test]
+    async fn test0() {
         let (cert, key) = cert_and_key("test0");
         let client_conf = client_tls_config(&cert, &key);
         let server_conf = server_tls_config(&cert, &key);

@@ -1,11 +1,11 @@
 use std::future::Future;
 use std::{pin::Pin, sync::Arc};
 
-use crate::tls::{client_tls_config, server_tls_config, DUMMY_DOMAIN};
+use crate::tls::tls::{client_tls_config, server_tls_config, DUMMY_DOMAIN};
 use tokio::net::TcpStream;
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
-use zfx_network_primitives::types::ConnectionStream;
+use super::connection_stream::ConnectionStream;
 
 pub trait Upgrader: Sync + Send {
     // === async fn upgrade(..) -> Result<ConnectionStream>;
