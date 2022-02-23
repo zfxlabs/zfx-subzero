@@ -93,6 +93,11 @@ impl Handler<Request> for Router {
                     let block_ack = hail.send(get_block).await.unwrap();
                     Response::BlockAck(block_ack)
                 }
+                Request::GetBlockByHeight(get_block) => {
+                    debug!("routing GetBlockByHeight -> Hail");
+                    let block_ack = hail.send(get_block).await.unwrap();
+                    Response::BlockAck(block_ack)
+                }
                 Request::QueryBlock(query_block) => {
                     debug!("routing QueryBlock -> Hail");
                     let query_block_ack = hail.send(query_block).await.unwrap();

@@ -109,7 +109,7 @@ impl Sleet {
             let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
             Ok(true)
         } else {
-            // info!("[{}] received already known transaction {}", "sleet".cyan(), tx.clone());
+            info!("[{}] received already known transaction {}", "sleet".cyan(), sleet_tx.clone());
             Ok(false)
         }
     }
