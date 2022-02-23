@@ -1,13 +1,12 @@
 use std::panic;
 use std::thread::sleep;
 use std::time::Duration;
-use tokio::time::timeout;
 use tracing::info;
 
 use crate::alpha::transfer::TransferOperation;
 use crate::cell::inputs::Input;
 use crate::cell::outputs::{Output, Outputs};
-use crate::cell::types::{Capacity, CellHash, FEE};
+use crate::cell::types::{CellHash, FEE};
 use crate::cell::Cell;
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};

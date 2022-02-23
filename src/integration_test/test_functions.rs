@@ -6,7 +6,7 @@ use std::time::Duration;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::time::timeout;
-use tracing::{debug};
+use tracing::debug;
 
 use crate::alpha::block::Block;
 use crate::alpha::transfer::TransferOperation;
@@ -14,7 +14,7 @@ use crate::alpha::types::BlockHeight;
 use crate::cell::outputs::Output;
 use crate::cell::types::{Capacity, CellHash, PublicKeyHash, FEE};
 use crate::cell::{Cell, CellType};
-use crate::hail::{GetBlockByHeight};
+use crate::hail::GetBlockByHeight;
 use crate::ice::Status;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::protocol::Response;

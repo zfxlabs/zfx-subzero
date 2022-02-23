@@ -5,7 +5,7 @@ mod integration_test {
     use crate::integration_test::hail_integration_test::run_hail_integration_test;
     use crate::integration_test::sleet_integration_test::run_all_integration_tests;
     use crate::integration_test::stress_test::run_stress_test;
-    use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
+    use crate::integration_test::test_model::{TestNode, TestNodes};
     use crate::Result;
     use std::thread::sleep;
     use std::time::Duration;
@@ -23,7 +23,7 @@ mod integration_test {
         run_stress_test().await?;
         // FIXME: uncomment when hail component is stable
         // sleep(Duration::from_secs(5));
-        // run_hail_integration_test().await?;
+        run_hail_integration_test().await?;
         sleep(Duration::from_secs(5));
         run_cell_transfer_benchmark_test().await?;
 

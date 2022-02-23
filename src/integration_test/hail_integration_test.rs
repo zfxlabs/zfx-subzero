@@ -1,19 +1,15 @@
 use crate::alpha::transfer::TransferOperation;
-use crate::cell::types::{Capacity, CellHash, FEE};
-use crate::client;
+use crate::cell::types::Capacity;
 use crate::integration_test::test_functions::*;
-use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
-use crate::protocol::{Request, Response};
-use crate::sleet;
+use crate::integration_test::test_model::TestNodes;
 use crate::Result;
 use std::collections::HashSet;
-use std::thread::{sleep, JoinHandle};
+use std::thread::sleep;
 
 use crate::alpha::block::Block;
-use crate::alpha::types::{BlockHash, VrfOutput};
-use crate::cell::CellType;
+use crate::alpha::types::VrfOutput;
 use crate::zfx_id::Id;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::info;
 
 pub async fn run_hail_integration_test() -> Result<()> {
@@ -34,7 +30,7 @@ async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
 
     let from = nodes.get_node(0).unwrap();
     let to = nodes.get_node(1).unwrap();
-    let mut cells_hashes = vec![*get_cell_hashes_with_max_capacity(from).await.get(0).unwrap()];
+    let cells_hashes = vec![*get_cell_hashes_with_max_capacity(from).await.get(0).unwrap()];
 
     let result = spend_many_from_cell_hashes(
         &from,
@@ -45,7 +41,7 @@ async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
         cells_hashes,
     )
     .await?;
-    let mut accepted_cell_hashes = result.0;
+    let accepted_cell_hashes = result.0;
 
     sleep(Duration::from_secs(3));
 

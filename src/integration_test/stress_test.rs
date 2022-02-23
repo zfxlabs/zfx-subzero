@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::cell::Cell;
 use futures_util::FutureExt;
 use tokio::task::JoinHandle;
-use tokio::time::{Timeout};
+use tokio::time::Timeout;
 use tracing::{error, info};
 
 use crate::cell::types::{Capacity, CellHash, FEE};

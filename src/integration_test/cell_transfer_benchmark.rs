@@ -1,13 +1,12 @@
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use crate::cell::CellType;
 use futures_util::FutureExt;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tracing::info;
 
-use crate::cell::types::{Capacity, CellHash, FEE};
+use crate::cell::types::{CellHash, FEE};
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{TestNode, TestNodes};
 use crate::Result;
