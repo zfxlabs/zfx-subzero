@@ -16,11 +16,12 @@ pub struct Server {
     ip: SocketAddr,
     /// The address of the router.
     router: Addr<Router>,
+    upgrader: Arc<dyn Upgrader>,
 }
 
 impl Server {
     pub fn new(ip: SocketAddr, router: Addr<Router>) -> Server {
-        Server { ip, router }
+        Server { ip, router, upgrader: TcpUpgrader::new() }
     }
 
     // Starts an actix server that listens for incoming connections.
@@ -47,7 +48,8 @@ impl Server {
 
     // Processes the tcp stream and sends the request to the router
     async fn process_stream(stream: TcpStream, router: Addr<Router>) -> Result<()> {
-        let mut channel: Channel<Response, Request> = Channel::wrap(stream).unwrap();
+        let connection = upgrader.upgrade(stream).await?;
+        let mut channel: Channel<Response, Request> = Channel::wrap(connection).unwrap();
         let (mut sender, mut receiver) = channel.split();
         let request = receiver.recv().await.unwrap();
         match request.clone() {
