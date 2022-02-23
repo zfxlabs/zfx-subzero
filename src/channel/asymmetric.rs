@@ -1,11 +1,13 @@
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use tokio::net::tcp::{ReadHalf, WriteHalf};
-use tokio::net::TcpStream;
+use tokio::io::{ReadHalf, WriteHalf};
+//use tokio::net::TcpStream;
 use tokio_serde::formats::*;
 use tokio_serde::Framed;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
+
+use crate::tls::connection_stream::ConnectionStream;
 
 #[derive(Debug)]
 pub enum Error<'a, I, O>
@@ -55,7 +57,7 @@ where
 }
 
 pub struct Channel<I, O> {
-    socket: TcpStream,
+    socket: ConnectionStream,
     ghost: std::marker::PhantomData<(I, O)>,
 }
 
@@ -64,17 +66,16 @@ where
     I: for<'de> Deserialize<'de> + Serialize,
     O: for<'de> Deserialize<'de> + Serialize,
 {
-    pub async fn connect(address: &SocketAddr) -> Result<Channel<I, O>, Error<'a, I, O>> {
-        let socket = TcpStream::connect(&address).await.map_err(Error::IO)?;
-        Ok(Channel { socket, ghost: Default::default() })
-    }
+//    pub async fn connect(address: &SocketAddr) -> Result<Channel<I, O>, Error<'a, I, O>> {
+//        Ok(Channel { socket, ghost: Default::default() })
+//    }
 
-    pub fn wrap(socket: TcpStream) -> Result<Channel<I, O>, Error<'a, I, O>> {
+    pub fn wrap(socket: ConnectionStream) -> Result<Channel<I, O>, Error<'a, I, O>> {
         Ok(Channel { socket, ghost: Default::default() })
     }
 
     pub fn split(&mut self) -> (Sender<'_, I, O>, Receiver<'_, I, O>) {
-        let (reader, writer) = self.socket.split();
+        let (reader, writer) = tokio::io::split(self.socket);
 
         let reader: FramedRead<ReadHalf, LengthDelimitedCodec> =
             FramedRead::new(reader, LengthDelimitedCodec::new());

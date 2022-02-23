@@ -1,17 +1,25 @@
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
 use crate::{Error, Result};
+use crate::tls::upgrader::{Upgrader, TcpUpgrader};
 use tracing::{debug, error};
+
+use tokio::net::TcpStream;
 
 use actix::{Actor, Context, Handler, ResponseFuture};
 use futures::FutureExt;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub struct Client;
+pub struct Client {
+    upgrader: Arc<dyn Upgrader>,
+}
 
 impl Client {
     pub fn new() -> Client {
-        Client {}
+        Client {
+          upgrader: TcpUpgrader::new()
+       }
     }
 }
 
@@ -35,7 +43,8 @@ impl Handler<Oneshot> for Client {
     type Result = ResponseFuture<Result<Option<Response>>>;
 
     fn handle(&mut self, msg: Oneshot, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone()).await })
+        let upgrader = self.upgrader.clone();
+        Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone(), upgrader).await })
     }
 }
 
@@ -50,12 +59,15 @@ impl Handler<Fanout> for Client {
     type Result = ResponseFuture<Vec<Response>>;
 
     fn handle(&mut self, msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone()).await })
+        let upgrader = self.upgrader.clone();
+        Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone(), upgrader).await })
     }
 }
 
-pub async fn oneshot(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
-    let mut channel: Channel<Request, Response> = Channel::connect(&ip).await?;
+pub async fn oneshot(ip: SocketAddr, request: Request, upgrader: Arc<dyn Upgrader>) -> Result<Option<Response>> {
+    let socket = TcpStream::connect(&ip).await.map_err(Error::IO)?;
+    let connection = upgrader.upgrade(socket).await?;
+    let mut channel: Channel<Request, Response> = Channel::wrap(connection)?;
     let (mut sender, mut receiver) = channel.split();
     // send a message to a peer
     let () = sender.send(request).await?;
@@ -68,14 +80,15 @@ pub async fn oneshot(ip: SocketAddr, request: Request) -> Result<Option<Response
 }
 
 /// A gentle fanout function which sends requests to peers and collects responses.
-pub async fn fanout(ips: Vec<SocketAddr>, request: Request) -> Vec<Response> {
+pub async fn fanout(ips: Vec<SocketAddr>, request: Request, upgrader: Arc<dyn Upgrader>) -> Vec<Response> {
     let mut client_futs = vec![];
     // fanout oneshot requests to the ips designated in `ips` and collect the client
     // futures.
     for ip in ips.iter().cloned() {
         let request = request.clone();
+        let upgrader = upgrader.clone();
         let client_fut = tokio::spawn(async move {
-            match oneshot(ip, request.clone()).await {
+            match oneshot(ip, request.clone(),upgrader).await {
                 Ok(result) => result,
                 // NOTE: The error here is logged and `None` is returned
                 Err(err) => match err {
