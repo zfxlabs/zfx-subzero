@@ -1,17 +1,21 @@
 use std::collections::HashSet;
+use std::future::Future;
+use std::net::SocketAddr;
 use std::thread::sleep;
 use std::time::Duration;
 
 use crate::cell::Cell;
 use futures_util::FutureExt;
 use tokio::task::JoinHandle;
-use tokio::time::{timeout, Timeout};
+use tokio::time::{Timeout};
 use tracing::{error, info};
 
-use crate::cell::types::{Capacity, FEE};
+use crate::cell::types::{Capacity, CellHash, FEE};
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::Result;
+
+const ITERATION_LIMIT: u64 = 40;
 
 pub async fn run_stress_test() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
@@ -36,30 +40,68 @@ pub async fn run_stress_test() -> Result<()> {
         })
         .await;
 
+    sleep(Duration::from_secs(5));
+
+    // validate blocks and cells consistency across all nodes
+
     validate_blocks(&nodes).await;
 
-    nodes.kill_all();
+    let cell_hashes = validate_cell_hashes(&mut nodes, |addr| get_cell_hashes(addr)).await?;
+    assert_eq!((nodes.nodes.len() * ITERATION_LIMIT as usize + 4), cell_hashes.len());
+
+    validate_cell_hashes(&mut nodes, |addr| get_accepted_cell_hashes(addr)).await?;
 
     assert!(!has_error, "Stress test failed as one of the thread got an error");
 
+    nodes.kill_all();
+
     Result::Ok(())
+}
+
+async fn validate_cell_hashes<F, Fut>(
+    nodes: &mut TestNodes,
+    get_cell_hashes: F,
+) -> Result<HashSet<CellHash>>
+where
+    F: Fn(SocketAddr) -> Fut,
+    Fut: Future<Output = Result<Vec<CellHash>>>,
+{
+    let mut unique_cell_hashes = HashSet::new();
+    let mut total_cell_hashes_numbers = HashSet::new();
+    for n in &nodes.nodes {
+        let cell_hashes = get_cell_hashes(n.address).await.unwrap();
+        total_cell_hashes_numbers.insert(cell_hashes.len());
+        cell_hashes.iter().for_each(|h| {
+            unique_cell_hashes.insert(h.clone());
+        });
+    }
+
+    assert_eq!(1, total_cell_hashes_numbers.len()); // check that it's the same size across all 3 nodes
+    assert_eq!(unique_cell_hashes.len(), *total_cell_hashes_numbers.iter().last().unwrap());
+
+    Ok(unique_cell_hashes)
 }
 
 async fn validate_blocks(nodes: &TestNodes) {
     info!("Validate blocks after stress test");
 
-    let mut total_blocks = 0;
-    let mut total_cells_in_blocks = 0;
+    let mut cells_in_blocks = vec![];
     for n in &nodes.nodes {
-        let mut height = 1;
-        while let Some(block) = get_block(n.address, height).await.unwrap() {
+        let mut total_blocks = 1;
+        let mut total_cells_in_blocks = 0;
+        let mut cells_in_block = Vec::new();
+        while let Some(block) = get_block(n.address, total_blocks).await.unwrap() {
             total_cells_in_blocks = total_cells_in_blocks + block.cells.len();
-            height = height + 1;
+            block.cells.iter().for_each(|c| {
+                cells_in_block.push(c.hash());
+            });
+            total_blocks = total_blocks + 1;
         }
-        total_blocks = total_blocks + height;
+        cells_in_blocks.push(cells_in_block);
+        info!("total blocks = {}", total_blocks);
+        info!("total cells = {}", total_cells_in_blocks);
     }
-    info!("total blocks = {}", total_blocks);
-    info!("total cells = {}", total_cells_in_blocks);
+    info!("total cells in block = {}", cells_in_blocks.len());
 
     // FIXME: uncomment when hail is working properly
     // assert_eq!(total_cells_in_blocks, cells_in_blocks.len());
@@ -68,7 +110,6 @@ async fn validate_blocks(nodes: &TestNodes) {
 fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
     const AMOUNT: Capacity = 1 as Capacity;
     const FULL_AMOUNT: u64 = AMOUNT + FEE;
-    const ITERATION_LIMIT: u64 = 40;
 
     let handle = tokio::spawn(async move {
         let test_nodes = TestNodes::new();
@@ -96,7 +137,7 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
         let expected_balance = total_spendable_amount - iterations * FULL_AMOUNT;
 
         // start sending cells
-        let mut transfer_result =
+        let transfer_result =
             spend_many(from, to, AMOUNT, iterations as usize, Duration::from_millis(10)).await?;
         sleep(Duration::from_secs(2));
 
@@ -125,57 +166,4 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
         Ok(())
     });
     handle
-}
-
-async fn send_with_timeout(
-    from: &TestNode,
-    to: &TestNode,
-    amount: u64,
-    context: &mut IntegrationTestContext,
-) -> Option<Cell> {
-    let mut attempts = 5;
-    while attempts > 0 {
-        match timeout(Duration::from_millis(1000), send_and_check_cell(from, to, amount, context))
-            .await
-        {
-            Ok(r) => match r {
-                Ok(c) => return Some(c),
-                _ => {}
-            },
-            Err(_) => {
-                error!("Failed to send within timeout. Attempt = {}", attempts)
-            }
-        }
-        attempts -= 1
-    }
-    return None;
-}
-
-async fn send_and_check_cell(
-    from: &TestNode,
-    to: &TestNode,
-    amount: u64,
-    context: &mut IntegrationTestContext,
-) -> Result<Cell> {
-    sleep(Duration::from_millis(100)); // make a controlled delay between transfers
-
-    let cell = get_cell(amount, context, from).await?.unwrap();
-    let cell_hash = cell.hash();
-    let previous_output_len = cell.outputs().len();
-
-    let spent_cell_hash = spend_cell(from, to, cell, amount).await?;
-    assert!(spent_cell_hash.is_some());
-    let spent_cell = get_cell_from_hash(spent_cell_hash.unwrap(), from.address).await?;
-    assert!(spent_cell.is_some());
-    let spent_cell_outputs_len = spent_cell.as_ref().unwrap().outputs().len();
-
-    register_cell_in_test_context(
-        cell_hash,
-        spent_cell_hash.unwrap(),
-        spent_cell_outputs_len,
-        previous_output_len,
-        context,
-    );
-
-    Result::Ok(spent_cell.unwrap())
 }

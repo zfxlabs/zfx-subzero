@@ -713,5 +713,6 @@ impl Handler<GetCellHashes> for Sleet {
     }
 }
 
+pub mod sleet_cell_handlers;
 #[cfg(test)]
 mod sleet_tests;

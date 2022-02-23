@@ -6,7 +6,7 @@ use std::time::Duration;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use tokio::time::timeout;
-use tracing::{debug, info};
+use tracing::{debug};
 
 use crate::alpha::block::Block;
 use crate::alpha::transfer::TransferOperation;
@@ -14,10 +14,11 @@ use crate::alpha::types::BlockHeight;
 use crate::cell::outputs::Output;
 use crate::cell::types::{Capacity, CellHash, PublicKeyHash, FEE};
 use crate::cell::{Cell, CellType};
-use crate::hail::{GetBlock, GetBlockByHeight};
+use crate::hail::{GetBlockByHeight};
 use crate::ice::Status;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::protocol::Response;
+use crate::sleet::sleet_cell_handlers::GetAcceptedCell;
 use crate::Result;
 use crate::{client, sleet, Request};
 
@@ -94,7 +95,7 @@ pub async fn spend_from(
     from: &TestNode,
     to: &TestNode,
     amount: Capacity,
-    mut spendable_cell_hashes: Vec<(CellHash, Capacity)>,
+    spendable_cell_hashes: Vec<(CellHash, Capacity)>,
 ) -> Result<Vec<(CellHash, Capacity)>> {
     let total_to_spend = amount + FEE;
     let mut updated_spendable_cell_hashes = spendable_cell_hashes.clone();
@@ -267,6 +268,48 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
     }
 }
 
+pub async fn get_accepted_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> {
+    debug!("Requesting accepted cell hashes from = {}", node_address);
+    if let Some(Response::AcceptedCellHashes(cell_hashes)) =
+        request_with_timeout(node_address, Request::GetAcceptedCellHashes).await
+    {
+        Result::Ok(cell_hashes.ids)
+    } else {
+        Result::Ok(vec![])
+    }
+}
+
+pub async fn get_accepted_cell_from_hash(
+    cell_hash: CellHash,
+    node_address: SocketAddr,
+) -> Result<Option<Cell>> {
+    debug!(
+        "Request to get accepted cell from hash {:?}, from = {}",
+        hex::encode(cell_hash),
+        node_address
+    );
+
+    if let Some(Response::AcceptedCellAck(cell_ack)) = filtered_request_with_timeout(
+        node_address,
+        Request::GetAcceptedCell(GetAcceptedCell { cell_hash: cell_hash.clone() }),
+        |r| {
+            if let Response::AcceptedCellAck(cell_ack) = r {
+                cell_ack.cell.is_some()
+            } else {
+                false
+            }
+        },
+    )
+    .await
+    {
+        if let Some(cell) = cell_ack.cell {
+            return Result::Ok(Some(cell));
+        }
+    }
+
+    return Result::Ok(None);
+}
+
 /// Get block by height
 pub async fn get_block(node_address: SocketAddr, height: BlockHeight) -> Result<Option<Block>> {
     debug!("Request to get block with height {:?}, from = {}", height, node_address);
@@ -349,7 +392,7 @@ async fn request_with_timeout(node_address: SocketAddr, request: Request) -> Opt
         request,
         Duration::from_millis(10),
         1000,
-        |r| true,
+        |_| true,
     )
     .await
 }
@@ -360,7 +403,7 @@ async fn request_with_timeout_and_attempts(
     duration: Duration,
     attempts: usize,
 ) -> Option<Response> {
-    filtered_request_with_timeout_and_attempts(node_address, request, duration, attempts, |r| true)
+    filtered_request_with_timeout_and_attempts(node_address, request, duration, attempts, |_| true)
         .await
 }
 
