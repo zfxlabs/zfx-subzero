@@ -16,6 +16,7 @@ pub mod protocol;
 pub mod server;
 pub mod sleet;
 pub mod storage;
+pub mod tls;
 pub mod util;
 pub mod version;
 pub mod view;
