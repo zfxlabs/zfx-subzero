@@ -66,8 +66,8 @@ impl std::convert::From<sled::Error> for Error {
     }
 }
 
-impl<'a> std::convert::From<channel::Error<'a, Request, Response>> for Error {
-    fn from(error: channel::Error<'a, Request, Response>) -> Self {
+impl std::convert::From<channel::Error<Request, Response>> for Error {
+    fn from(error: channel::Error<Request, Response>) -> Self {
         match error {
             channel::Error::IO(io_err) => Error::IO(io_err),
             channel::Error::ReadError(err) => {
@@ -82,8 +82,8 @@ impl<'a> std::convert::From<channel::Error<'a, Request, Response>> for Error {
     }
 }
 
-impl<'a> std::convert::From<channel::Error<'a, Response, Request>> for Error {
-    fn from(error: channel::Error<'a, Response, Request>) -> Self {
+impl std::convert::From<channel::Error<Response, Request>> for Error {
+    fn from(error: channel::Error<Response, Request>) -> Self {
         match error {
             channel::Error::IO(io_err) => Error::IO(io_err),
             channel::Error::ReadError(err) => {

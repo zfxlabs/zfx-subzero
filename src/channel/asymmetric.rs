@@ -10,48 +10,48 @@ use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 use crate::tls::connection_stream::ConnectionStream;
 
 #[derive(Debug)]
-pub enum Error<'a, I, O>
+pub enum Error<I, O>
 where
     I: for<'de> Deserialize<'de> + Serialize,
     O: for<'de> Deserialize<'de> + Serialize,
 {
     IO(std::io::Error),
-    ReadError(<Reader<'a, I, O> as futures::TryStream>::Error),
-    WriteError(<Writer<'a, I, O> as futures::Sink<I>>::Error),
+    ReadError(<Reader<I, O> as futures::TryStream>::Error),
+    WriteError(<Writer<I, O> as futures::Sink<I>>::Error),
 }
 
-pub type Reader<'a, I, O> =
-    Framed<FramedRead<ReadHalf<'a>, LengthDelimitedCodec>, O, I, Bincode<O, I>>;
+pub type Reader<I, O> =
+    Framed<FramedRead<ReadHalf<ConnectionStream>, LengthDelimitedCodec>, O, I, Bincode<O, I>>;
 
-pub type Writer<'a, I, O> =
-    Framed<FramedWrite<WriteHalf<'a>, LengthDelimitedCodec>, O, I, Bincode<O, I>>;
+pub type Writer<I, O> =
+    Framed<FramedWrite<WriteHalf<ConnectionStream>, LengthDelimitedCodec>, O, I, Bincode<O, I>>;
 
-pub struct Receiver<'a, I, O> {
-    reader: Reader<'a, I, O>,
+pub struct Receiver<I, O> {
+    reader: Reader<I, O>,
 }
 
-impl<'a, I, O> Receiver<'a, I, O>
+impl<I, O> Receiver<I, O>
 where
     I: for<'de> Deserialize<'de> + Serialize,
     O: for<'de> Deserialize<'de> + Serialize,
-    Reader<'a, I, O>: TryStream<Ok = O> + Unpin,
+    Reader<I, O>: TryStream<Ok = O> + Unpin,
 {
-    pub async fn recv(&mut self) -> Result<Option<O>, Error<'a, I, O>> {
+    pub async fn recv(&mut self) -> Result<Option<O>, Error<I, O>> {
         Ok(self.reader.try_next().await.map_err(Error::ReadError)?)
     }
 }
 
-pub struct Sender<'a, I, O> {
-    writer: Writer<'a, I, O>,
+pub struct Sender<I, O> {
+    writer: Writer<I, O>,
 }
 
-impl<'a, I, O> Sender<'a, I, O>
+impl<I, O> Sender<I, O>
 where
     I: for<'de> Deserialize<'de> + Serialize,
     O: for<'de> Deserialize<'de> + Serialize,
-    Writer<'a, I, O>: Sink<I> + Unpin,
+    Writer<I, O>: Sink<I> + Unpin,
 {
-    pub async fn send(&mut self, item: I) -> Result<(), Error<'a, I, O>> {
+    pub async fn send(&mut self, item: I) -> Result<(), Error<I, O>> {
         Ok(self.writer.send(item).await.map_err(Error::WriteError)?)
     }
 }
@@ -61,27 +61,27 @@ pub struct Channel<I, O> {
     ghost: std::marker::PhantomData<(I, O)>,
 }
 
-impl<'a, I, O> Channel<I, O>
+impl<I, O> Channel<I, O>
 where
     I: for<'de> Deserialize<'de> + Serialize,
     O: for<'de> Deserialize<'de> + Serialize,
 {
-//    pub async fn connect(address: &SocketAddr) -> Result<Channel<I, O>, Error<'a, I, O>> {
+//    pub async fn connect(address: &SocketAddr) -> Result<Channel<I, O>, Error<I, O>> {
 //        Ok(Channel { socket, ghost: Default::default() })
 //    }
 
-    pub fn wrap(socket: ConnectionStream) -> Result<Channel<I, O>, Error<'a, I, O>> {
+    pub fn wrap(socket: ConnectionStream) -> Result<Channel<I, O>, Error<I, O>> {
         Ok(Channel { socket, ghost: Default::default() })
     }
 
-    pub fn split(&mut self) -> (Sender<'_, I, O>, Receiver<'_, I, O>) {
+    pub fn split(&mut self) -> (Sender<I, O>, Receiver<I, O>) {
         let (reader, writer) = tokio::io::split(self.socket);
 
-        let reader: FramedRead<ReadHalf, LengthDelimitedCodec> =
+        let reader: FramedRead<ReadHalf<_>, LengthDelimitedCodec> =
             FramedRead::new(reader, LengthDelimitedCodec::new());
         let reader = Framed::new(reader, Bincode::default());
 
-        let writer: FramedWrite<WriteHalf, LengthDelimitedCodec> =
+        let writer: FramedWrite<WriteHalf<_>, LengthDelimitedCodec> =
             FramedWrite::new(writer, LengthDelimitedCodec::new());
         let writer = Framed::new(writer, Bincode::default());
 
