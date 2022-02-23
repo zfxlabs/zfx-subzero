@@ -1,7 +1,7 @@
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
+use crate::tls::upgrader::{TcpUpgrader, Upgrader};
 use crate::{Error, Result};
-use crate::tls::upgrader::{Upgrader, TcpUpgrader};
 use tracing::{debug, error};
 
 use tokio::net::TcpStream;
@@ -17,9 +17,7 @@ pub struct Client {
 
 impl Client {
     pub fn new() -> Client {
-        Client {
-          upgrader: TcpUpgrader::new()
-       }
+        Client { upgrader: TcpUpgrader::new() }
     }
 }
 
@@ -64,7 +62,11 @@ impl Handler<Fanout> for Client {
     }
 }
 
-pub async fn oneshot(ip: SocketAddr, request: Request, upgrader: Arc<dyn Upgrader>) -> Result<Option<Response>> {
+pub async fn oneshot(
+    ip: SocketAddr,
+    request: Request,
+    upgrader: Arc<dyn Upgrader>,
+) -> Result<Option<Response>> {
     let socket = TcpStream::connect(&ip).await.map_err(Error::IO)?;
     let connection = upgrader.upgrade(socket).await?;
     let mut channel: Channel<Request, Response> = Channel::wrap(connection)?;
@@ -80,7 +82,11 @@ pub async fn oneshot(ip: SocketAddr, request: Request, upgrader: Arc<dyn Upgrade
 }
 
 /// A gentle fanout function which sends requests to peers and collects responses.
-pub async fn fanout(ips: Vec<SocketAddr>, request: Request, upgrader: Arc<dyn Upgrader>) -> Vec<Response> {
+pub async fn fanout(
+    ips: Vec<SocketAddr>,
+    request: Request,
+    upgrader: Arc<dyn Upgrader>,
+) -> Vec<Response> {
     let mut client_futs = vec![];
     // fanout oneshot requests to the ips designated in `ips` and collect the client
     // futures.
@@ -88,7 +94,7 @@ pub async fn fanout(ips: Vec<SocketAddr>, request: Request, upgrader: Arc<dyn Up
         let request = request.clone();
         let upgrader = upgrader.clone();
         let client_fut = tokio::spawn(async move {
-            match oneshot(ip, request.clone(),upgrader).await {
+            match oneshot(ip, request.clone(), upgrader).await {
                 Ok(result) => result,
                 // NOTE: The error here is logged and `None` is returned
                 Err(err) => match err {

@@ -66,9 +66,9 @@ where
     I: for<'de> Deserialize<'de> + Serialize,
     O: for<'de> Deserialize<'de> + Serialize,
 {
-//    pub async fn connect(address: &SocketAddr) -> Result<Channel<I, O>, Error<I, O>> {
-//        Ok(Channel { socket, ghost: Default::default() })
-//    }
+    //    pub async fn connect(address: &SocketAddr) -> Result<Channel<I, O>, Error<I, O>> {
+    //        Ok(Channel { socket, ghost: Default::default() })
+    //    }
 
     pub fn wrap(socket: ConnectionStream) -> Result<Channel<I, O>, Error<I, O>> {
         Ok(Channel { socket, ghost: Default::default() })
