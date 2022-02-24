@@ -4,7 +4,7 @@ use crate::zfx_id::Id;
 use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
-use crate::client::{ClientNetworkRequest, ClientNetworkResponse};
+use crate::client::{ClientRequest, ClientResponse};
 use crate::graph::conflict_graph::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
@@ -45,7 +45,7 @@ const QUERY_RESPONSE_TIMEOUT_MS: u64 = 5000;
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The client used to make external requests.
-    sender: Recipient<ClientNetworkRequest>,
+    sender: Recipient<ClientRequest>,
     /// Connection to Hail
     hail_recipient: Recipient<AcceptedCells>,
     /// The identity of this validator.
@@ -75,7 +75,7 @@ pub struct Sleet {
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new(
-        sender: Recipient<ClientNetworkRequest>,
+        sender: Recipient<ClientRequest>,
         hail_recipient: Recipient<AcceptedCells>,
         node_id: Id,
         node_ip: SocketAddr,
@@ -479,7 +479,7 @@ impl Handler<FreshTx> for Sleet {
         }
 
         // Fanout queries to sampled validators
-        let send_to_client = self.sender.send(ClientNetworkRequest::Fanout {
+        let send_to_client = self.sender.send(ClientRequest::Fanout {
             ips: validator_ips.clone(),
             request: Request::QueryTx(QueryTx {
                 id: self.node_id.clone(),
@@ -488,12 +488,12 @@ impl Handler<FreshTx> for Sleet {
             }),
         });
 
-        // Wrap the future so that subsequent chained handlers can access te actor.
+        // Wrap the future so that subsequent chained handlers can access the actor.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
         let update_self = send_to_client.map(move |result, _actor, ctx| {
             match result {
-                Ok(ClientNetworkResponse::Fanout(acks)) => {
+                Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
                     if acks.len() == validator_ips.len() {
@@ -502,7 +502,7 @@ impl Handler<FreshTx> for Sleet {
                         Ok(ctx.notify(QueryIncomplete { tx: msg.tx.clone(), acks }))
                     }
                 }
-                Ok(ClientNetworkResponse::Oneshot(_)) => panic!("unexpected response"),
+                Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
                 Err(e) => Err(Error::Actix(e)),
             }
         });
@@ -727,13 +727,13 @@ impl Handler<AskForAncestors> for Sleet {
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         self.sender
-            .send(ClientNetworkRequest::Oneshot {
+            .send(ClientRequest::Oneshot {
                 ip,
                 request: Request::GetTxAncestors(GetTxAncestors { tx_hash }),
             })
             .into_actor(self)
             .map(|res, act, ctx| match res {
-                Ok(ClientNetworkResponse::Oneshot(Some(Response::TxAncestors(TxAncestors {
+                Ok(ClientResponse::Oneshot(Some(Response::TxAncestors(TxAncestors {
                     ancestors,
                 })))) => {
                     for ancestor in ancestors {

@@ -2,45 +2,56 @@ use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
 
-use crate::client;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::hail::block::HailBlock;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
 use crate::sleet::{self, Sleet};
-use crate::Result;
 use crate::{ice, ice::Ice};
 
 use crate::storage::block;
 
 use super::block::{build_genesis, Block};
 use super::state::State;
-use super::types::BlockHash;
+use super::types::{BlockHash, VrfOutput};
+use super::{Error, Result};
 
+use actix::{Actor, Addr, Arbiter, AsyncContext, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 use tracing::{debug, info};
-
-use actix::{Actor, Addr, Context, Handler, ResponseFuture};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
 
 pub struct Alpha {
+    /// The client used to make external requests.
+    sender: Recipient<ClientRequest>,
+    /// The id of the node.
+    node_id: Id,
+    /// The database root.
     tree: sled::Db,
+    /// The address of the `Ice` actor.
     ice: Addr<Ice>,
+    /// The address of the `Sleet` actor.
     sleet: Addr<Sleet>,
+    /// The address of the `Hail` actor.
     hail: Addr<Hail>,
+    /// The `alpha` chain state.
     state: State,
 }
 
 impl Alpha {
     pub fn create(
+        sender: Recipient<ClientRequest>,
+        node_id: Id,
         path: &Path,
         ice: Addr<Ice>,
         sleet: Addr<Sleet>,
         hail: Addr<Hail>,
     ) -> Result<Self> {
         let tree = sled::open(path)?;
-        Ok(Alpha { tree, ice, sleet, hail, state: State::new() })
+        Ok(Alpha { sender, node_id, tree, ice, sleet, hail, state: State::new() })
     }
 }
 
@@ -68,95 +79,99 @@ impl Actor for Alpha {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
-pub struct LiveNetwork {
-    pub self_id: Id,
-    pub live_peers: Vec<(Id, SocketAddr)>,
+pub struct QueryLastAccepted {
+    peers: Vec<SocketAddr>,
 }
 
-// Queries live peers in order to determine the last accepted block
-async fn query_last_accepted(peers: Vec<SocketAddr>) -> BlockHash {
-    let mut i = 3;
-    loop {
-        debug!("querying for the last accepted block");
+impl Handler<QueryLastAccepted> for Alpha {
+    type Result = ResponseActFuture<Self, ()>;
 
-        // TODO: Sample `k` peers if `peers.len() > k`
-
-        // Probe `k` peers for their last accepted block ignoring errors.
-        let v = client::fanout(
-            peers.clone(),
-            Request::GetLastAccepted,
-            crate::client::FIXME_UPGRADER.clone(),
-        )
-        .await
-        .iter()
-        .filter_map(|response| {
-            if let Response::LastAccepted(last_accepted) = response {
-                Some(last_accepted.hash.clone())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<BlockHash>>();
-
-        // If `k * alpha` peers agree to an accepted hash then return the last accepted
-        // hash.
-        let mut occurences: HashMap<BlockHash, usize> = HashMap::new();
-        for last_accepted in v.iter() {
-            if let Some(count) = occurences.get(last_accepted) {
-                let count_clone = count.clone();
-                occurences.insert(last_accepted.clone(), count + 1);
-                if count_clone + 1 >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
-                    return last_accepted.clone();
-                }
-            } else {
-                occurences.insert(last_accepted.clone(), 0);
-            }
-        }
-
-        // Otherwise continue requesting the last block hash with an exponential backoff.
-        let duration = tokio::time::Duration::from_millis(1000) * i;
-        actix::clock::sleep(duration).await;
-        i += 1;
-    }
-}
-
-impl Handler<LiveNetwork> for Alpha {
-    type Result = ResponseFuture<()>;
-
-    fn handle(&mut self, msg: LiveNetwork, _ctx: &mut Context<Self>) -> Self::Result {
-        debug!("handling LiveNetwork");
-
-        let self_id = msg.self_id.clone();
-
-        // Process the live peers in `msg`
-        let mut peers = vec![];
-        for (_, ip) in msg.clone().live_peers {
-            peers.push(ip);
-        }
-
+    fn handle(&mut self, msg: QueryLastAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         // Read the last accepted final block (or genesis)
         let (last_hash, last_block) = block::get_last_accepted(&self.tree).unwrap();
 
+        let send_to_client = self
+            .sender
+            .send(ClientRequest::Fanout { ips: msg.peers, request: Request::GetLastAccepted });
+        // Probe `k` peers for their last accepted block ignoring errors.
+        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
+        let handle_response = send_to_client.map(move |result, _actor, ctx| {
+            match result {
+                Ok(ClientResponse::Fanout(responses)) => {
+                    let v = responses
+                        .iter()
+                        .filter_map(|response| {
+                            if let Response::LastAccepted(last_accepted) = response {
+                                Some(last_accepted.hash.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<BlockHash>>();
+
+                    // If `k * alpha` peers agree to an accepted hash then return the last
+                    // accepted hash.
+                    let mut occurences: HashMap<BlockHash, usize> = HashMap::new();
+                    for last_accepted in v.iter() {
+                        if let Some(count) = occurences.get(last_accepted) {
+                            let count_clone = count.clone();
+                            occurences.insert(last_accepted.clone(), count + 1);
+                            if count_clone + 1 >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
+                                ctx.notify(ReceiveLastAccepted {
+                                    last_block_hash: last_accepted.clone(),
+                                    last_block: last_block.clone(),
+                                    last_vrf_output: last_block.vrf_out.clone(),
+                                    last_accepted: last_accepted.clone(),
+                                })
+                            }
+                        } else {
+                            occurences.insert(last_accepted.clone(), 0);
+                        }
+                    }
+                }
+                // TODO: handle error
+                Ok(ClientResponse::Oneshot(_)) => (),
+                // TODO: handle error
+                Err(_) => (),
+            }
+        });
+        Box::pin(handle_response)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct ReceiveLastAccepted {
+    last_block_hash: BlockHash,
+    last_block: Block,
+    last_vrf_output: VrfOutput,
+    last_accepted: BlockHash,
+}
+
+impl Handler<ReceiveLastAccepted> for Alpha {
+    type Result = ();
+
+    fn handle(&mut self, msg: ReceiveLastAccepted, ctx: &mut Context<Self>) -> Self::Result {
         let ice_addr = self.ice.clone();
         let sleet_addr = self.sleet.clone();
         let hail_addr = self.hail.clone();
         let state = self.state.clone();
-        Box::pin(async move {
-            let last_accepted_hash = query_last_accepted(peers).await;
-            if last_hash == last_accepted_hash {
-                // Fetch the latest state snapshot up to the last hash, or apply the state
-                // and persist the missing transitions to the db.
-                // let (initial_supply, validators) = sync_state().await.unwrap();
 
-                let vrf_out = last_block.vrf_out.clone();
+        if msg.last_block_hash == msg.last_accepted {
+            // Fetch the latest state snapshot up to the last hash, or apply the state
+            // and persist the missing transitions to the db.
+            // let (initial_supply, validators) = sync_state().await.unwrap();
 
-                info!("[{}] last_accepted = {}", "alpha".yellow(), hex::encode(last_accepted_hash));
-                // info!("{}", state.format());
+            info!("[{}] last_accepted = {}", "alpha".yellow(), hex::encode(msg.last_accepted));
+            // info!("{}", state.format());
 
-                //-------------------------------------------------------------------------
-                // If we are at the same level as the quorum then we are bootstrapped.
-                //-------------------------------------------------------------------------
+            //-------------------------------------------------------------------------
+            // If we are at the same level as the quorum then we are bootstrapped.
+            //-------------------------------------------------------------------------
 
+            let node_id = self.node_id.clone();
+
+            let initialize = async move {
                 // Send `ice` the most up to date information concerning the peers which
                 // are validating the network, such that we may determine the peers
                 // `uptime`.
@@ -184,27 +199,54 @@ impl Handler<LiveNetwork> for Alpha {
                     .unwrap();
 
                 // Build a `HailBlock` from the last accepted block.
-                let last_accepted_block = HailBlock::new(None, last_block.clone());
+                let last_accepted_block = HailBlock::new(None, msg.last_block.clone());
 
                 // Send `hail` the live committee information for querying blocks.
                 let () = hail_addr
                     .send(hail::LiveCommittee {
-                        last_accepted_hash,
+                        last_accepted_hash: msg.last_accepted,
                         last_accepted_block,
                         height: state.height,
-                        self_id: self_id.clone(),
+                        self_id: node_id.clone(),
                         self_staking_capacity: committee.self_staking_capacity.clone(),
                         total_staking_capacity: state.total_staking_capacity,
                         validators: committee.hail_validators.clone(),
-                        vrf_out,
+                        vrf_out: msg.last_vrf_output,
                     })
                     .await
                     .unwrap();
-            } else {
-                info!("chain requires bootstrapping ...");
-                // Apply state transitions until the last accepted hash
-            }
-        })
+            };
+
+            let arbiter = Arbiter::new();
+            arbiter.spawn(initialize);
+        } else {
+            info!("chain requires bootstrapping ...");
+            // Apply state transitions until the last accepted hash
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct LiveNetwork {
+    pub self_id: Id,
+    pub live_peers: Vec<(Id, SocketAddr)>,
+}
+
+impl Handler<LiveNetwork> for Alpha {
+    type Result = ();
+
+    fn handle(&mut self, msg: LiveNetwork, ctx: &mut Context<Self>) -> Self::Result {
+        debug!("handling LiveNetwork");
+
+        // Process the live peers in `msg`
+        let mut peers = vec![];
+        for (_, ip) in msg.clone().live_peers {
+            peers.push(ip);
+        }
+
+        // Initiate the process of fetching the last accepted block
+        ctx.notify(QueryLastAccepted { peers })
     }
 }
 

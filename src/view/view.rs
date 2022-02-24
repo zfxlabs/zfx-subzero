@@ -1,16 +1,18 @@
 use super::sampleable_map::SampleableMap;
 
-use crate::client;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::ice::{self, Ice};
 use crate::protocol::{Request, Response};
 use crate::util;
 use crate::version::{Version, VersionAck};
 use crate::zfx_id::Id;
+use crate::{Error, Result};
 
 use tracing::{debug, info};
 
-use actix::{Actor, Addr, Context, Handler, ResponseFuture};
+use actix::{Actor, Addr, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -21,6 +23,8 @@ const BOOTSTRAP_QUORUM: usize = 2;
 /// The view contains the most up to date set of peer metadata.
 #[derive(Debug)]
 pub struct View {
+    /// The client used to make external requests.
+    sender: Recipient<ClientRequest>,
     ip: SocketAddr,
     peers: SampleableMap<Id, SocketAddr>,
     peer_list: HashSet<(Id, SocketAddr)>,
@@ -41,8 +45,8 @@ impl std::ops::DerefMut for View {
 }
 
 impl View {
-    pub fn new(ip: SocketAddr) -> Self {
-        Self { ip, peers: SampleableMap::new(), peer_list: HashSet::new() }
+    pub fn new(sender: Recipient<ClientRequest>, ip: SocketAddr) -> Self {
+        Self { sender, ip, peers: SampleableMap::new(), peer_list: HashSet::new() }
     }
 
     pub fn init(&mut self, ips: Vec<SocketAddr>) {
@@ -137,7 +141,7 @@ impl Handler<GetPeers> for View {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "BootstrapResult")]
+#[rtype(result = "Result<BootstrapResult>")]
 pub struct Bootstrap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -146,7 +150,7 @@ pub struct BootstrapResult {
 }
 
 impl Handler<Bootstrap> for View {
-    type Result = ResponseFuture<BootstrapResult>;
+    type Result = ResponseActFuture<Self, Result<BootstrapResult>>;
 
     fn handle(&mut self, _msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
         let ip = self.ip.clone();
@@ -158,16 +162,22 @@ impl Handler<Bootstrap> for View {
                 bootstrap_ips.push(ip.clone());
             }
         }
-        Box::pin(async move {
-            // Fanout requests to the bootstrap ips for version information
-            let v = client::fanout(
-                bootstrap_ips,
-                Request::Version(Version { id, ip }),
-                crate::client::FIXME_UPGRADER.clone(),
-            )
-            .await;
-            BootstrapResult { responses: v }
-        })
+
+        // Fanout requests to the bootstrap seeds
+        let send_to_client = self.sender.send(ClientRequest::Fanout {
+            ips: bootstrap_ips.clone(),
+            request: Request::Version(Version { id, ip }),
+        });
+        // Wrap the future so that subsequent chained handlers can access the actor
+        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
+
+        let handle_response = send_to_client.map(move |result, _actor, ctx| match result {
+            Ok(ClientResponse::Fanout(responses)) => Ok(BootstrapResult { responses }),
+            Ok(_) => Err(Error::InvalidResponse),
+            Err(e) => Err(Error::Actix(e)),
+        });
+
+        Box::pin(handle_response)
     }
 }
 
@@ -239,7 +249,7 @@ impl Handler<SampleOne> for View {
 pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
     let mut i = 3;
     loop {
-        let BootstrapResult { responses } = view.send(Bootstrap {}).await.unwrap();
+        let BootstrapResult { responses } = view.send(Bootstrap {}).await.unwrap().unwrap();
         let lim = responses.len();
         if lim > 0 {
             let Updated { bootstrapped, .. } =
