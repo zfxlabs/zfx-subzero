@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
             match client::oneshot(
                 peer_ip,
                 Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
+                crate::client::FIXME_UPGRADER.clone(),
             )
             .await?
             {
@@ -88,6 +89,7 @@ async fn main() -> Result<()> {
                     match client::oneshot(
                         peer_ip,
                         Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
+                        crate::client::FIXME_UPGRADER.clone(),
                     )
                     .await?
                     {

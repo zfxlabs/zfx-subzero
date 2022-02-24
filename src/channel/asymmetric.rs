@@ -57,7 +57,7 @@ where
 }
 
 pub struct Channel<I, O> {
-    socket: ConnectionStream,
+    socket: Option<ConnectionStream>,
     ghost: std::marker::PhantomData<(I, O)>,
 }
 
@@ -71,11 +71,11 @@ where
     //    }
 
     pub fn wrap(socket: ConnectionStream) -> Result<Channel<I, O>, Error<I, O>> {
-        Ok(Channel { socket, ghost: Default::default() })
+        Ok(Channel { socket: Some(socket), ghost: Default::default() })
     }
 
     pub fn split(&mut self) -> (Sender<I, O>, Receiver<I, O>) {
-        let (reader, writer) = tokio::io::split(self.socket);
+        let (reader, writer) = tokio::io::split(self.socket.take().unwrap());
 
         let reader: FramedRead<ReadHalf<_>, LengthDelimitedCodec> =
             FramedRead::new(reader, LengthDelimitedCodec::new());

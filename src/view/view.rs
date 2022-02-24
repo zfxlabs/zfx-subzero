@@ -160,7 +160,12 @@ impl Handler<Bootstrap> for View {
         }
         Box::pin(async move {
             // Fanout requests to the bootstrap ips for version information
-            let v = client::fanout(bootstrap_ips, Request::Version(Version { id, ip })).await;
+            let v = client::fanout(
+                bootstrap_ips,
+                Request::Version(Version { id, ip }),
+                crate::client::FIXME_UPGRADER.clone(),
+            )
+            .await;
             BootstrapResult { responses: v }
         })
     }

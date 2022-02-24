@@ -82,17 +82,21 @@ async fn query_last_accepted(peers: Vec<SocketAddr>) -> BlockHash {
         // TODO: Sample `k` peers if `peers.len() > k`
 
         // Probe `k` peers for their last accepted block ignoring errors.
-        let v = client::fanout(peers.clone(), Request::GetLastAccepted)
-            .await
-            .iter()
-            .filter_map(|response| {
-                if let Response::LastAccepted(last_accepted) = response {
-                    Some(last_accepted.hash.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<BlockHash>>();
+        let v = client::fanout(
+            peers.clone(),
+            Request::GetLastAccepted,
+            crate::client::FIXME_UPGRADER.clone(),
+        )
+        .await
+        .iter()
+        .filter_map(|response| {
+            if let Response::LastAccepted(last_accepted) = response {
+                Some(last_accepted.hash.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<BlockHash>>();
 
         // If `k * alpha` peers agree to an accepted hash then return the last accepted
         // hash.

@@ -309,7 +309,13 @@ impl Handler<PrintReservoir> for Ice {
 }
 
 pub async fn ping(self_id: Id, ip: SocketAddr, queries: Vec<Query>) -> Result<Ack> {
-    match client::oneshot(ip.clone(), Request::Ping(Ping { id: self_id, queries })).await {
+    match client::oneshot(
+        ip.clone(),
+        Request::Ping(Ping { id: self_id, queries }),
+        crate::client::FIXME_UPGRADER.clone(),
+    )
+    .await
+    {
         // Success -> Ack
         Ok(Some(Response::Ack(ack))) => Ok(ack.clone()),
         // Failure (byzantine)
