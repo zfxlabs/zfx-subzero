@@ -28,6 +28,7 @@ pub enum Error {
     IO(std::io::Error),
     Dalek(ed25519_dalek::ed25519::Error),
     Sled(sled::Error),
+    Actix(actix::MailboxError),
 
     // channel errors
     ChannelError(String),

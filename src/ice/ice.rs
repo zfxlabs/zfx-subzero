@@ -2,7 +2,7 @@ use crate::zfx_id::Id;
 
 use crate::alpha::types::VrfOutput;
 use crate::alpha::{self, Alpha};
-use crate::client;
+use crate::client::Oneshot;
 use crate::colored::Colorize;
 use crate::protocol::{Request, Response};
 use crate::util;
@@ -16,7 +16,8 @@ use super::reservoir::Reservoir;
 
 use tracing::{debug, error, info};
 
-use actix::{Actor, Addr, Context, Handler};
+use actix::{Actor, Addr, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -24,6 +25,8 @@ use std::net::SocketAddr;
 use rand::Rng;
 
 pub struct Ice {
+    /// The client used to make external requests.
+    sender: Recipient<Oneshot>,
     pub id: Id,
     pub ip: SocketAddr,
     reservoir: Reservoir,
@@ -31,8 +34,8 @@ pub struct Ice {
 }
 
 impl Ice {
-    pub fn new(id: Id, ip: SocketAddr, reservoir: Reservoir) -> Self {
-        Ice { id, ip, reservoir, bootstrapped: false }
+    pub fn new(sender: Recipient<Oneshot>, id: Id, ip: SocketAddr, reservoir: Reservoir) -> Self {
+        Ice { sender, id, ip, reservoir, bootstrapped: false }
     }
 }
 
@@ -308,16 +311,41 @@ impl Handler<PrintReservoir> for Ice {
     }
 }
 
-pub async fn ping(self_id: Id, ip: SocketAddr, queries: Vec<Query>) -> Result<Ack> {
-    match client::oneshot(ip.clone(), Request::Ping(Ping { id: self_id, queries })).await {
-        // Success -> Ack
-        Ok(Some(Response::Ack(ack))) => Ok(ack.clone()),
-        // Failure (byzantine)
-        Ok(Some(_)) => Err(Error::Byzantine),
-        // Failure (crash)
-        Ok(None) => Err(Error::Crash),
-        // Failure (crash)
-        Err(err) => Err(Error::Crash),
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Result<Ack>")]
+pub struct DoPing {
+    self_id: Id,
+    ip: SocketAddr,
+    queries: Vec<Query>,
+}
+
+impl Handler<DoPing> for Ice {
+    type Result = ResponseActFuture<Self, Result<Ack>>;
+
+    fn handle(&mut self, msg: DoPing, _ctx: &mut Context<Self>) -> Self::Result {
+        let send_to_client = self.sender.send(Oneshot {
+            ip: msg.ip,
+            request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
+        });
+        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
+        let handle_response = send_to_client.map(move |result, _actor, ctx| {
+            match result {
+                Ok(res) => {
+                    match res {
+                        // Success -> Ack
+                        Ok(Some(Response::Ack(ack))) => Ok(ack.clone()),
+                        // Failure (byzantine)
+                        Ok(Some(_)) => Err(Error::Byzantine),
+                        // Failure (crash)
+                        Ok(None) => Err(Error::Crash),
+                        // Failure (crash)
+                        Err(err) => Err(Error::Crash),
+                    }
+                }
+                Err(e) => Err(Error::Actix(e)),
+            }
+        });
+        Box::pin(handle_response)
     }
 }
 
@@ -373,7 +401,7 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
 
             // Ping the designated peer
-            match ping(self_id, ip.clone(), queries).await {
+            match ice.send(DoPing { self_id, ip: ip.clone(), queries }).await.unwrap() {
                 Ok(ack) => {
                     send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
                         .await
