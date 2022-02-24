@@ -30,6 +30,9 @@ pub enum Error {
     Sled(sled::Error),
     Actix(actix::MailboxError),
 
+    // client errors
+    InvalidResponse,
+
     // channel errors
     ChannelError(String),
     JoinError,
