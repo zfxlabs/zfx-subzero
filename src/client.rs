@@ -35,36 +35,40 @@ impl Actor for Client {
     }
 }
 
-/// Sends a single request and waits for a response.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Result<Option<Response>>")]
-pub struct Oneshot {
-    pub ip: SocketAddr,
-    pub request: Request,
+#[rtype(result = "ClientNetworkResponse")]
+pub enum ClientNetworkRequest {
+    /// Sends a single request and waits for a response.
+    Oneshot {
+        ip: SocketAddr,
+        request: Request,
+    },
+    Fanout {
+        ips: Vec<SocketAddr>,
+        request: Request,
+    },
 }
 
-impl Handler<Oneshot> for Client {
-    type Result = ResponseFuture<Result<Option<Response>>>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ClientNetworkResponse {
+    Oneshot(Option<Response>),
+    Fanout(Vec<Response>),
+}
 
-    fn handle(&mut self, msg: Oneshot, _ctx: &mut Context<Self>) -> Self::Result {
+impl Handler<ClientNetworkRequest> for Client {
+    type Result = ResponseFuture<ClientNetworkResponse>;
+
+    fn handle(&mut self, msg: ClientNetworkRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let upgrader = self.upgrader.clone();
-        Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone(), upgrader).await })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Vec<Response>")]
-pub struct Fanout {
-    pub ips: Vec<SocketAddr>,
-    pub request: Request,
-}
-
-impl Handler<Fanout> for Client {
-    type Result = ResponseFuture<Vec<Response>>;
-
-    fn handle(&mut self, msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
-        let upgrader = self.upgrader.clone();
-        Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone(), upgrader).await })
+        match msg {
+            ClientNetworkRequest::Oneshot { ip, request } => Box::pin(async move {
+                let response = oneshot(ip.clone(), request.clone(), upgrader).await;
+                ClientNetworkResponse::Oneshot(err_to_none(response))
+            }),
+            ClientNetworkRequest::Fanout { ips, request } => Box::pin(async move {
+                ClientNetworkResponse::Fanout(fanout(ips.clone(), request.clone(), upgrader).await)
+            }),
+        }
     }
 }
 
@@ -99,22 +103,8 @@ pub async fn fanout(
     for ip in ips.iter().cloned() {
         let request = request.clone();
         let upgrader = upgrader.clone();
-        let client_fut = tokio::spawn(async move {
-            match oneshot(ip, request.clone(), upgrader).await {
-                Ok(result) => result,
-                // NOTE: The error here is logged and `None` is returned
-                Err(err) => match err {
-                    Error::ChannelError(s) => {
-                        debug!("{}", s);
-                        None
-                    }
-                    err => {
-                        debug!("{:?}", err);
-                        None
-                    }
-                },
-            }
-        });
+        let client_fut =
+            tokio::spawn(async move { err_to_none(oneshot(ip, request.clone(), upgrader).await) });
         client_futs.push(client_fut)
     }
     // join the futures and collect the responses
@@ -134,4 +124,23 @@ pub async fn fanout(
             responses
         })
         .await
+}
+
+/// Helper function to simplify the return value of the `oneshot` function
+#[inline]
+fn err_to_none<T>(x: Result<Option<T>>) -> Option<T> {
+    match x {
+        Ok(result) => result,
+        // NOTE: The error here is logged and `None` is returned
+        Err(err) => match err {
+            Error::ChannelError(s) => {
+                debug!("{}", s);
+                None
+            }
+            err => {
+                debug!("{:?}", err);
+                None
+            }
+        },
+    }
 }

@@ -112,6 +112,10 @@ fn mock_validator_id() -> Id {
     Id::one()
 }
 
+fn mock_ip() -> SocketAddr {
+    "0.0.0.0:1".parse().unwrap()
+}
+
 async fn sleep_ms(m: u64) {
     tokio::time::sleep(std::time::Duration::from_millis(m)).await;
 }
@@ -120,7 +124,7 @@ fn make_live_committee(cells: Vec<Cell>) -> LiveCommittee {
     let mut validators = HashMap::new();
 
     // We have one overweight validator for tests
-    validators.insert(mock_validator_id(), ("0.0.0.0:1".parse().unwrap(), 0.7));
+    validators.insert(mock_validator_id(), (mock_ip(), 0.7));
     let mut live_cells = HashMap::new();
     for c in cells {
         live_cells.insert(c.hash(), c.clone());
@@ -129,13 +133,16 @@ fn make_live_committee(cells: Vec<Cell>) -> LiveCommittee {
 }
 
 struct DummyClient {
+    // For responding to `QueryTx`
     pub responses: Vec<(Id, bool)>,
+    // For answering `GetAncestors` messages
+    pub ancestors: Vec<Tx>,
 }
 
 // Client substitute for answering `QueryTx` queries
 impl DummyClient {
     pub fn new() -> Self {
-        Self { responses: vec![] }
+        Self { responses: vec![], ancestors: vec![] }
     }
 }
 impl Actor for DummyClient {
@@ -164,30 +171,65 @@ async fn set_validator_response(client: Addr<DummyClient>, response: bool) {
     client.send(SetResponses { responses: vec![(mock_validator_id(), response)] }).await.unwrap();
 }
 
-impl Handler<Fanout> for DummyClient {
-    type Result = ResponseFuture<Vec<Response>>;
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+struct SetAncestors {
+    pub ancestors: Vec<Tx>,
+}
+impl Handler<SetAncestors> for DummyClient {
+    type Result = ();
 
     fn handle(
         &mut self,
-        Fanout { ips: _, request }: Fanout,
+        SetAncestors { ancestors }: SetAncestors,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
+        self.ancestors = ancestors;
+    }
+}
+async fn set_ancestors(client: Addr<DummyClient>, ancestors: Vec<Tx>) {
+    client.send(SetAncestors { ancestors }).await.unwrap();
+}
+
+impl Handler<ClientNetworkRequest> for DummyClient {
+    type Result = ResponseFuture<ClientNetworkResponse>;
+
+    fn handle(&mut self, msg: ClientNetworkRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let responses = self.responses.clone();
-        Box::pin(async move {
-            match request {
-                Request::QueryTx(QueryTx { tx }) => responses
-                    .iter()
-                    .map(|(id, outcome)| {
-                        Response::QueryTxAck(QueryTxAck {
-                            id: id.clone(),
-                            tx_hash: tx.hash(),
-                            outcome: outcome.clone(),
-                        })
-                    })
-                    .collect(),
-                r => panic!("unexpected request: {:?}", r),
+        match msg {
+            ClientNetworkRequest::Fanout { ips: _, request } => {
+                let responses = self.responses.clone();
+                Box::pin(async move {
+                    let r = match request {
+                        Request::QueryTx(QueryTx { tx, .. }) => responses
+                            .iter()
+                            .map(|(id, outcome)| {
+                                Response::QueryTxAck(QueryTxAck {
+                                    id: id.clone(),
+                                    tx_hash: tx.hash(),
+                                    outcome: outcome.clone(),
+                                })
+                            })
+                            .collect(),
+                        x => panic!("unexpected request: {:?}", x),
+                    };
+                    ClientNetworkResponse::Fanout(r)
+                })
             }
-        })
+            ClientNetworkRequest::Oneshot { ip: _, request } => {
+                let ancestors = self.ancestors.clone();
+                Box::pin(async move {
+                    let r = match request {
+                        Request::GetTxAncestors(GetTxAncestors { .. }) => {
+                            println!("GetAncestors");
+                            Response::TxAncestors(TxAncestors { ancestors })
+                        }
+                        x => panic!("unexpected request: {:?}", x),
+                    };
+                    ClientNetworkResponse::Oneshot(Some(r))
+                })
+            } // ClientNetworkRequest::Oneshot { ip: _, request: _ } => panic!("unexpected message"),
+        }
     }
 }
 
@@ -236,7 +278,8 @@ async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Ke
     let hail_mock = HailMock::new();
     let receiver = hail_mock.start();
 
-    let sleet = Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero());
+    let sleet =
+        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero(), mock_ip());
     let sleet_addr = sleet.start();
 
     let mut csprng = OsRng {};
@@ -256,7 +299,8 @@ async fn start_test_env_with_two_sleet_actors(
 
     let (sleet_addr, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
-    let sleet2 = Sleet::new(client.clone().recipient(), hail.clone().recipient(), Id::one());
+    let sleet2 =
+        Sleet::new(client.clone().recipient(), hail.clone().recipient(), Id::one(), mock_ip());
     let sleet_addr2 = sleet2.start();
 
     let live_committee = make_live_committee(vec![genesis_tx.clone()]);
@@ -532,7 +576,8 @@ async fn test_sleet_tx_no_parents() {
 
     // Query at sleet2 and wait till it times out
     let now = Instant::now();
-    let QueryTxAck { outcome, .. } = sleet2.send(QueryTx { tx }).await.unwrap();
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx }).await.unwrap();
     assert!(!outcome);
     let elapsed = now.elapsed().as_millis();
     assert!(elapsed >= QUERY_RESPONSE_TIMEOUT_MS as u128);
@@ -558,13 +603,15 @@ async fn test_sleet_tx_late_parents() {
     let (tx, rx) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx2 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
         assert!(outcome);
         let _ = tx.send(outcome);
     });
 
     sleep_ms(1000).await;
-    let QueryTxAck { outcome, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
     assert!(outcome);
     assert!(rx.await.unwrap());
 }
@@ -593,7 +640,8 @@ async fn test_sleet_tx_two_late_parents() {
     let (tx, rx3) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx3 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
         assert!(outcome);
         let _ = tx.send(outcome);
     });
@@ -601,13 +649,15 @@ async fn test_sleet_tx_two_late_parents() {
     let (tx, rx2) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx2 }).await.unwrap();
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
         assert!(outcome);
         let _ = tx.send(outcome);
     });
 
     sleep_ms(1000).await;
-    let QueryTxAck { outcome: outcome1, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
+    let QueryTxAck { outcome: outcome1, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx3 }).await.unwrap();
     assert!(outcome1);
     assert!(rx3.await.unwrap());
     assert!(rx2.await.unwrap());
@@ -634,20 +684,71 @@ async fn test_sleet_tx_missing_parent() {
     assert!(tx2.parents.contains(&tx1.hash()));
     assert!(tx3.parents.contains(&tx2.hash()));
 
-    let (tx, rx3) = oneshot::channel();
+    let (tx, rx1) = oneshot::channel();
     let sleet_clone = sleet2.clone();
     tokio::spawn(async move {
-        let QueryTxAck { outcome, .. } = sleet_clone.send(QueryTx { tx: tx3 }).await.unwrap();
-        assert!(!outcome);
+        let QueryTxAck { outcome, .. } =
+            sleet_clone.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
+        assert!(outcome);
         let _ = tx.send(outcome);
     });
 
     // `tx2` will be missing, this causes the query for `tx3` to time out
 
     sleep_ms(1000).await;
-    let QueryTxAck { outcome: outcome1, .. } = sleet2.send(QueryTx { tx: tx1 }).await.unwrap();
-    assert!(outcome1);
-    assert!(!rx3.await.unwrap());
+    let QueryTxAck { outcome: outcome3, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx3 }).await.unwrap();
+    assert!(!outcome3);
+    assert!(rx1.await.unwrap());
+}
+
+#[actix_rt::test]
+async fn test_sleet_get_single_ancestor() {
+    let (sleet1, sleet2, client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+
+    set_ancestors(client, vec![tx1.clone()]).await;
+
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
+    assert!(outcome);
+}
+
+#[actix_rt::test]
+async fn test_sleet_get_wrong_ancestor() {
+    let (sleet1, sleet2, client, hail, root_kp, genesis_tx) =
+        start_test_env_with_two_sleet_actors().await;
+    let mut cell = genesis_tx.clone();
+
+    let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 2);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    // Get tx from `sleet1`, and check if `cell1` is a parent
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    assert!(tx2.parents.contains(&tx1.hash()));
+
+    // Answer with the same tx, not the expected ancestry
+    set_ancestors(client, vec![tx2.clone()]).await;
+
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
+    assert!(!outcome);
 }
 
 #[actix_rt::test]
@@ -662,7 +763,7 @@ async fn test_strongly_preferred() {
 
     let genesis_tx = generate_coinbase(&root_kp, 1000);
     let genesis_cell_ids = CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
-    let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero());
+    let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero(), mock_ip());
     sleet.conflict_graph = ConflictGraph::new(genesis_cell_ids);
 
     // Generate a genesis set of coins

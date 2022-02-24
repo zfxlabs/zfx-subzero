@@ -4,7 +4,7 @@ use crate::zfx_id::Id;
 use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
-use crate::client::Fanout;
+use crate::client::{ClientNetworkRequest, ClientNetworkResponse};
 use crate::graph::conflict_graph::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
@@ -17,6 +17,7 @@ use super::{Error, Result};
 
 use tracing::{debug, error, info};
 
+use actix::WrapFuture;
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
 use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
@@ -44,11 +45,12 @@ const QUERY_RESPONSE_TIMEOUT_MS: u64 = 5000;
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
 pub struct Sleet {
     /// The client used to make external requests.
-    sender: Recipient<Fanout>,
+    sender: Recipient<ClientNetworkRequest>,
     /// Connection to Hail
     hail_recipient: Recipient<AcceptedCells>,
     /// The identity of this validator.
     node_id: Id,
+    node_ip: SocketAddr,
     /// The weighted validator set.
     committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions in storage.
@@ -73,14 +75,16 @@ pub struct Sleet {
 impl Sleet {
     // Initialisation - FIXME: Temporary databases
     pub fn new(
-        sender: Recipient<Fanout>,
+        sender: Recipient<ClientNetworkRequest>,
         hail_recipient: Recipient<AcceptedCells>,
         node_id: Id,
+        node_ip: SocketAddr,
     ) -> Self {
         Sleet {
             sender,
             hail_recipient,
             node_id,
+            node_ip,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
             queried_txs: sled::Config::new().temporary(true).open().unwrap(),
@@ -475,9 +479,13 @@ impl Handler<FreshTx> for Sleet {
         }
 
         // Fanout queries to sampled validators
-        let send_to_client = self.sender.send(Fanout {
+        let send_to_client = self.sender.send(ClientNetworkRequest::Fanout {
             ips: validator_ips.clone(),
-            request: Request::QueryTx(QueryTx { tx: msg.tx.clone() }),
+            request: Request::QueryTx(QueryTx {
+                id: self.node_id.clone(),
+                ip: self.node_ip.clone(),
+                tx: msg.tx.clone(),
+            }),
         });
 
         // Wrap the future so that subsequent chained handlers can access te actor.
@@ -485,7 +493,7 @@ impl Handler<FreshTx> for Sleet {
 
         let update_self = send_to_client.map(move |result, _actor, ctx| {
             match result {
-                Ok(acks) => {
+                Ok(ClientNetworkResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
                     if acks.len() == validator_ips.len() {
@@ -494,6 +502,7 @@ impl Handler<FreshTx> for Sleet {
                         Ok(ctx.notify(QueryIncomplete { tx: msg.tx.clone(), acks }))
                     }
                 }
+                Ok(ClientNetworkResponse::Oneshot(_)) => panic!("unexpected response"),
                 Err(e) => Err(Error::Actix(e)),
             }
         });
@@ -573,6 +582,10 @@ impl Handler<GenerateTx> for Sleet {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
 pub struct QueryTx {
+    /// The node's own ID
+    pub id: Id,
+    /// The node's own listening address, for sending queries back (`GetAncestors` in particular)
+    pub ip: SocketAddr,
     pub tx: Tx,
 }
 
@@ -618,7 +631,9 @@ impl Handler<QueryTx> for Sleet {
                     msg.tx
                 );
                 let (sender, receiver) = oneshot::channel();
-                self.pending_queries.push((msg.tx, sender));
+                self.pending_queries.push((msg.tx.clone(), sender));
+                // Ask the querying node to send us the ancestors of the queried transaction
+                ctx.notify(AskForAncestors { tx_hash: msg.tx.hash(), ip: msg.ip });
                 Box::pin(async move {
                     let timeout = time::sleep(Duration::from_millis(QUERY_RESPONSE_TIMEOUT_MS));
                     tokio::select! {
@@ -693,6 +708,95 @@ impl Handler<CheckPending> for Sleet {
         }
         remaining.reverse();
         self.pending_queries = remaining;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct AskForAncestors {
+    pub tx_hash: TxHash,
+    pub ip: SocketAddr,
+}
+
+impl Handler<AskForAncestors> for Sleet {
+    type Result = ResponseActFuture<Self, ()>;
+
+    fn handle(
+        &mut self,
+        AskForAncestors { tx_hash, ip }: AskForAncestors,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        self.sender
+            .send(ClientNetworkRequest::Oneshot {
+                ip,
+                request: Request::GetTxAncestors(GetTxAncestors { tx_hash }),
+            })
+            .into_actor(self)
+            .map(|res, act, ctx| match res {
+                Ok(ClientNetworkResponse::Oneshot(Some(Response::TxAncestors(TxAncestors {
+                    ancestors,
+                })))) => {
+                    for ancestor in ancestors {
+                        match act.on_receive_tx(ancestor.clone()) {
+                            Ok(is_new) => {
+                                if is_new {
+                                    // Start querying
+                                    ctx.notify(FreshTx { tx: ancestor });
+                                };
+                            }
+                            Err(Error::MissingAncestry) => {
+                                // TODO check if this can happen here
+                                info!(
+                                    "[{}] Couldn't insert transaction (missing ancestry): {}",
+                                    "sleet".cyan(),
+                                    ancestor
+                                );
+                            }
+                            Err(e) => {
+                                error!(
+                                    "[{}] Couldn't insert new transaction\n{}:\n {}",
+                                    "sleet".cyan(),
+                                    ancestor,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    // Check if there are pending transactions whose ancestry just arrived
+                    ctx.notify(CheckPending);
+                }
+                other => error!("[{}] Unexpected response {:?}", "sleet".cyan(), other),
+            })
+            .boxed_local()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "TxAncestors")]
+pub struct GetTxAncestors {
+    tx_hash: TxHash,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct TxAncestors {
+    pub ancestors: Vec<Tx>,
+}
+
+impl Handler<GetTxAncestors> for Sleet {
+    type Result = TxAncestors;
+
+    fn handle(
+        &mut self,
+        GetTxAncestors { tx_hash }: GetTxAncestors,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        let mut ancestors = vec![];
+        let tx_hashes = self.dag.get_ancestors(&tx_hash);
+        for hash in tx_hashes {
+            let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
+            ancestors.push(tx);
+        }
+        TxAncestors { ancestors }
     }
 }
 
