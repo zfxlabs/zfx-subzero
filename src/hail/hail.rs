@@ -5,7 +5,7 @@ use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
 use crate::alpha::AcceptedBlock;
 use crate::cell::Cell;
-use crate::client::{ClientNetworkRequest, ClientNetworkResponse};
+use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::graph::DAG;
 use crate::protocol::{Request, Response};
@@ -40,7 +40,7 @@ pub struct Hail {
     /// The current block height.
     height: BlockHeight,
     /// The client used to make external requests.
-    sender: Recipient<ClientNetworkRequest>,
+    sender: Recipient<ClientRequest>,
     /// The identity of this validator.
     node_id: Id,
     /// The current block committee.
@@ -62,7 +62,7 @@ pub struct Hail {
 impl Hail {
     /// Hail is initialised with the most recent `frontier`, which is the last set of
     /// blocks yet to become final.
-    pub fn new(sender: Recipient<ClientNetworkRequest>, node_id: Id) -> Self {
+    pub fn new(sender: Recipient<ClientRequest>, node_id: Id) -> Self {
         Hail {
             last_accepted_hash: None,
             height: 0,
@@ -432,7 +432,7 @@ impl Handler<FreshBlock> for Hail {
         }
 
         // Fanout queries to sampled validators
-        let send_to_client = self.sender.send(ClientNetworkRequest::Fanout {
+        let send_to_client = self.sender.send(ClientRequest::Fanout {
             ips: validator_ips.clone(),
             request: Request::QueryBlock(QueryBlock {
                 id: self.node_id.clone(),
@@ -445,7 +445,7 @@ impl Handler<FreshBlock> for Hail {
 
         let update_self = send_to_client.map(move |result, actor, ctx| {
             match result {
-                Ok(ClientNetworkResponse::Fanout(acks)) => {
+                Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
                     if acks.len() == validator_ips.len() {
@@ -454,7 +454,7 @@ impl Handler<FreshBlock> for Hail {
                         Ok(ctx.notify(QueryIncomplete { block: msg.block.clone(), acks }))
                     }
                 }
-                Ok(ClientNetworkResponse::Oneshot(_)) => panic!("unexpected response"),
+                Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
                 // FIXME
                 Err(_) => Err(Error::ActixMailboxError),
             }

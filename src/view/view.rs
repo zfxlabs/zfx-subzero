@@ -1,6 +1,6 @@
 use super::sampleable_map::SampleableMap;
 
-use crate::client::Fanout;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::ice::{self, Ice};
 use crate::protocol::{Request, Response};
@@ -24,7 +24,7 @@ const BOOTSTRAP_QUORUM: usize = 2;
 #[derive(Debug)]
 pub struct View {
     /// The client used to make external requests.
-    sender: Recipient<Fanout>,
+    sender: Recipient<ClientRequest>,
     ip: SocketAddr,
     peers: SampleableMap<Id, SocketAddr>,
     peer_list: HashSet<(Id, SocketAddr)>,
@@ -45,7 +45,7 @@ impl std::ops::DerefMut for View {
 }
 
 impl View {
-    pub fn new(sender: Recipient<Fanout>, ip: SocketAddr) -> Self {
+    pub fn new(sender: Recipient<ClientRequest>, ip: SocketAddr) -> Self {
         Self { sender, ip, peers: SampleableMap::new(), peer_list: HashSet::new() }
     }
 
@@ -164,7 +164,7 @@ impl Handler<Bootstrap> for View {
         }
 
         // Fanout requests to the bootstrap seeds
-        let send_to_client = self.sender.send(Fanout {
+        let send_to_client = self.sender.send(ClientRequest::Fanout {
             ips: bootstrap_ips.clone(),
             request: Request::Version(Version { id, ip }),
         });
@@ -172,7 +172,8 @@ impl Handler<Bootstrap> for View {
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
         let handle_response = send_to_client.map(move |result, _actor, ctx| match result {
-            Ok(responses) => Ok(BootstrapResult { responses }),
+            Ok(ClientResponse::Fanout(responses)) => Ok(BootstrapResult { responses }),
+            Ok(_) => Err(Error::InvalidResponse),
             Err(e) => Err(Error::Actix(e)),
         });
 

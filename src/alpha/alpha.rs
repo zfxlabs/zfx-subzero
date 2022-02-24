@@ -2,8 +2,7 @@ use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
 
-use crate::client;
-use crate::client::Fanout;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::hail::block::HailBlock;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
@@ -17,10 +16,9 @@ use super::state::State;
 use super::types::{BlockHash, VrfOutput};
 use super::{Error, Result};
 
-use tracing::{debug, info};
-
 use actix::{Actor, Addr, Arbiter, AsyncContext, Context, Handler, Recipient};
 use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use tracing::{debug, info};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -28,7 +26,7 @@ use std::path::Path;
 
 pub struct Alpha {
     /// The client used to make external requests.
-    sender: Recipient<Fanout>,
+    sender: Recipient<ClientRequest>,
     /// The id of the node.
     node_id: Id,
     /// The database root.
@@ -45,7 +43,7 @@ pub struct Alpha {
 
 impl Alpha {
     pub fn create(
-        sender: Recipient<Fanout>,
+        sender: Recipient<ClientRequest>,
         node_id: Id,
         path: &Path,
         ice: Addr<Ice>,
@@ -92,13 +90,14 @@ impl Handler<QueryLastAccepted> for Alpha {
         // Read the last accepted final block (or genesis)
         let (last_hash, last_block) = block::get_last_accepted(&self.tree).unwrap();
 
-        let send_to_client =
-            self.sender.send(Fanout { ips: msg.peers, request: Request::GetLastAccepted });
+        let send_to_client = self
+            .sender
+            .send(ClientRequest::Fanout { ips: msg.peers, request: Request::GetLastAccepted });
         // Probe `k` peers for their last accepted block ignoring errors.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
         let handle_response = send_to_client.map(move |result, _actor, ctx| {
             match result {
-                Ok(responses) => {
+                Ok(ClientResponse::Fanout(responses)) => {
                     let v = responses
                         .iter()
                         .filter_map(|response| {
@@ -130,6 +129,8 @@ impl Handler<QueryLastAccepted> for Alpha {
                         }
                     }
                 }
+                // TODO: handle error
+                Ok(ClientResponse::Oneshot(_)) => (),
                 // TODO: handle error
                 Err(_) => (),
             }

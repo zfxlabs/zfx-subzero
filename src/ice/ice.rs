@@ -2,7 +2,7 @@ use crate::zfx_id::Id;
 
 use crate::alpha::types::VrfOutput;
 use crate::alpha::{self, Alpha};
-use crate::client::Oneshot;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::protocol::{Request, Response};
 use crate::util;
@@ -26,7 +26,7 @@ use rand::Rng;
 
 pub struct Ice {
     /// The client used to make external requests.
-    sender: Recipient<Oneshot>,
+    sender: Recipient<ClientRequest>,
     pub id: Id,
     pub ip: SocketAddr,
     reservoir: Reservoir,
@@ -34,7 +34,12 @@ pub struct Ice {
 }
 
 impl Ice {
-    pub fn new(sender: Recipient<Oneshot>, id: Id, ip: SocketAddr, reservoir: Reservoir) -> Self {
+    pub fn new(
+        sender: Recipient<ClientRequest>,
+        id: Id,
+        ip: SocketAddr,
+        reservoir: Reservoir,
+    ) -> Self {
         Ice { sender, id, ip, reservoir, bootstrapped: false }
     }
 }
@@ -323,25 +328,24 @@ impl Handler<DoPing> for Ice {
     type Result = ResponseActFuture<Self, Result<Ack>>;
 
     fn handle(&mut self, msg: DoPing, _ctx: &mut Context<Self>) -> Self::Result {
-        let send_to_client = self.sender.send(Oneshot {
+        let send_to_client = self.sender.send(ClientRequest::Oneshot {
             ip: msg.ip,
             request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
         });
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
         let handle_response = send_to_client.map(move |result, _actor, ctx| {
             match result {
-                Ok(res) => {
+                Ok(ClientResponse::Oneshot(res)) => {
                     match res {
                         // Success -> Ack
-                        Ok(Some(Response::Ack(ack))) => Ok(ack.clone()),
+                        Some(Response::Ack(ack)) => Ok(ack.clone()),
                         // Failure (byzantine)
-                        Ok(Some(_)) => Err(Error::Byzantine),
+                        Some(_) => Err(Error::Byzantine),
                         // Failure (crash)
-                        Ok(None) => Err(Error::Crash),
-                        // Failure (crash)
-                        Err(err) => Err(Error::Crash),
+                        None => Err(Error::Crash),
                     }
                 }
+                Ok(_) => Err(Error::InvalidResponse),
                 Err(e) => Err(Error::Actix(e)),
             }
         });

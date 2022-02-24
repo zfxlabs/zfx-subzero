@@ -191,13 +191,13 @@ async fn set_ancestors(client: Addr<DummyClient>, ancestors: Vec<Tx>) {
     client.send(SetAncestors { ancestors }).await.unwrap();
 }
 
-impl Handler<ClientNetworkRequest> for DummyClient {
-    type Result = ResponseFuture<ClientNetworkResponse>;
+impl Handler<ClientRequest> for DummyClient {
+    type Result = ResponseFuture<ClientResponse>;
 
-    fn handle(&mut self, msg: ClientNetworkRequest, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: ClientRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let responses = self.responses.clone();
         match msg {
-            ClientNetworkRequest::Fanout { ips: _, request } => {
+            ClientRequest::Fanout { ips: _, request } => {
                 let responses = self.responses.clone();
                 Box::pin(async move {
                     let r = match request {
@@ -213,10 +213,10 @@ impl Handler<ClientNetworkRequest> for DummyClient {
                             .collect(),
                         x => panic!("unexpected request: {:?}", x),
                     };
-                    ClientNetworkResponse::Fanout(r)
+                    ClientResponse::Fanout(r)
                 })
             }
-            ClientNetworkRequest::Oneshot { ip: _, request } => {
+            ClientRequest::Oneshot { ip: _, request } => {
                 let ancestors = self.ancestors.clone();
                 Box::pin(async move {
                     let r = match request {
@@ -226,9 +226,9 @@ impl Handler<ClientNetworkRequest> for DummyClient {
                         }
                         x => panic!("unexpected request: {:?}", x),
                     };
-                    ClientNetworkResponse::Oneshot(Some(r))
+                    ClientResponse::Oneshot(Some(r))
                 })
-            } // ClientNetworkRequest::Oneshot { ip: _, request: _ } => panic!("unexpected message"),
+            } // ClientRequest::Oneshot { ip: _, request: _ } => panic!("unexpected message"),
         }
     }
 }
