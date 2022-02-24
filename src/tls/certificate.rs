@@ -22,6 +22,14 @@ pub fn get_node_cert(cert_file: &Path, priv_key_file: &Path) -> Result<(Vec<u8>,
         let (cert, priv_key) = generate_node_cert()?;
         let pem_cert = der_to_pem(&cert, "CERTIFICATE");
         let pem_key = der_to_pem(&priv_key, "PRIVATE KEY");
+        if let Some(cert_path) = cert_file.parent() {
+            fs::create_dir_all(cert_path)
+                .expect(&format!("Couldn't create directory: {:?}", &cert_path));
+        };
+        if let Some(pk_path) = priv_key_file.parent() {
+            fs::create_dir_all(pk_path)
+                .expect(&format!("Couldn't create directory: {:?}", &pk_path));
+        };
         fs::write(cert_file, &pem_cert)?;
         fs::write(priv_key_file, &pem_key)?;
         Ok((cert, priv_key))
