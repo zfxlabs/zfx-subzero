@@ -11,12 +11,6 @@ use futures::FutureExt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    pub static ref FIXME_UPGRADER: Arc<dyn Upgrader> = TcpUpgrader::new();
-}
-
 pub struct Client {
     upgrader: Arc<dyn Upgrader>,
 }
