@@ -19,7 +19,12 @@ use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
 
-pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>, use_tls: bool) -> Result<()> {
+pub fn run(
+    ip: String,
+    bootstrap_ips: Vec<String>,
+    keypair: Option<String>,
+    use_tls: bool,
+) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
     let node_id = Id::from_ip(&listener_ip);
     let node_id_str = hex::encode(node_id.as_bytes());
@@ -42,11 +47,8 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>, use_
         bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
 
     // This is temporary until we have TLS setup
-    let upgraders = if use_tls {
-        tls::upgrader::tcp_upgraders()
-    } else {
-        tls::upgrader::tcp_upgraders()
-    };
+    let upgraders =
+        if use_tls { tls::upgrader::tcp_upgraders() } else { tls::upgrader::tcp_upgraders() };
     let execution = async move {
         // Create the 'client' actor
         let client = Client::new(upgraders.client.clone());
