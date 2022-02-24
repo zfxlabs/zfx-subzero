@@ -43,10 +43,11 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("use-tls")
-            .short("tls")
-            .long("use-tls")
-            .required(false)
-            .takes_value(false))   
+                .short("tls")
+                .long("use-tls")
+                .required(false)
+                .takes_value(false),
+        )
         .get_matches();
 
     let listener_ip =
@@ -58,7 +59,6 @@ fn main() -> Result<()> {
         _ => None,
     };
     let use_tls = matches.is_present("use-tls");
-    
 
     let sys = actix::System::new();
     sys.block_on(async move {
