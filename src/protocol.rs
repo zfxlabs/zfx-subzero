@@ -18,8 +18,10 @@ pub enum Request {
     GetAncestors,
     // State
     GetCellHashes,
+    GetAcceptedCellHashes,
     // Sleet
     GetCell(sleet::GetCell),
+    GetAcceptedCell(sleet::sleet_cell_handlers::GetAcceptedCell),
     GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     GetTxAncestors(sleet::GetTxAncestors),
@@ -40,8 +42,10 @@ pub enum Response {
     LastAccepted(alpha::LastAccepted),
     Ancestors,
     CellHashes(sleet::CellHashes),
+    AcceptedCellHashes(sleet::sleet_cell_handlers::AcceptedCellHashes),
     // Sleet
     CellAck(sleet::CellAck),
+    AcceptedCellAck(sleet::sleet_cell_handlers::AcceptedCellAck),
     GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     TxAncestors(sleet::TxAncestors),

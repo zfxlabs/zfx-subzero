@@ -77,6 +77,19 @@ impl Handler<Request> for Router {
                     let cell_ack = sleet.send(get_cell).await.unwrap();
                     Response::CellAck(cell_ack)
                 }
+                Request::GetAcceptedCellHashes => {
+                    debug!("routing GetAcceptedCellHashes -> Sleet");
+                    let cell_hashes = sleet
+                        .send(sleet::sleet_cell_handlers::GetAcceptedCellHashes)
+                        .await
+                        .unwrap();
+                    Response::AcceptedCellHashes(cell_hashes)
+                }
+                Request::GetAcceptedCell(get_cell) => {
+                    debug!("routing GetAcceptedCell -> Sleet");
+                    let cell_ack = sleet.send(get_cell).await.unwrap();
+                    Response::AcceptedCellAck(cell_ack)
+                }
                 Request::GenerateTx(generate_tx) => {
                     debug!("routing GenerateTx -> Sleet");
                     let receive_tx_ack = sleet.send(generate_tx).await.unwrap();
