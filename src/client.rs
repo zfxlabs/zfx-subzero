@@ -22,8 +22,8 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new() -> Client {
-        Client { upgrader: TcpUpgrader::new() }
+    pub fn new(upgrader: Arc<dyn Upgrader>) -> Client {
+        Client { upgrader }
     }
 }
 

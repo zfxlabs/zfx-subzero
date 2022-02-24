@@ -14,6 +14,7 @@ use crate::hail::Hail;
 use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server};
 use crate::sleet::Sleet;
+use crate::tls;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
@@ -40,9 +41,11 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
     let converted_bootstrap_ips =
         bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
 
+    // This is temporary until we have TLS setup
+    let upgraders = tls::upgrader::tcp_upgraders();
     let execution = async move {
         // Create the 'client' actor
-        let client = Client::new();
+        let client = Client::new(upgraders.client.clone());
         let client_addr = client.start();
 
         // Initialise a view with the bootstrap ips and start its actor
@@ -104,7 +107,7 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
             let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
             let router_addr = router.start();
             // Setup the server
-            let server = Server::new(listener_ip, router_addr);
+            let server = Server::new(listener_ip, router_addr, upgraders.server.clone());
             // Listen for incoming connections
             server.listen().await.unwrap()
         };

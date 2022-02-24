@@ -23,8 +23,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(ip: SocketAddr, router: Addr<Router>) -> Server {
-        Server { ip, router, upgrader: TcpUpgrader::new() }
+    pub fn new(ip: SocketAddr, router: Addr<Router>, upgrader: Arc<dyn Upgrader>) -> Server {
+        Server { ip, router, upgrader }
     }
 
     // Starts an actix server that listens for incoming connections.
