@@ -3,10 +3,12 @@ use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
+use zfx_subzero::tls;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::time::Duration;
 
 use tokio;
@@ -44,6 +46,7 @@ async fn main() -> Result<()> {
                 .value_name("CELL_HASH")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("use-tls").long("use-tls").required(false))
         .arg(Arg::with_name("loop").short("l").long("loop").value_name("N").takes_value(true))
         .get_matches();
 
@@ -54,6 +57,17 @@ async fn main() -> Result<()> {
     // The root `cell-hash` to spend
     let cell_hash = value_t!(matches.value_of("cell-hash"), String).unwrap_or_else(|e| e.exit());
     let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
+    let use_tls = matches.is_present("use-tls");
+
+    // TCP/TLS setup
+    let upgrader = if use_tls {
+        let (cert, key) =
+            tls::certificate::get_node_cert(Path::new("test.crt"), Path::new("test.key")).unwrap();
+        let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
+        upgraders.client
+    } else {
+        tls::upgrader::TcpUpgrader::new()
+    };
 
     // Reconstruct the keypair
     let keypair_bytes = hex::decode(keypair).unwrap();
@@ -72,7 +86,7 @@ async fn main() -> Result<()> {
             match client::oneshot(
                 peer_ip,
                 Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
-                crate::client::FIXME_UPGRADER.clone(),
+                upgrader.clone(),
             )
             .await?
             {
@@ -89,7 +103,7 @@ async fn main() -> Result<()> {
                     match client::oneshot(
                         peer_ip,
                         Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
-                        crate::client::FIXME_UPGRADER.clone(),
+                        upgrader.clone(),
                     )
                     .await?
                     {
