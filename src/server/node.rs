@@ -41,19 +41,19 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
         bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
 
     let execution = async move {
+        // Create the 'client' actor
+        let client = Client::new();
+        let client_addr = client.start();
+
         // Initialise a view with the bootstrap ips and start its actor
-        let mut view = View::new(listener_ip);
+        let mut view = View::new(client_addr.clone().recipient(), listener_ip);
         view.init(converted_bootstrap_ips);
         let view_addr = view.start();
 
         // Create the `ice` actor
         let reservoir = Reservoir::new();
-        let ice = Ice::new(node_id, listener_ip, reservoir);
+        let ice = Ice::new(client_addr.clone().recipient(), node_id, listener_ip, reservoir);
         let ice_addr = ice.start();
-
-        // Create the 'client' actor
-        let client = Client::new();
-        let client_addr = client.start();
 
         // Create the `hail` actor
         let hail = Hail::new(client_addr.clone().recipient(), node_id);
@@ -72,6 +72,8 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
         // Create the `alpha` actor
         let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
         let alpha = Alpha::create(
+            client_addr.clone().recipient(),
+            node_id,
             Path::new(&db_path),
             ice_addr.clone(),
             sleet_addr.clone(),

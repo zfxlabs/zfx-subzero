@@ -19,11 +19,15 @@ use crate::graph;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
+    ActixMailbox,
+    Sled(sled::Error),
     Hex(String),
     Bincode(String),
     Dalek(String),
     Cell(cell::Error),
     Graph(graph::Error),
+    // Alpha
+    BootstrapConsensus,
     // Operations
     UnspendableCell,
     ExceedsAvailableFunds,
@@ -38,6 +42,12 @@ pub enum Error {
 }
 
 impl std::error::Error for Error {}
+
+impl std::convert::From<sled::Error> for Error {
+    fn from(error: sled::Error) -> Self {
+        Error::Sled(error)
+    }
+}
 
 impl std::convert::From<hex::FromHexError> for Error {
     fn from(error: hex::FromHexError) -> Self {

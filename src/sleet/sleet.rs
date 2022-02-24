@@ -488,7 +488,7 @@ impl Handler<FreshTx> for Sleet {
             }),
         });
 
-        // Wrap the future so that subsequent chained handlers can access te actor.
+        // Wrap the future so that subsequent chained handlers can access the actor.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
         let update_self = send_to_client.map(move |result, _actor, ctx| {
