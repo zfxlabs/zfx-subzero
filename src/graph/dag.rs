@@ -233,8 +233,8 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         let _ = visited.insert(v.clone());
 
         let mut parents = self.g.get(v).unwrap().clone();
-        let mut grandparents = vec![];
         loop {
+            let mut grandparents = vec![];
             for a in parents.iter() {
                 if !visited.contains(a) {
                     result.push(a.clone());
