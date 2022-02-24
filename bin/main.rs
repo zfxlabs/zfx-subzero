@@ -41,6 +41,12 @@ fn main() -> Result<()> {
                 .takes_value(true)
                 .required(false),
         )
+        .arg(
+            Arg::with_name("use-tls")
+            .short("tls")
+            .long("use-tls")
+            .required(false)
+            .takes_value(false))   
         .get_matches();
 
     let listener_ip =
@@ -51,10 +57,12 @@ fn main() -> Result<()> {
         Some(keypair_hex) => Some(String::from(keypair_hex)),
         _ => None,
     };
+    let use_tls = matches.is_present("use-tls");
+    
 
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(listener_ip, bootstrap_ips, keypair).unwrap();
+        node::run(listener_ip, bootstrap_ips, keypair, use_tls).unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;
