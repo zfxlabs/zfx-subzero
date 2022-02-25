@@ -47,6 +47,22 @@ async fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(Arg::with_name("use-tls").long("use-tls").required(false))
+        .arg(
+            Arg::with_name("cert-path")
+                .short("c")
+                .long("cert-path")
+                .value_name("CERT_PATH")
+                .requires("use-tls")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("pk-path")
+                .short("p")
+                .long("priv-key-path")
+                .value_name("PK_PATH")
+                .requires("use-tls")
+                .takes_value(true),
+        )
         .arg(Arg::with_name("loop").short("l").long("loop").value_name("N").takes_value(true))
         .get_matches();
 

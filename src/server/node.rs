@@ -24,8 +24,8 @@ pub fn run(
     bootstrap_ips: Vec<String>,
     keypair: Option<String>,
     use_tls: bool,
-    cert_path: String,
-    pk_path: String,
+    cert_path: Option<String>,
+    pk_path: Option<String>,
 ) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
     let node_id = Id::from_ip(&listener_ip);
@@ -50,8 +50,11 @@ pub fn run(
 
     // This is temporary until we have TLS setup
     let upgraders = if use_tls {
-        let (cert, key) =
-            tls::certificate::get_node_cert(Path::new(&cert_path), Path::new(&pk_path)).unwrap();
+        let (cert, key) = tls::certificate::get_node_cert(
+            Path::new(&cert_path.unwrap()),
+            Path::new(&pk_path.unwrap()),
+        )
+        .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
         upgraders
     } else {
