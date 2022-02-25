@@ -35,7 +35,7 @@ fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("keypair")
-                .short("kp")
+                .short("k")
                 .long("keypair")
                 .value_name("KEYPAIR")
                 .takes_value(true)
