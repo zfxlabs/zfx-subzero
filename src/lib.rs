@@ -48,6 +48,9 @@ pub enum Error {
     InvalidPredecessor,
     InvalidGenesis,
     InvalidLast,
+
+    /// Error caused by converting from a `String` to an `Id`
+    TryFromStringError,
 }
 
 impl std::error::Error for Error {}

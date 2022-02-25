@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::fmt;
 use std::net::SocketAddr;
 use std::ops::Index;
-// use std::str::FromStr;
+use std::str::FromStr;
 
 use base58check::{FromBase58Check, ToBase58Check};
 use blake2::digest::{Update, VariableOutput};
@@ -25,19 +25,20 @@ impl std::fmt::Display for Id {
     }
 }
 
-// impl FromStr for Id {
-//     type Err = crate::Error;
-//
-//     /// Converts a base58check encoded string to bytes of an Id
-//     fn from_str(id_str: &str) -> Result<Self> {
-//         let (vsn, bytes) = id_str.from_base58check().unwrap();
-//         if vsn != 0 {
-//             return Err(Error::TryFromStringError);
-//         }
-//         let bytes: [u8; 32] = bytes.as_slice().try_into()?;
-//         Ok(Id(bytes))
-//     }
-// }
+impl FromStr for Id {
+    type Err = crate::Error;
+
+    /// Converts a base58check encoded string to bytes of an Id
+    fn from_str(id_str: &str) -> Result<Self, crate::Error> {
+        let (vsn, bytes) = id_str.from_base58check().unwrap();
+        if vsn != 0 {
+            return Err(crate::Error::TryFromStringError);
+        }
+        let bytes: [u8; 32] =
+            bytes.as_slice().try_into().map_err(|_| crate::Error::TryFromStringError)?;
+        Ok(Id(bytes))
+    }
+}
 
 impl Id {
     /// By default a new id is created by hashing an input byte slice
