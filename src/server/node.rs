@@ -55,7 +55,7 @@ pub fn run(
         let client_addr = client.start();
 
         // Initialise a view with the bootstrap ips and start its actor
-        let mut view = View::new(client_addr.clone().recipient(), listener_ip);
+        let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
         view.init(converted_bootstrap_ips);
         let view_addr = view.start();
 

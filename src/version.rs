@@ -10,6 +10,7 @@ pub struct Version {
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct VersionAck {
+    pub id: Id,
     pub ip: SocketAddr,
     pub peer_list: Vec<(Id, SocketAddr)>,
 }

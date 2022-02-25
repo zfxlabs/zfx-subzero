@@ -26,6 +26,7 @@ pub struct View {
     /// The client used to make external requests.
     sender: Recipient<ClientRequest>,
     ip: SocketAddr,
+    node_id: Id,
     peers: SampleableMap<Id, SocketAddr>,
     peer_list: HashSet<(Id, SocketAddr)>,
 }
@@ -45,8 +46,8 @@ impl std::ops::DerefMut for View {
 }
 
 impl View {
-    pub fn new(sender: Recipient<ClientRequest>, ip: SocketAddr) -> Self {
-        Self { sender, ip, peers: SampleableMap::new(), peer_list: HashSet::new() }
+    pub fn new(sender: Recipient<ClientRequest>, ip: SocketAddr, node_id: Id) -> Self {
+        Self { sender, ip, node_id, peers: SampleableMap::new(), peer_list: HashSet::new() }
     }
 
     pub fn init(&mut self, ips: Vec<SocketAddr>) {
@@ -66,7 +67,7 @@ impl View {
 
     // Returns whether the element was updated or not (if the element was missing)
     pub fn insert_update(&mut self, id: Id, ip: SocketAddr) -> bool {
-        if id == Id::from_ip(&self.ip) {
+        if id == self.node_id {
             return false;
         }
         match self.insert(id, ip.clone()) {
@@ -107,7 +108,7 @@ impl Handler<Version> for View {
     fn handle(&mut self, msg: Version, _ctx: &mut Context<Self>) -> Self::Result {
         // TODO: verify / extend `Version`
         let ip = msg.ip.clone();
-        let id = Id::from_ip(&ip);
+        let id = msg.id.clone();
         let _ = self.insert_update(id, ip);
 
         // Fetch the peer list
@@ -115,7 +116,7 @@ impl Handler<Version> for View {
         for peer in self.peer_list.iter().cloned() {
             peer_vec.push(peer);
         }
-        VersionAck { ip: self.ip.clone(), peer_list: peer_vec }
+        VersionAck { ip: self.ip.clone(), id: self.node_id.clone(), peer_list: peer_vec }
     }
 }
 
@@ -154,7 +155,7 @@ impl Handler<Bootstrap> for View {
 
     fn handle(&mut self, _msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
         let ip = self.ip.clone();
-        let id = Id::from_ip(&ip);
+        let id = self.node_id;
         // Use all seeded ips as bootstrap ips (besides self_ip)
         let mut bootstrap_ips = vec![];
         for (_id, ip) in self.iter() {
@@ -203,8 +204,7 @@ impl Handler<UpdatePeers> for View {
         let mut updates = vec![];
         for response in msg.responses.iter() {
             match response {
-                Response::VersionAck(VersionAck { ip, peer_list }) => {
-                    let peer_id = Id::from_ip(&ip);
+                Response::VersionAck(VersionAck { ip, id: peer_id, peer_list }) => {
                     if self.insert_update(peer_id.clone(), ip.clone()) {
                         updates.push((peer_id.clone(), ip.clone()));
                     }
