@@ -66,6 +66,7 @@ impl Handler<ClientRequest> for Client {
     }
 }
 
+// TODO this shouldn't be `pub` but `client_test` is using it
 pub async fn oneshot(
     ip: SocketAddr,
     request: Request,
@@ -85,8 +86,13 @@ pub async fn oneshot(
     Ok(response)
 }
 
+#[cfg(test)]
+pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
+    oneshot(ip, request, TcpUpgrader::new()).await
+}
+
 /// A gentle fanout function which sends requests to peers and collects responses.
-pub async fn fanout(
+async fn fanout(
     ips: Vec<SocketAddr>,
     request: Request,
     upgrader: Arc<dyn Upgrader>,

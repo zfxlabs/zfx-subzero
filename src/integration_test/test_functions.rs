@@ -59,7 +59,7 @@ pub async fn spend_cell(
 
     if let Ok(Ok(Some(Response::GenerateTxAck(ack)))) = timeout(
         Duration::from_secs(5),
-        client::oneshot(from.address, create_transfer_request(&from, &to, amount, cell)),
+        client::oneshot_tcp(from.address, create_transfer_request(&from, &to, amount, cell)),
     )
     .await
     {
@@ -395,7 +395,9 @@ where
     let mut result: Option<Response> = None;
     let mut updated_attempts = attempts;
     while updated_attempts > 0 {
-        if let Ok(Ok(r)) = timeout(duration, client::oneshot(node_address, request.clone())).await {
+        if let Ok(Ok(r)) =
+            timeout(duration, client::oneshot_tcp(node_address, request.clone())).await
+        {
             if r.is_some() && predicate(r.clone().unwrap()) {
                 result = r;
                 break;
@@ -448,7 +450,8 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
 }
 
 async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
-    match timeout(Duration::from_secs(1), client::oneshot(node_address, Request::CheckStatus)).await
+    match timeout(Duration::from_secs(1), client::oneshot_tcp(node_address, Request::CheckStatus))
+        .await
     {
         Ok(Ok(r)) => {
             if let Some(Response::Status(status)) = r {
