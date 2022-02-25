@@ -42,26 +42,22 @@ fn main() -> Result<()> {
                 .required(false),
         )
         .arg(
-            Arg::with_name("use-tls")
-                .short("tls")
-                .long("use-tls")
-                .required(false)
-                .takes_value(false),
+            Arg::with_name("use-tls").short("t").long("use-tls").required(false).takes_value(false),
         )
         .arg(
             Arg::with_name("cert-path")
-                .short("cert")
-                .long("cert-file-path")
+                .short("c")
+                .long("cert-path")
                 .value_name("CERT_PATH")
-                .required(false)
+                .requires("use-tls")
                 .takes_value(true),
         )
         .arg(
             Arg::with_name("pk-path")
-                .short("pk")
+                .short("p")
                 .long("priv-key-path")
                 .value_name("PK_PATH")
-                .required(false)
+                .requires("use-tls")
                 .takes_value(true),
         )
         .get_matches();
@@ -75,8 +71,16 @@ fn main() -> Result<()> {
         _ => None,
     };
     let use_tls = matches.is_present("use-tls");
-    let cert_path = value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit());
-    let priv_key_path = value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit());
+    let cert_path = if use_tls {
+        Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()))
+    } else {
+        None
+    };
+    let priv_key_path = if use_tls {
+        Some(value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit()))
+    } else {
+        None
+    };
 
     let sys = actix::System::new();
     sys.block_on(async move {
