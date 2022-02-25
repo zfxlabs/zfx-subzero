@@ -28,7 +28,23 @@ pub fn run(
     pk_path: Option<String>,
 ) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
-    let node_id = Id::from_ip(&listener_ip);
+    let converted_bootstrap_ips =
+        bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
+
+    // This is temporary until we have TLS setup
+    let (node_id, upgraders) = if use_tls {
+        let (cert, key) = tls::certificate::get_node_cert(
+            Path::new(&cert_path.unwrap()),
+            Path::new(&pk_path.unwrap()),
+        )
+        .unwrap();
+        let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
+        // (Id::new(&cert), upgraders)
+        // FIXME, until we change alpha and genesis
+        (Id::from_ip(&listener_ip), upgraders)
+    } else {
+        (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders())
+    };
     let node_id_str = hex::encode(node_id.as_bytes());
 
     match keypair {
@@ -45,21 +61,6 @@ pub fn run(
         None => panic!("Keypair is mandatory"),
     };
 
-    let converted_bootstrap_ips =
-        bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
-
-    // This is temporary until we have TLS setup
-    let upgraders = if use_tls {
-        let (cert, key) = tls::certificate::get_node_cert(
-            Path::new(&cert_path.unwrap()),
-            Path::new(&pk_path.unwrap()),
-        )
-        .unwrap();
-        let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
-        upgraders
-    } else {
-        tls::upgrader::tcp_upgraders()
-    };
     let execution = async move {
         // Create the 'client' actor
         let client = Client::new(upgraders.client.clone());
