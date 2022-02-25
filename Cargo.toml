@@ -49,7 +49,7 @@ dirs = "4.0.0"
 
 # For TLS support
 tokio-rustls = { version = "0.23.1", features = ["dangerous_configuration"] }
-
+rustls = "*"
 # For TLS/X509 certificates
 rcgen = "0.8.14"
 ring = "0.16.20"

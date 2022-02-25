@@ -1,8 +1,11 @@
+use std::io;
 use std::{net::SocketAddr, pin::Pin};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
 };
+
+use crate::zfx_id::Id;
 
 #[derive(Debug)]
 pub enum ConnectionStream {
@@ -12,7 +15,7 @@ pub enum ConnectionStream {
 }
 
 impl ConnectionStream {
-    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
         match self {
             Self::Tcp(s) => s.local_addr(),
             Self::TlsServer(s) => s.get_ref().0.local_addr(),
@@ -20,12 +23,65 @@ impl ConnectionStream {
         }
     }
 
-    pub fn peer_addr(&self) -> std::io::Result<SocketAddr> {
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         match self {
             Self::Tcp(s) => s.peer_addr(),
             Self::TlsServer(s) => s.get_ref().0.peer_addr(),
             Self::TlsClient(s) => s.get_ref().0.peer_addr(),
         }
+    }
+
+    pub fn is_tls(&self) -> bool {
+        match self {
+            Self::Tcp(s) => false,
+            Self::TlsServer(s) => true,
+            Self::TlsClient(s) => true,
+        }
+    }
+
+    /// Generate an `Id` from the connection.
+    /// For TCP, it's the hash of the IP address
+    /// For TLS it's the hash of the certificated presented
+    pub fn get_id(&self) -> io::Result<Id> {
+        match self {
+            Self::Tcp(s) => Ok(Id::from_ip(&s.peer_addr()?)),
+            Self::TlsServer(s) => id_from_server_connection(s),
+            Self::TlsClient(s) => id_from_client_connection(s),
+        }
+    }
+}
+
+// Note that the functions `id_from_server_connection` and `id_from_client_connection`
+// are _not_ identical, as the type of the `state variable differs
+
+/// Hash the presented certificate to an `Id`
+pub fn id_from_server_connection(
+    connection: &tokio_rustls::server::TlsStream<TcpStream>,
+) -> io::Result<Id> {
+    let state = connection.get_ref().1;
+    id_from_first_cert(state.peer_certificates())
+}
+
+/// Hash the presented certificate to an `Id`
+pub fn id_from_client_connection(
+    connection: &tokio_rustls::client::TlsStream<TcpStream>,
+) -> io::Result<Id> {
+    let state = connection.get_ref().1;
+    id_from_first_cert(state.peer_certificates())
+}
+
+fn id_from_first_cert(certs: Option<&[rustls::Certificate]>) -> io::Result<Id> {
+    match certs {
+        Some(certs) => {
+            if certs.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "no certificates present in TLS state",
+                ));
+            }
+            Ok(Id::new(&certs[0].0))
+        }
+        None => Err(io::Error::new(io::ErrorKind::Other, "no certificates present in TLS state")),
     }
 }
 

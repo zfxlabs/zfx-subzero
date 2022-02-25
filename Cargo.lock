@@ -2093,6 +2093,7 @@ dependencies = [
  "rand 0.7.3",
  "rcgen",
  "ring",
+ "rustls",
  "serde",
  "serde_derive",
  "sled",
