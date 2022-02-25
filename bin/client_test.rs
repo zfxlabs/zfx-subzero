@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("keypair")
-                .short("kp")
+                .short("k")
                 .long("keypair")
                 .value_name("KEYPAIR_HEX")
                 .takes_value(true),
@@ -74,11 +74,24 @@ async fn main() -> Result<()> {
     let cell_hash = value_t!(matches.value_of("cell-hash"), String).unwrap_or_else(|e| e.exit());
     let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
     let use_tls = matches.is_present("use-tls");
+    let cert_path = if use_tls {
+        Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()))
+    } else {
+        None
+    };
+    let priv_key_path = if use_tls {
+        Some(value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit()))
+    } else {
+        None
+    };
 
     // TCP/TLS setup
     let upgrader = if use_tls {
-        let (cert, key) =
-            tls::certificate::get_node_cert(Path::new("test.crt"), Path::new("test.key")).unwrap();
+        let (cert, key) = tls::certificate::get_node_cert(
+            Path::new(&cert_path.unwrap()),
+            Path::new(&priv_key_path.unwrap()),
+        )
+        .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
         upgraders.client
     } else {
