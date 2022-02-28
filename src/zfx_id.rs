@@ -30,7 +30,8 @@ impl FromStr for Id {
 
     /// Converts a base58check encoded string to bytes of an Id
     fn from_str(id_str: &str) -> Result<Self, crate::Error> {
-        let (vsn, bytes) = id_str.from_base58check().unwrap();
+        let (vsn, bytes) =
+            id_str.from_base58check().map_err(|_| crate::Error::TryFromStringError)?;
         if vsn != 0 {
             return Err(crate::Error::TryFromStringError);
         }

@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 
 use crate::alpha::types::Weight;
 use crate::zfx_id::Id;
+use crate::{Error, Result};
 
 /// Compute the `hail` consensus weight based on the number of tokens a validator has.
 #[inline]
@@ -39,6 +40,22 @@ pub fn sample_weighted(
         None
     } else {
         Some(sample)
+    }
+}
+
+/// Parse a peer description from the format `IP` or `ID@IP` to its ID and address
+pub fn parse_id_and_ip(s: &str) -> Result<(Id, SocketAddr)> {
+    let parts: Vec<&str> = s.split('@').collect();
+    if parts.len() == 1 {
+        let ip: SocketAddr = parts[0].parse().map_err(|_| Error::PeerParseError)?;
+        let id = Id::from_ip(&ip);
+        Ok((id, ip))
+    } else if parts.len() == 2 {
+        let id: Id = parts[0].parse().map_err(|_| Error::PeerParseError)?;
+        let ip: SocketAddr = parts[1].parse().map_err(|_| Error::PeerParseError)?;
+        Ok((id, ip))
+    } else {
+        Err(Error::PeerParseError)
     }
 }
 
@@ -105,5 +122,60 @@ mod test {
         let true_false =
             vec![(zid, 0.1, false), (zid, 0.1, true), (zid, 0.1, false), (zid, 0.1, true)];
         assert_eq!(0.2, sum_outcomes(true_false));
+    }
+
+    #[actix_rt::test]
+    async fn test_parse_id_and_ip() {
+        // ID and IP
+        let id = Id::zero();
+        let ip_str = "0.0.0.0:1111";
+        let addr: SocketAddr = ip_str.parse().unwrap();
+        let peer_str = format!("{}@{}", id, ip_str);
+        let (id2, addr2) = parse_id_and_ip(&peer_str).unwrap();
+        assert_eq!(id, id2);
+        assert_eq!(addr, addr2);
+
+        let id = Id::new(b"to_be_hashed");
+        let ip_str = "1.2.3.4:5678";
+        let addr: SocketAddr = ip_str.parse().unwrap();
+        let peer_str = format!("{}@{}", id, ip_str);
+        let (id2, addr2) = parse_id_and_ip(&peer_str).unwrap();
+        assert_eq!(id, id2);
+        assert_eq!(addr, addr2);
+
+        // IP-only
+        let ip_str = "0.0.0.0:1111";
+        let addr: SocketAddr = ip_str.parse().unwrap();
+        let peer_str = format!("{}", ip_str);
+        let (_id2, addr2) = parse_id_and_ip(&peer_str).unwrap();
+        assert_eq!(addr, addr2);
+
+        // Errors
+        match parse_id_and_ip("") {
+            Err(Error::PeerParseError) => (),
+            other => panic!("Unexpected {:?}", other),
+        }
+
+        match parse_id_and_ip("@") {
+            Err(Error::PeerParseError) => (),
+            other => panic!("Unexpected {:?}", other),
+        }
+
+        match parse_id_and_ip("@1.2.3.4:5678") {
+            Err(Error::PeerParseError) => (),
+            other => panic!("Unexpected {:?}", other),
+        }
+
+        match parse_id_and_ip("not-an-id@0.0.0.0:1111") {
+            Err(Error::PeerParseError) => (),
+            other => panic!("Unexpected {:?}", other),
+        }
+
+        let id = Id::new(b"to_be_hashed");
+        let peer_str = format!("{}@not-an-ip", id);
+        match parse_id_and_ip(&peer_str) {
+            Err(Error::PeerParseError) => (),
+            other => panic!("Unexpected {:?}", other),
+        }
     }
 }

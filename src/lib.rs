@@ -51,6 +51,8 @@ pub enum Error {
 
     /// Error caused by converting from a `String` to an `Id`
     TryFromStringError,
+    /// Error when psrsing a peer description `ID@IP`
+    PeerParseError,
 }
 
 impl std::error::Error for Error {}
