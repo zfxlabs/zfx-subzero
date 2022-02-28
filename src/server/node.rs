@@ -44,9 +44,9 @@ pub fn run(
         )
         .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
-        // (Id::new(&cert), upgraders)
+        (Id::new(&cert), upgraders)
         // FIXME, until we change alpha and genesis
-        (Id::from_ip(&listener_ip), upgraders)
+        // (Id::from_ip(&listener_ip), upgraders)
     } else {
         // FIXME, until we change alpha and genesis
         match node_id {
@@ -55,6 +55,8 @@ pub fn run(
         }
     };
     let node_id_str = hex::encode(node_id.as_bytes());
+
+    info!("Node {} is starting", node_id);
 
     match keypair {
         Some(keypair_hex) => {
