@@ -14,13 +14,37 @@ use crate::hail::Hail;
 use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server};
 use crate::sleet::Sleet;
+use crate::tls;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
 
-pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> Result<()> {
+pub fn run(
+    ip: String,
+    bootstrap_ips: Vec<String>,
+    keypair: Option<String>,
+    use_tls: bool,
+    cert_path: Option<String>,
+    pk_path: Option<String>,
+) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
-    let node_id = Id::from_ip(&listener_ip);
+    let converted_bootstrap_ips =
+        bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
+
+    // This is temporary until we have TLS setup
+    let (node_id, upgraders) = if use_tls {
+        let (cert, key) = tls::certificate::get_node_cert(
+            Path::new(&cert_path.unwrap()),
+            Path::new(&pk_path.unwrap()),
+        )
+        .unwrap();
+        let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
+        // (Id::new(&cert), upgraders)
+        // FIXME, until we change alpha and genesis
+        (Id::from_ip(&listener_ip), upgraders)
+    } else {
+        (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders())
+    };
     let node_id_str = hex::encode(node_id.as_bytes());
 
     match keypair {
@@ -37,16 +61,13 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
         None => panic!("Keypair is mandatory"),
     };
 
-    let converted_bootstrap_ips =
-        bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
-
     let execution = async move {
         // Create the 'client' actor
-        let client = Client::new();
+        let client = Client::new(upgraders.client.clone());
         let client_addr = client.start();
 
         // Initialise a view with the bootstrap ips and start its actor
-        let mut view = View::new(client_addr.clone().recipient(), listener_ip);
+        let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
         view.init(converted_bootstrap_ips);
         let view_addr = view.start();
 
@@ -104,7 +125,7 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
             let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
             let router_addr = router.start();
             // Setup the server
-            let server = Server::new(listener_ip, router_addr);
+            let server = Server::new(listener_ip, router_addr, upgraders.server.clone());
             // Listen for incoming connections
             server.listen().await.unwrap()
         };

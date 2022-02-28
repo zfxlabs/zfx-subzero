@@ -3,10 +3,12 @@ use zfx_subzero::client;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
+use zfx_subzero::tls;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::time::Duration;
 
 use tokio;
@@ -32,7 +34,7 @@ async fn main() -> Result<()> {
         )
         .arg(
             Arg::with_name("keypair")
-                .short("kp")
+                .short("k")
                 .long("keypair")
                 .value_name("KEYPAIR_HEX")
                 .takes_value(true),
@@ -42,6 +44,23 @@ async fn main() -> Result<()> {
                 .short("h")
                 .long("cell-hash")
                 .value_name("CELL_HASH")
+                .takes_value(true),
+        )
+        .arg(Arg::with_name("use-tls").long("use-tls").required(false))
+        .arg(
+            Arg::with_name("cert-path")
+                .short("c")
+                .long("cert-path")
+                .value_name("CERT_PATH")
+                .requires("use-tls")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("pk-path")
+                .short("p")
+                .long("priv-key-path")
+                .value_name("PK_PATH")
+                .requires("use-tls")
                 .takes_value(true),
         )
         .arg(Arg::with_name("loop").short("l").long("loop").value_name("N").takes_value(true))
@@ -54,6 +73,30 @@ async fn main() -> Result<()> {
     // The root `cell-hash` to spend
     let cell_hash = value_t!(matches.value_of("cell-hash"), String).unwrap_or_else(|e| e.exit());
     let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
+    let use_tls = matches.is_present("use-tls");
+    let cert_path = if use_tls {
+        Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()))
+    } else {
+        None
+    };
+    let priv_key_path = if use_tls {
+        Some(value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit()))
+    } else {
+        None
+    };
+
+    // TCP/TLS setup
+    let upgrader = if use_tls {
+        let (cert, key) = tls::certificate::get_node_cert(
+            Path::new(&cert_path.unwrap()),
+            Path::new(&priv_key_path.unwrap()),
+        )
+        .unwrap();
+        let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
+        upgraders.client
+    } else {
+        tls::upgrader::TcpUpgrader::new()
+    };
 
     // Reconstruct the keypair
     let keypair_bytes = hex::decode(keypair).unwrap();
@@ -72,6 +115,7 @@ async fn main() -> Result<()> {
             match client::oneshot(
                 peer_ip,
                 Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
+                upgrader.clone(),
             )
             .await?
             {
@@ -88,6 +132,7 @@ async fn main() -> Result<()> {
                     match client::oneshot(
                         peer_ip,
                         Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
+                        upgrader.clone(),
                     )
                     .await?
                     {
