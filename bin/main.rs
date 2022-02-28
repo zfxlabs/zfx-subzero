@@ -4,7 +4,10 @@ use tracing_subscriber;
 use clap::{value_t, values_t, App, Arg};
 
 use zfx_subzero::server::node;
+use zfx_subzero::zfx_id;
 use zfx_subzero::Result;
+
+use std::str::FromStr;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -60,6 +63,8 @@ fn main() -> Result<()> {
                 .requires("use-tls")
                 .takes_value(true),
         )
+        // FIXME this is a temporary workaround for tcp nodes
+        .arg(Arg::with_name("node-id").long("id").value_name("NODE-ID").takes_value(true))
         .get_matches();
 
     let listener_ip =
@@ -82,10 +87,22 @@ fn main() -> Result<()> {
         None
     };
 
+    let node_id = match matches.value_of("node-id") {
+        Some(node_str) => Some(zfx_id::Id::from_str(node_str).unwrap()),
+        _ => None,
+    };
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(listener_ip, bootstrap_peers, keypair, use_tls, cert_path, priv_key_path)
-            .unwrap();
+        node::run(
+            listener_ip,
+            bootstrap_peers,
+            keypair,
+            use_tls,
+            cert_path,
+            priv_key_path,
+            node_id,
+        )
+        .unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;

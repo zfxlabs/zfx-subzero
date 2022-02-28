@@ -27,6 +27,8 @@ pub fn run(
     use_tls: bool,
     cert_path: Option<String>,
     pk_path: Option<String>,
+    // FIXME this is a temporary workaround
+    node_id: Option<Id>,
 ) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
     let converted_bootstrap_peers = bootstrap_peers
@@ -46,7 +48,11 @@ pub fn run(
         // FIXME, until we change alpha and genesis
         (Id::from_ip(&listener_ip), upgraders)
     } else {
-        (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders())
+        // FIXME, until we change alpha and genesis
+        match node_id {
+            None => (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders()),
+            Some(id) => (id, tls::upgrader::tcp_upgraders()),
+        }
     };
     let node_id_str = hex::encode(node_id.as_bytes());
 
