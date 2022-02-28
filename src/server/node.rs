@@ -15,21 +15,24 @@ use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server};
 use crate::sleet::Sleet;
 use crate::tls;
+use crate::util;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
 
 pub fn run(
     ip: String,
-    bootstrap_ips: Vec<String>,
+    bootstrap_peers: Vec<String>,
     keypair: Option<String>,
     use_tls: bool,
     cert_path: Option<String>,
     pk_path: Option<String>,
 ) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
-    let converted_bootstrap_ips =
-        bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
+    let converted_bootstrap_peers = bootstrap_peers
+        .iter()
+        .map(|p| util::parse_id_and_ip(p).unwrap())
+        .collect::<Vec<(Id, SocketAddr)>>();
 
     // This is temporary until we have TLS setup
     let (node_id, upgraders) = if use_tls {
@@ -68,7 +71,7 @@ pub fn run(
 
         // Initialise a view with the bootstrap ips and start its actor
         let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
-        view.init(converted_bootstrap_ips);
+        view.init(converted_bootstrap_peers);
         let view_addr = view.start();
 
         // Create the `ice` actor

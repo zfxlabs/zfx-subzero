@@ -27,10 +27,10 @@ fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("bootstrap-ip")
+            Arg::with_name("bootstrap-peer")
                 .short("b")
-                .long("bootstrap-ip")
-                .value_name("BOOTSTRAP_IP")
+                .long("bootstrap-peer")
+                .value_name("BOOTSTRAP_PEER")
                 .multiple(true),
         )
         .arg(
@@ -64,8 +64,8 @@ fn main() -> Result<()> {
 
     let listener_ip =
         value_t!(matches.value_of("listener-ip"), String).unwrap_or_else(|e| e.exit());
-    let bootstrap_ips =
-        values_t!(matches.values_of("bootstrap-ip"), String).unwrap_or_else(|e| e.exit());
+    let bootstrap_peers =
+        values_t!(matches.values_of("bootstrap-peer"), String).unwrap_or_else(|e| e.exit());
     let keypair = match matches.value_of("keypair") {
         Some(keypair_hex) => Some(String::from(keypair_hex)),
         _ => None,
@@ -84,7 +84,8 @@ fn main() -> Result<()> {
 
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(listener_ip, bootstrap_ips, keypair, use_tls, cert_path, priv_key_path).unwrap();
+        node::run(listener_ip, bootstrap_peers, keypair, use_tls, cert_path, priv_key_path)
+            .unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;

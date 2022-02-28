@@ -50,16 +50,15 @@ impl View {
         Self { sender, ip, node_id, peers: SampleableMap::new(), peer_list: HashSet::new() }
     }
 
-    pub fn init(&mut self, ips: Vec<SocketAddr>) {
-        for ip in ips.iter() {
-            let id = Id::from_ip(ip);
-            if let None = self.insert(id, ip.clone()) {
-                debug!("inserted <id: {:?}, ip: {:?}>", id, ip.clone());
+    pub fn init(&mut self, peers: Vec<(Id, SocketAddr)>) {
+        for (id, ip) in peers.iter() {
+            if let None = self.insert(id.clone(), ip.clone()) {
+                debug!("inserted <id: {:?}, ip: {:?}>", id.clone(), ip.clone());
             }
             if self.peer_list.len() < PEER_LIST_MAX {
-                if !self.peer_list.contains(&(id, ip.clone())) {
-                    debug!("inserting <id: {:?}, ip: {:?}> in peer list", id, ip.clone());
-                    self.peer_list.insert((id, ip.clone()));
+                if !self.peer_list.contains(&(id.clone(), ip.clone())) {
+                    debug!("inserting <id: {:?}, ip: {:?}> in peer list", id.clone(), ip.clone());
+                    self.peer_list.insert((id.clone(), ip.clone()));
                 }
             }
         }
