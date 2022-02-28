@@ -195,7 +195,7 @@ impl TestNode {
         command.args(&["run", "-p", "zfx-subzero"]);
         command.args(&["--bin", "node", "--", "--listener-ip"]);
         command.arg(&self.address_as_str);
-        command.arg("--bootstrap-ip");
+        command.arg("--bootstrap-peer");
         command.arg(&self.bootstrap_address);
         command.arg("--keypair");
         command.arg(&self.keypair_as_str);
