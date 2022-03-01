@@ -6,7 +6,7 @@ use crate::view::View;
 use crate::zfx_id::Id;
 use crate::{alpha, alpha::Alpha};
 
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -91,7 +91,7 @@ impl Handler<RouterRequest> for Router {
         let hail = self.hail.clone();
         let validators = self.validators.clone();
         Box::pin(async move {
-            info!(
+            trace!(
                 "Handling incoming msg: needs_checking: {}, id: {}, validator: {}",
                 check_peer,
                 peer_id,
@@ -146,6 +146,7 @@ impl Handler<RouterRequest> for Router {
                 }
                 Request::QueryTx(query_tx) => {
                     if check_peer && !validators.contains(&peer_id) {
+                        info!("Refusing validator request {:?} from peer {}", query_tx, peer_id);
                         return Response::RequestRefused;
                     }
                     debug!("routing QueryTx -> Sleet");
@@ -154,6 +155,10 @@ impl Handler<RouterRequest> for Router {
                 }
                 Request::GetTxAncestors(get_ancestors) => {
                     if check_peer && !validators.contains(&peer_id) {
+                        info!(
+                            "Refusing validator request {:?} from peer {}",
+                            get_ancestors, peer_id
+                        );
                         return Response::RequestRefused;
                     }
                     debug!("routing QueryTx -> Sleet");
@@ -173,6 +178,7 @@ impl Handler<RouterRequest> for Router {
                 }
                 Request::QueryBlock(query_block) => {
                     if check_peer && !validators.contains(&peer_id) {
+                        info!("Refusing validator request {:?} from peer {}", query_block, peer_id);
                         return Response::RequestRefused;
                     }
                     debug!("routing QueryBlock -> Hail");
