@@ -9,9 +9,10 @@ use crate::{alpha, alpha::Alpha};
 use tracing::{debug, error, info};
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use crate::sleet;
-use actix::{Actor, Addr, Context, Handler, ResponseFuture};
+use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
 
 pub struct Router {
     view: Addr<View>,
@@ -19,7 +20,7 @@ pub struct Router {
     alpha: Addr<Alpha>,
     sleet: Addr<Sleet>,
     hail: Addr<Hail>,
-    validators: HashSet<Id>,
+    validators: Arc<HashSet<Id>>,
 }
 
 impl Router {
@@ -30,15 +31,40 @@ impl Router {
         sleet: Addr<Sleet>,
         hail: Addr<Hail>,
     ) -> Self {
-        Router { view, ice, alpha, sleet, hail, validators: HashSet::new() }
+        Router { view, ice, alpha, sleet, hail, validators: Arc::new(HashSet::new()) }
     }
 }
 
 impl Actor for Router {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Context<Self>) {
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        self.alpha.do_send(InitRouter { addr: ctx.address() });
         debug!("router> started");
+    }
+}
+
+#[derive(Clone, Message)]
+#[rtype(result = "()")]
+pub struct InitRouter {
+    pub addr: Addr<Router>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct ValidatorSet {
+    pub validators: HashSet<Id>,
+}
+
+impl Handler<ValidatorSet> for Router {
+    type Result = ();
+
+    fn handle(
+        &mut self,
+        ValidatorSet { validators }: ValidatorSet,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        self.validators = Arc::new(validators);
     }
 }
 
@@ -63,7 +89,14 @@ impl Handler<RouterRequest> for Router {
         let alpha = self.alpha.clone();
         let sleet = self.sleet.clone();
         let hail = self.hail.clone();
+        let validators = self.validators.clone();
         Box::pin(async move {
+            info!(
+                "Handling incoming msg:\n\tcheck: {}, id: {}, validator: {}",
+                check_peer,
+                peer_id,
+                validators.contains(&peer_id)
+            );
             match msg {
                 // Handshake
                 Request::Version(version) => {

@@ -6,6 +6,7 @@ use crate::client::{ClientRequest, ClientResponse};
 use crate::hail::block::HailBlock;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
+use crate::server::{InitRouter, Router, ValidatorSet};
 use crate::sleet::{self, Sleet};
 use crate::{ice, ice::Ice};
 
@@ -17,10 +18,10 @@ use super::types::{BlockHash, VrfOutput};
 use super::{Error, Result};
 
 use actix::{Actor, Addr, Arbiter, AsyncContext, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture, WrapFuture};
 use tracing::{debug, info};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -37,6 +38,8 @@ pub struct Alpha {
     sleet: Addr<Sleet>,
     /// The address of the `Hail` actor.
     hail: Addr<Hail>,
+    /// The address of the `Router` actor.
+    router: Option<Addr<Router>>,
     /// The `alpha` chain state.
     state: State,
 }
@@ -51,7 +54,15 @@ impl Alpha {
         hail: Addr<Hail>,
     ) -> Result<Self> {
         let tree = sled::open(path)?;
-        Ok(Alpha { sender, node_id, tree, ice, sleet, hail, state: State::new() })
+        Ok(Alpha { sender, node_id, tree, ice, sleet, hail, router: None, state: State::new() })
+    }
+
+    fn get_validator_set(&self) -> HashSet<Id> {
+        self.state
+            .validators
+            .iter()
+            .filter_map(|(id, c)| if *c > 0 { Some(id.clone()) } else { None })
+            .collect()
     }
 }
 
@@ -77,6 +88,20 @@ impl Actor for Alpha {
     }
 }
 
+impl Handler<InitRouter> for Alpha {
+    type Result = ();
+
+    fn handle(&mut self, InitRouter { addr }: InitRouter, ctx: &mut Context<Self>) -> Self::Result {
+        self.router = Some(addr.clone());
+        let validators = self.get_validator_set();
+        ctx.spawn(
+            async move {
+                let _ = addr.send(ValidatorSet { validators }).await;
+            }
+            .into_actor(self),
+        );
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryLastAccepted {
@@ -156,6 +181,8 @@ impl Handler<ReceiveLastAccepted> for Alpha {
         let sleet_addr = self.sleet.clone();
         let hail_addr = self.hail.clone();
         let state = self.state.clone();
+        let router = self.router.clone();
+        let validators = self.get_validator_set();
 
         if msg.last_block_hash == msg.last_accepted {
             // Fetch the latest state snapshot up to the last hash, or apply the state
@@ -172,6 +199,10 @@ impl Handler<ReceiveLastAccepted> for Alpha {
             let node_id = self.node_id.clone();
 
             let initialize = async move {
+                // Update the router's knowledge of validators
+                if let Some(addr) = router {
+                    addr.send(ValidatorSet { validators }).await.unwrap();
+                }
                 // Send `ice` the most up to date information concerning the peers which
                 // are validating the network, such that we may determine the peers
                 // `uptime`.
