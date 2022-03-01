@@ -46,6 +46,7 @@ impl Actor for Router {
 #[rtype(result = "Response")]
 pub struct RouterRequest {
     pub peer_id: Id,
+    pub check_peer: bool,
     pub request: Request,
 }
 
@@ -54,7 +55,7 @@ impl Handler<RouterRequest> for Router {
 
     fn handle(
         &mut self,
-        RouterRequest { peer_id, request: msg }: RouterRequest,
+        RouterRequest { peer_id, check_peer, request: msg }: RouterRequest,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         let view = self.view.clone();
