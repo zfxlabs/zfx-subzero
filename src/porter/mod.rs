@@ -1,3 +1,4 @@
+mod gateway;
 mod mapper_actor;
 pub mod mapper_handler;
 mod messages;
@@ -51,7 +52,7 @@ impl std::fmt::Display for Error {
 
 /// Represents the protocols available for port mapping.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PortMappingProtocol {
+pub enum Protocol {
     TCP,
     UDP,
 }
@@ -68,24 +69,24 @@ impl From<PortMappingEntry> for AddMappingEntry {
     }
 }
 
-impl std::fmt::Display for PortMappingProtocol {
+impl std::fmt::Display for Protocol {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}",
             match *self {
-                PortMappingProtocol::TCP => "TCP",
-                PortMappingProtocol::UDP => "UDP",
+                Protocol::TCP => "TCP",
+                Protocol::UDP => "UDP",
             }
         )
     }
 }
 
-impl From<PortMappingProtocol> for igd::PortMappingProtocol {
-    fn from(protocol: PortMappingProtocol) -> igd::PortMappingProtocol {
+impl From<Protocol> for igd::PortMappingProtocol {
+    fn from(protocol: Protocol) -> igd::PortMappingProtocol {
         match protocol {
-            PortMappingProtocol::TCP => igd::PortMappingProtocol::TCP,
-            PortMappingProtocol::UDP => igd::PortMappingProtocol::UDP,
+            Protocol::TCP => igd::PortMappingProtocol::TCP,
+            Protocol::UDP => igd::PortMappingProtocol::UDP,
         }
     }
 }

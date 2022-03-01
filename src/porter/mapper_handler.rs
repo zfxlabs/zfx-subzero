@@ -10,7 +10,7 @@ use crate::porter::params::{AddMappingEntry, PortMappingEntry};
 use super::mapper_actor::MapperActor;
 use super::messages::GetExternalIpMessage;
 use super::params::{NetworkConfig, RefreshMappingEntry, RouterConfig};
-use super::{Error, PortMappingProtocol};
+use super::{Error, Protocol};
 
 const MAPPING_LEASE_DURATION: Duration = Duration::from_secs(3600 * 24);
 
@@ -53,7 +53,7 @@ impl Mapper {
     async fn add_port_mapping(
         &mut self,
         external_port: u16,
-        protocol: PortMappingProtocol,
+        protocol: Protocol,
         node_desc: &str,
     ) -> Result<PortMappingEntry, Error> {
         let add_params = AddMappingEntry::new(
@@ -107,7 +107,7 @@ impl Mapper {
     pub async fn add_and_refresh_mapping(
         &mut self,
         external_port: u16,
-        protocol: PortMappingProtocol,
+        protocol: Protocol,
         node_desc: &str,
     ) -> Result<(), Error> {
         let add_res = self.add_port_mapping(external_port, protocol, node_desc).await;
@@ -122,75 +122,5 @@ impl Mapper {
         let _ = self.refresh_mapping(add_res.unwrap(), external_ip, Duration::from_secs(120)).await;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[actix_rt::test]
-    async fn add_mapping() {
-        use std::net::IpAddr;
-
-        let mut mapper =
-            Mapper::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 109)), 24567), None);
-
-        let res = mapper
-            .add_port_mapping(
-                24568,
-                PortMappingProtocol::TCP,
-                "zfx_node_handler_test_add_and_refresh",
-            )
-            .await;
-
-        assert!(res.is_ok());
-    }
-
-    #[actix_rt::test]
-    async fn get_external_ip() {
-        use std::net::IpAddr;
-
-        let mapper =
-            Mapper::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 109)), 24567), None);
-
-        let res = mapper.get_external_ip().await;
-
-        assert!(res.is_ok());
-    }
-
-    #[actix_rt::test]
-    async fn add_and_refresh() {
-        use std::net::IpAddr;
-
-        let mut mapper =
-            Mapper::new(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 50, 1)), 24567), None);
-
-        let res = mapper
-            .add_port_mapping(
-                25000,
-                PortMappingProtocol::TCP,
-                "zfx_node_handler_test_add_and_refresh1",
-            )
-            .await;
-
-        let refresh_res = mapper
-            .refresh_mapping(res.unwrap(), Ipv4Addr::new(192, 168, 50, 1), Duration::from_secs(1))
-            .await;
-
-        let res2 = mapper
-            .add_port_mapping(
-                25001,
-                PortMappingProtocol::TCP,
-                "zfx_node_handler_test_add_and_refresh2",
-            )
-            .await;
-
-        let refresh_res2 = mapper
-            .refresh_mapping(res2.unwrap(), Ipv4Addr::new(192, 168, 50, 1), Duration::from_secs(1))
-            .await;
-
-        assert!(refresh_res.is_ok());
-        assert!(refresh_res2.is_ok());
     }
 }

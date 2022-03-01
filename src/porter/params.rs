@@ -5,7 +5,7 @@ use std::{
 
 use igd::SearchOptions;
 
-use crate::porter::PortMappingProtocol;
+use crate::porter::Protocol;
 
 /// Represents a port mapping result
 #[derive(Debug, Clone)]
@@ -15,7 +15,7 @@ pub struct PortMappingEntry {
     /// The external address traffic will go through
     pub external_port: u16,
     /// Represents the protocols available for port mapping.
-    pub protocol: PortMappingProtocol,
+    pub protocol: Protocol,
     /// Duration the lease is aquired for
     pub lease_duration: Duration,
     /// description of the mapping entry
@@ -30,7 +30,7 @@ pub struct AddMappingEntry {
     /// The external address traffic will go through
     pub external_port: u16,
     /// Represents the protocols available for port mapping.
-    pub protocol: PortMappingProtocol,
+    pub protocol: Protocol,
     /// Duration the lease is aquired for
     pub lease_duration: Duration,
     /// description of the mapping entry
@@ -41,7 +41,7 @@ impl AddMappingEntry {
     pub fn new(
         local_address: SocketAddrV4,
         external_port: u16,
-        protocol: PortMappingProtocol,
+        protocol: Protocol,
         duration: Duration,
         node_desc: String,
     ) -> Self {

@@ -1,6 +1,5 @@
 use actix::AsyncContext;
 use actix::{Arbiter, Handler};
-use igd::SearchOptions;
 use std::{net::Ipv4Addr, time::Duration};
 
 use actix::{Actor, Context};
@@ -8,15 +7,10 @@ use tracing::{error, trace, warn};
 
 use super::{
     messages::{GetExternalIpMessage, MappingMessage},
-    params::{RefreshMappingEntry, RouterConfig},
-    AddMappingEntry, Error,
+    params::RouterConfig,
+    Error,
 };
-
-pub trait PortMapper {
-    fn add_mapping(&self, add_params: AddMappingEntry) -> Result<(), Error>;
-    fn refresh_mapping(config: RouterConfig, params: RefreshMappingEntry) -> Result<(), Error>;
-    fn get_external_ip(&self) -> Result<Ipv4Addr, Error>;
-}
+use crate::porter::gateway::Gateway;
 
 #[derive(Debug)]
 pub struct MapperActor {
@@ -35,19 +29,15 @@ impl Actor for MapperActor {
     }
 }
 
-impl MapperActor {
-    fn init_gateway(config: RouterConfig) -> Result<igd::Gateway, Error> {
-        let gw = igd::search_gateway(SearchOptions::from(config))?;
-        Ok(gw)
-    }
-}
-
 impl Handler<MappingMessage> for MapperActor {
     type Result = std::result::Result<(), Error>;
 
     fn handle(&mut self, msg: MappingMessage, ctx: &mut Context<Self>) -> Self::Result {
         match msg {
-            MappingMessage::AddMapping(add_msg) => self.add_mapping(add_msg),
+            MappingMessage::AddMapping(add_msg) => {
+                let gw = Gateway::new(self.config);
+                gw.add_mapping(add_msg)
+            }
             MappingMessage::RefreshMapping(refresh_msg) => {
                 let conf = self.config.clone();
                 let arb = Arbiter::new();
@@ -56,7 +46,7 @@ impl Handler<MappingMessage> for MapperActor {
                     let par = refresh_msg.clone();
 
                     arb.spawn(async move {
-                        let gw = MapperActor::init_gateway(conf).expect("Gateway retrieve error!");
+                        let gw = Gateway::new(conf);
                         let current_external_ip =
                             gw.get_external_ip().expect("GetExternalIp error!");
 
@@ -68,7 +58,7 @@ impl Handler<MappingMessage> for MapperActor {
                             );
                         }
 
-                        match MapperActor::refresh_mapping(conf, par) {
+                        match gw.add_mapping(par.add_params) {
                             Ok(()) => trace!("Port lease has been refreshed!"),
                             Err(e) => error!("Port lease refresh failed: {}", e),
                         }
@@ -85,53 +75,21 @@ impl Handler<GetExternalIpMessage> for MapperActor {
     type Result = std::result::Result<Ipv4Addr, Error>;
 
     fn handle(&mut self, _msg: GetExternalIpMessage, _ctx: &mut Context<Self>) -> Self::Result {
-        let ext_ip = self.get_external_ip()?;
-
-        Ok(ext_ip)
-    }
-}
-
-impl PortMapper for MapperActor {
-    fn add_mapping(&self, add_params: AddMappingEntry) -> Result<(), Error> {
-        let gw = MapperActor::init_gateway(self.config)?;
-        gw.add_port(
-            igd::PortMappingProtocol::TCP,
-            add_params.external_port,
-            add_params.local_address,
-            add_params.lease_duration.as_secs() as u32,
-            &add_params.node_description,
-        )?;
-
-        Ok(())
-    }
-
-    fn refresh_mapping(config: RouterConfig, params: RefreshMappingEntry) -> Result<(), Error> {
-        let gw = MapperActor::init_gateway(config)?;
-        gw.add_port(
-            igd::PortMappingProtocol::TCP,
-            params.add_params.external_port,
-            params.add_params.local_address,
-            params.add_params.lease_duration.as_secs() as u32,
-            &params.add_params.node_description,
-        )?;
-
-        Ok(())
-    }
-
-    fn get_external_ip(&self) -> Result<Ipv4Addr, Error> {
-        let gw = MapperActor::init_gateway(self.config)?;
+        let gw = Gateway::new(self.config);
         let ext_ip = gw.get_external_ip()?;
 
         Ok(ext_ip)
     }
 }
 
-#[cfg(test)]
 mod test {
     use std::net::SocketAddrV4;
 
     use super::*;
-    use crate::porter::PortMappingProtocol;
+    use crate::porter::{
+        params::{AddMappingEntry, RefreshMappingEntry},
+        Protocol,
+    };
 
     #[actix_rt::test]
     async fn add_port_mapping() {
@@ -147,7 +105,7 @@ mod test {
         let add_params = AddMappingEntry::new(
             SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 24567),
             24567,
-            PortMappingProtocol::TCP,
+            Protocol::TCP,
             Duration::from_secs(60),
             "zfx_node_add_port_mapping_test".to_string(),
         );
