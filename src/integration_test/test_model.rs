@@ -1,5 +1,6 @@
 use crate::cell::types::CellHash;
 use crate::integration_test::test_functions::wait_until_nodes_start;
+use crate::zfx_id::Id;
 use crate::Error;
 use ed25519_dalek::Keypair;
 use std::borrow::Borrow;
@@ -9,6 +10,7 @@ use std::process::{Child, Command};
 use std::time::Duration;
 use std::{panic, thread};
 use tracing::info;
+use x509_parser::nom::AsBytes;
 
 pub const KEYPAIR_NODE_0 : &str = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416";
 pub const KEYPAIR_NODE_1 : &str = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd";
@@ -128,6 +130,7 @@ pub struct TestNode {
     pub address_as_str: String,
     pub bootstrap_address: String,
     pub state: ProcessNodeState,
+    pub id: String,
 }
 
 pub enum ProcessNodeState {
@@ -144,6 +147,7 @@ impl TestNode {
         bootstrap_address.push_str((bootstrap_port + 4).to_string().borrow()); // port of node 0 ends in 4, node 1 in 5, etc.
 
         TestNode {
+            id: format!("{}", Id::new(keypair.as_bytes())),
             keypair: kp,
             public_key: pkh,
             address: address.parse().expect("failed to construct address"),
@@ -199,6 +203,8 @@ impl TestNode {
         command.arg(&self.bootstrap_address);
         command.arg("--keypair");
         command.arg(&self.keypair_as_str);
+        command.arg("--id");
+        command.arg(&self.id);
         command
     }
 }
