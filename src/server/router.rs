@@ -81,7 +81,7 @@ impl Handler<RouterRequest> for Router {
 
     fn handle(
         &mut self,
-        RouterRequest { peer_id, check_peer, request: msg }: RouterRequest,
+        RouterRequest { peer_id, check_peer, request }: RouterRequest,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         let view = self.view.clone();
@@ -92,12 +92,12 @@ impl Handler<RouterRequest> for Router {
         let validators = self.validators.clone();
         Box::pin(async move {
             info!(
-                "Handling incoming msg:\n\tcheck: {}, id: {}, validator: {}",
+                "Handling incoming msg: needs_checking: {}, id: {}, validator: {}",
                 check_peer,
                 peer_id,
                 validators.contains(&peer_id)
             );
-            match msg {
+            match request {
                 // Handshake
                 Request::Version(version) => {
                     debug!("routing Version -> View");
@@ -145,11 +145,17 @@ impl Handler<RouterRequest> for Router {
                     Response::GenerateTxAck(receive_tx_ack)
                 }
                 Request::QueryTx(query_tx) => {
+                    if check_peer && !validators.contains(&peer_id) {
+                        return Response::RequestRefused;
+                    }
                     debug!("routing QueryTx -> Sleet");
                     let query_tx_ack = sleet.send(query_tx).await.unwrap();
                     Response::QueryTxAck(query_tx_ack)
                 }
                 Request::GetTxAncestors(get_ancestors) => {
+                    if check_peer && !validators.contains(&peer_id) {
+                        return Response::RequestRefused;
+                    }
                     debug!("routing QueryTx -> Sleet");
                     let ancestors = sleet.send(get_ancestors).await.unwrap();
                     Response::TxAncestors(ancestors)
@@ -166,6 +172,9 @@ impl Handler<RouterRequest> for Router {
                     Response::BlockAck(block_ack)
                 }
                 Request::QueryBlock(query_block) => {
+                    if check_peer && !validators.contains(&peer_id) {
+                        return Response::RequestRefused;
+                    }
                     debug!("routing QueryBlock -> Hail");
                     let query_block_ack = hail.send(query_block).await.unwrap();
                     Response::QueryBlockAck(query_block_ack)

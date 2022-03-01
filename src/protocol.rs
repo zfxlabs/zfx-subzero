@@ -54,4 +54,6 @@ pub enum Response {
     QueryBlockAck(hail::QueryBlockAck),
     // Error
     Unknown,
+    /// Refuse a validator-only request from a non-validator
+    RequestRefused,
 }
