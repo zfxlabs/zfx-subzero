@@ -3,9 +3,12 @@ use crate::ice::{CheckStatus, Ice};
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
 use crate::view::View;
+use crate::zfx_id::Id;
 use crate::{alpha, alpha::Alpha};
 
 use tracing::{debug, error, info};
+
+use std::collections::HashSet;
 
 use crate::sleet;
 use actix::{Actor, Addr, Context, Handler, ResponseFuture};
@@ -16,6 +19,7 @@ pub struct Router {
     alpha: Addr<Alpha>,
     sleet: Addr<Sleet>,
     hail: Addr<Hail>,
+    validators: HashSet<Id>,
 }
 
 impl Router {
@@ -26,7 +30,7 @@ impl Router {
         sleet: Addr<Sleet>,
         hail: Addr<Hail>,
     ) -> Self {
-        Router { view, ice, alpha, sleet, hail }
+        Router { view, ice, alpha, sleet, hail, validators: HashSet::new() }
     }
 }
 
@@ -38,10 +42,21 @@ impl Actor for Router {
     }
 }
 
-impl Handler<Request> for Router {
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Response")]
+pub struct RouterRequest {
+    pub peer_id: Id,
+    pub request: Request,
+}
+
+impl Handler<RouterRequest> for Router {
     type Result = ResponseFuture<Response>;
 
-    fn handle(&mut self, msg: Request, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(
+        &mut self,
+        RouterRequest { peer_id, request: msg }: RouterRequest,
+        _ctx: &mut Context<Self>,
+    ) -> Self::Result {
         let view = self.view.clone();
         let ice = self.ice.clone();
         let alpha = self.alpha.clone();
