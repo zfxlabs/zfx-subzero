@@ -10,6 +10,8 @@ use super::connection_stream::ConnectionStream;
 pub trait Upgrader: Sync + Send {
     // === async fn upgrade(..) -> Result<ConnectionStream>;
     fn upgrade(&self, conn: TcpStream) -> UpgradeOutput;
+
+    fn is_tls(&self) -> bool;
 }
 
 pub struct TcpUpgrader {}
@@ -38,6 +40,10 @@ impl Upgrader for TcpUpgrader {
         let fut = async { Ok(ConnectionStream::Tcp(conn)) };
         Box::pin(fut)
     }
+
+    fn is_tls(&self) -> bool {
+        false
+    }
 }
 
 impl TlsClientUpgrader {
@@ -59,6 +65,10 @@ impl Upgrader for TlsClientUpgrader {
         };
         Box::pin(fut)
     }
+
+    fn is_tls(&self) -> bool {
+        true
+    }
 }
 
 impl TlsServerUpgrader {
@@ -79,6 +89,10 @@ impl Upgrader for TlsServerUpgrader {
             }
         };
         Box::pin(fut)
+    }
+
+    fn is_tls(&self) -> bool {
+        true
     }
 }
 

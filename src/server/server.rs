@@ -61,14 +61,17 @@ impl Server {
         let connection = upgrader.upgrade(stream).await?;
         // The ID generated from a TCP connection is next to useless,
         // however for TLS it safely identifies the peer
+        let check_peer = upgrader.is_tls();
         let peer_id = connection.get_id().unwrap();
         let mut channel: Channel<Response, Request> = Channel::wrap(connection).unwrap();
         let (mut sender, mut receiver) = channel.split();
         let request = receiver.recv().await.unwrap();
         match request.clone() {
             Some(request) => {
-                let response =
-                    router.send(RouterRequest { peer_id, request: request.clone() }).await.unwrap();
+                let response = router
+                    .send(RouterRequest { peer_id, check_peer, request: request.clone() })
+                    .await
+                    .unwrap();
                 //debug!("sending response = {:?}", response);
                 sender.send(response).await.unwrap();
             }
