@@ -27,13 +27,7 @@ async fn main() -> Result<()> {
         .author("zero.fx labs ltd.")
         .about("Generates a transaction and sends it to `sleet`")
         // FIXME `id@ip` here
-        .arg(
-            Arg::with_name("peer-ip")
-                .short("ip")
-                .long("peer-ip")
-                .value_name("PEER_IP")
-                .takes_value(true),
-        )
+        .arg(Arg::with_name("peer").long("peer").value_name("PEER_ID@PEER_IP").takes_value(true))
         .arg(
             Arg::with_name("keypair")
                 .short("k")
@@ -69,13 +63,16 @@ async fn main() -> Result<()> {
         .get_matches();
 
     // The peer to be contacted
-    let peer_ip = value_t!(matches.value_of("peer-ip"), SocketAddr).unwrap_or_else(|e| e.exit());
+    let peer = value_t!(matches.value_of("peer"), String).unwrap_or_else(|e| e.exit());
     // The keypair that owns the `txhash` for spending
     let keypair = value_t!(matches.value_of("keypair"), String).unwrap_or_else(|e| e.exit());
     // The root `cell-hash` to spend
     let cell_hash = value_t!(matches.value_of("cell-hash"), String).unwrap_or_else(|e| e.exit());
     let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
     let use_tls = matches.is_present("use-tls");
+
+    let (peer_id, peer_ip) = zfx_subzero::util::parse_id_and_ip(&peer).unwrap();
+
     let cert_path = if use_tls {
         Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()))
     } else {
@@ -115,7 +112,7 @@ async fn main() -> Result<()> {
     for amount in 0..n {
         for retry in 1..11 {
             match client::oneshot(
-                Id::new(b"FIXME"),
+                peer_id,
                 peer_ip,
                 Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
                 upgrader.clone(),
@@ -133,7 +130,7 @@ async fn main() -> Result<()> {
                     let transfer_tx = transfer_op.transfer(&keypair).unwrap();
                     cell_hash_bytes = transfer_tx.hash();
                     match client::oneshot(
-                        Id::new(b"FIXME"),
+                        peer_id,
                         peer_ip,
                         Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
                         upgrader.clone(),
