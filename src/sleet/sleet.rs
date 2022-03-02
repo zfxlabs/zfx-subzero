@@ -473,14 +473,10 @@ impl Handler<FreshTx> for Sleet {
         let validators = self.sample(ALPHA).unwrap();
         info!("[{}] Querying\n{}", "sleet".cyan(), msg.tx.clone());
         info!("[{}] sampled {:?}", "sleet".cyan(), validators.clone());
-        let mut validator_ips = vec![];
-        for (_, ip) in validators.iter() {
-            validator_ips.push(ip.clone());
-        }
 
         // Fanout queries to sampled validators
         let send_to_client = self.sender.send(ClientRequest::Fanout {
-            ips: validator_ips.clone(),
+            peers: validators.clone(),
             request: Request::QueryTx(QueryTx {
                 id: self.node_id.clone(),
                 ip: self.node_ip.clone(),
@@ -496,7 +492,7 @@ impl Handler<FreshTx> for Sleet {
                 Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
-                    if acks.len() == validator_ips.len() {
+                    if acks.len() == validators.len() {
                         Ok(ctx.notify(QueryComplete { tx: msg.tx.clone(), acks }))
                     } else {
                         Ok(ctx.notify(QueryIncomplete { tx: msg.tx.clone(), acks }))
@@ -633,7 +629,7 @@ impl Handler<QueryTx> for Sleet {
                 let (sender, receiver) = oneshot::channel();
                 self.pending_queries.push((msg.tx.clone(), sender));
                 // Ask the querying node to send us the ancestors of the queried transaction
-                ctx.notify(AskForAncestors { tx_hash: msg.tx.hash(), ip: msg.ip });
+                ctx.notify(AskForAncestors { tx_hash: msg.tx.hash(), id: msg.id, ip: msg.ip });
                 Box::pin(async move {
                     let timeout = time::sleep(Duration::from_millis(QUERY_RESPONSE_TIMEOUT_MS));
                     tokio::select! {
@@ -715,6 +711,7 @@ impl Handler<CheckPending> for Sleet {
 #[rtype(result = "()")]
 pub struct AskForAncestors {
     pub tx_hash: TxHash,
+    pub id: Id,
     pub ip: SocketAddr,
 }
 
@@ -723,11 +720,12 @@ impl Handler<AskForAncestors> for Sleet {
 
     fn handle(
         &mut self,
-        AskForAncestors { tx_hash, ip }: AskForAncestors,
+        AskForAncestors { tx_hash, id, ip }: AskForAncestors,
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         self.sender
             .send(ClientRequest::Oneshot {
+                id,
                 ip,
                 request: Request::GetTxAncestors(GetTxAncestors { tx_hash }),
             })

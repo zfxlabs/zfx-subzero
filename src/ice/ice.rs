@@ -320,6 +320,7 @@ impl Handler<PrintReservoir> for Ice {
 #[rtype(result = "Result<Ack>")]
 pub struct DoPing {
     self_id: Id,
+    id: Id,
     ip: SocketAddr,
     queries: Vec<Query>,
 }
@@ -329,6 +330,7 @@ impl Handler<DoPing> for Ice {
 
     fn handle(&mut self, msg: DoPing, _ctx: &mut Context<Self>) -> Self::Result {
         let send_to_client = self.sender.send(ClientRequest::Oneshot {
+            id: msg.id,
             ip: msg.ip,
             request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
         });
@@ -405,7 +407,11 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
 
             // Ping the designated peer
-            match ice.send(DoPing { self_id, ip: ip.clone(), queries }).await.unwrap() {
+            match ice
+                .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries })
+                .await
+                .unwrap()
+            {
                 Ok(ack) => {
                     send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
                         .await

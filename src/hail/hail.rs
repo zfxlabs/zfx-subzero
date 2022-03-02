@@ -426,14 +426,10 @@ impl Handler<FreshBlock> for Hail {
     fn handle(&mut self, msg: FreshBlock, _ctx: &mut Context<Self>) -> Self::Result {
         let validators = self.sample(ALPHA).unwrap();
         info!("[{}] sampled {:?}", "hail".blue(), validators.clone());
-        let mut validator_ips = vec![];
-        for (_, ip) in validators.iter() {
-            validator_ips.push(ip.clone());
-        }
 
         // Fanout queries to sampled validators
         let send_to_client = self.sender.send(ClientRequest::Fanout {
-            ips: validator_ips.clone(),
+            peers: validators.clone(),
             request: Request::QueryBlock(QueryBlock {
                 id: self.node_id.clone(),
                 block: msg.block.clone(),
@@ -448,7 +444,7 @@ impl Handler<FreshBlock> for Hail {
                 Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
-                    if acks.len() == validator_ips.len() {
+                    if acks.len() == validators.len() {
                         Ok(ctx.notify(QueryComplete { block: msg.block.clone(), acks }))
                     } else {
                         Ok(ctx.notify(QueryIncomplete { block: msg.block.clone(), acks }))

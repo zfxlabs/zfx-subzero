@@ -4,6 +4,7 @@ use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
 use zfx_subzero::tls;
+use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
@@ -25,6 +26,7 @@ async fn main() -> Result<()> {
         .version("0.1")
         .author("zero.fx labs ltd.")
         .about("Generates a transaction and sends it to `sleet`")
+        // FIXME `id@ip` here
         .arg(
             Arg::with_name("peer-ip")
                 .short("ip")
@@ -113,6 +115,7 @@ async fn main() -> Result<()> {
     for amount in 0..n {
         for retry in 1..11 {
             match client::oneshot(
+                Id::new(b"FIXME"),
                 peer_ip,
                 Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
                 upgrader.clone(),
@@ -130,6 +133,7 @@ async fn main() -> Result<()> {
                     let transfer_tx = transfer_op.transfer(&keypair).unwrap();
                     cell_hash_bytes = transfer_tx.hash();
                     match client::oneshot(
+                        Id::new(b"FIXME"),
                         peer_ip,
                         Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
                         upgrader.clone(),
