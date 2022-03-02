@@ -54,6 +54,9 @@ pub enum Error {
     TryFromStringError,
     /// Error when parsing a peer description `ID@IP`
     PeerParseError,
+
+    /// Peer IP and ID don't match or wrong certificate was presented
+    UnexpectedPeerConnected,
 }
 
 impl std::error::Error for Error {}
