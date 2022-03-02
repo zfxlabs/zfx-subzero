@@ -90,10 +90,10 @@ pub async fn oneshot(
     Ok(response)
 }
 
-// TODO will this work??
+/// To be used in the integration tests (TCP-only)
 #[cfg(test)]
 pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
-    oneshot(Id::from_ip(&ip), ip, request, crate::tls::upgrader::TcpUpgrader::new()).await
+    oneshot(Id::zero(), ip, request, crate::tls::upgrader::TcpUpgrader::new()).await
 }
 
 /// A gentle fanout function which sends requests to peers and collects responses.
