@@ -4,7 +4,7 @@ use crate::tls::upgrader::Upgrader;
 use crate::zfx_id::Id;
 use crate::{Error, Result};
 
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 use tokio::net::TcpStream;
 
@@ -78,6 +78,12 @@ pub async fn oneshot(
 ) -> Result<Option<Response>> {
     let socket = TcpStream::connect(&ip).await.map_err(Error::IO)?;
     let connection = upgrader.upgrade(socket).await?;
+    if connection.is_tls()
+        && id != connection.get_id().map_err(|_| Error::UnexpectedPeerConnected)?
+    {
+        warn!("connected peer id doesn't match expected id");
+        return Err(Error::UnexpectedPeerConnected);
+    }
     let mut channel: Channel<Request, Response> = Channel::wrap(connection)?;
     let (mut sender, mut receiver) = channel.split();
     // send a message to a peer
