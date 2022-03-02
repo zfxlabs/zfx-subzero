@@ -197,7 +197,7 @@ impl Handler<ClientRequest> for DummyClient {
     fn handle(&mut self, msg: ClientRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let responses = self.responses.clone();
         match msg {
-            ClientRequest::Fanout { ips: _, request } => {
+            ClientRequest::Fanout { peers: _, request } => {
                 let responses = self.responses.clone();
                 Box::pin(async move {
                     let r = match request {
@@ -216,7 +216,7 @@ impl Handler<ClientRequest> for DummyClient {
                     ClientResponse::Fanout(r)
                 })
             }
-            ClientRequest::Oneshot { ip: _, request } => {
+            ClientRequest::Oneshot { id: _, ip: _, request } => {
                 let ancestors = self.ancestors.clone();
                 Box::pin(async move {
                     let r = match request {
