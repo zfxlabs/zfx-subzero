@@ -105,7 +105,7 @@ impl Handler<InitRouter> for Alpha {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryLastAccepted {
-    peers: Vec<SocketAddr>,
+    peers: Vec<(Id, SocketAddr)>,
 }
 
 impl Handler<QueryLastAccepted> for Alpha {
@@ -117,7 +117,7 @@ impl Handler<QueryLastAccepted> for Alpha {
 
         let send_to_client = self
             .sender
-            .send(ClientRequest::Fanout { ips: msg.peers, request: Request::GetLastAccepted });
+            .send(ClientRequest::Fanout { peers: msg.peers, request: Request::GetLastAccepted });
         // Probe `k` peers for their last accepted block ignoring errors.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
         let handle_response = send_to_client.map(move |result, _actor, ctx| {
@@ -272,8 +272,8 @@ impl Handler<LiveNetwork> for Alpha {
 
         // Process the live peers in `msg`
         let mut peers = vec![];
-        for (_, ip) in msg.clone().live_peers {
-            peers.push(ip);
+        for (id, ip) in msg.clone().live_peers {
+            peers.push((id, ip));
         }
 
         // Initiate the process of fetching the last accepted block

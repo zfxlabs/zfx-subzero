@@ -156,16 +156,16 @@ impl Handler<Bootstrap> for View {
         let ip = self.ip.clone();
         let id = self.node_id;
         // Use all seeded ips as bootstrap ips (besides self_ip)
-        let mut bootstrap_ips = vec![];
-        for (_id, ip) in self.iter() {
+        let mut bootstrap_peers = vec![];
+        for (id, ip) in self.iter() {
             if ip.clone() != self.ip.clone() {
-                bootstrap_ips.push(ip.clone());
+                bootstrap_peers.push((id.clone(), ip.clone()));
             }
         }
 
         // Fanout requests to the bootstrap seeds
         let send_to_client = self.sender.send(ClientRequest::Fanout {
-            ips: bootstrap_ips.clone(),
+            peers: bootstrap_peers.clone(),
             request: Request::Version(Version { id, ip }),
         });
         // Wrap the future so that subsequent chained handlers can access the actor

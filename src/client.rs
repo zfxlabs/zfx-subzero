@@ -93,7 +93,7 @@ pub async fn oneshot(
 // TODO will this work??
 #[cfg(test)]
 pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
-    oneshot(Id::from_ip(&ip), ip, request, TcpUpgrader::new()).await
+    oneshot(Id::from_ip(&ip), ip, request, crate::tls::upgrader::TcpUpgrader::new()).await
 }
 
 /// A gentle fanout function which sends requests to peers and collects responses.
