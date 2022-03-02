@@ -61,7 +61,7 @@ impl Alpha {
         self.state
             .validators
             .iter()
-            .filter_map(|(id, c)| if *c > 0 { Some(id.clone()) } else { None })
+            .filter_map(|(id, capacity)| if *capacity > 0 { Some(id.clone()) } else { None })
             .collect()
     }
 }
