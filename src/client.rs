@@ -1,7 +1,9 @@
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
-use crate::tls::upgrader::{TcpUpgrader, Upgrader};
+use crate::tls::upgrader::Upgrader;
+use crate::zfx_id::Id;
 use crate::{Error, Result};
+
 use tracing::{debug, error};
 
 use tokio::net::TcpStream;
@@ -34,11 +36,12 @@ impl Actor for Client {
 pub enum ClientRequest {
     /// Sends a single request and waits for a response.
     Oneshot {
+        id: Id,
         ip: SocketAddr,
         request: Request,
     },
     Fanout {
-        ips: Vec<SocketAddr>,
+        peers: Vec<(Id, SocketAddr)>,
         request: Request,
     },
 }
@@ -55,12 +58,12 @@ impl Handler<ClientRequest> for Client {
     fn handle(&mut self, msg: ClientRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let upgrader = self.upgrader.clone();
         match msg {
-            ClientRequest::Oneshot { ip, request } => Box::pin(async move {
-                let response = oneshot(ip.clone(), request.clone(), upgrader).await;
+            ClientRequest::Oneshot { id, ip, request } => Box::pin(async move {
+                let response = oneshot(id.clone(), ip.clone(), request.clone(), upgrader).await;
                 ClientResponse::Oneshot(err_to_none(response))
             }),
-            ClientRequest::Fanout { ips, request } => Box::pin(async move {
-                ClientResponse::Fanout(fanout(ips.clone(), request.clone(), upgrader).await)
+            ClientRequest::Fanout { peers, request } => Box::pin(async move {
+                ClientResponse::Fanout(fanout(peers.clone(), request.clone(), upgrader).await)
             }),
         }
     }
@@ -68,6 +71,7 @@ impl Handler<ClientRequest> for Client {
 
 // TODO this shouldn't be `pub` but `client_test` is using it
 pub async fn oneshot(
+    id: Id,
     ip: SocketAddr,
     request: Request,
     upgrader: Arc<dyn Upgrader>,
@@ -86,25 +90,28 @@ pub async fn oneshot(
     Ok(response)
 }
 
+// TODO will this work??
 #[cfg(test)]
 pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
-    oneshot(ip, request, TcpUpgrader::new()).await
+    oneshot(Id::from_ip(&ip), ip, request, TcpUpgrader::new()).await
 }
 
 /// A gentle fanout function which sends requests to peers and collects responses.
 async fn fanout(
-    ips: Vec<SocketAddr>,
+    peers: Vec<(Id, SocketAddr)>,
     request: Request,
     upgrader: Arc<dyn Upgrader>,
 ) -> Vec<Response> {
     let mut client_futs = vec![];
     // fanout oneshot requests to the ips designated in `ips` and collect the client
     // futures.
-    for ip in ips.iter().cloned() {
+    for (id, ip) in peers.iter().cloned() {
         let request = request.clone();
         let upgrader = upgrader.clone();
         let client_fut =
-            tokio::spawn(async move { err_to_none(oneshot(ip, request.clone(), upgrader).await) });
+            tokio::spawn(
+                async move { err_to_none(oneshot(id, ip, request.clone(), upgrader).await) },
+            );
         client_futs.push(client_fut)
     }
     // join the futures and collect the responses
