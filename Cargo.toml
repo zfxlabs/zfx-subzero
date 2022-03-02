@@ -46,6 +46,7 @@ hex = "*"
 tai64 = { version = "4.0.0", features = ["serde"] }
 base58check = "*"
 dirs = "4.0.0"
+igd = { version = "*", features = ["aio"] }
 
 # For TLS support
 tokio-rustls = { version = "0.23.1", features = ["dangerous_configuration"] }

@@ -12,6 +12,7 @@ pub mod graph;
 pub mod hail;
 pub mod ice;
 pub mod integration_test;
+pub mod porter;
 pub mod protocol;
 pub mod server;
 pub mod sleet;
