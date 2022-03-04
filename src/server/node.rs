@@ -23,7 +23,7 @@ use crate::Result;
 pub fn run(
     ip: String,
     bootstrap_peers: Vec<String>,
-    keypair: Option<String>,
+    keypair: String,
     use_tls: bool,
     cert_path: Option<String>,
     pk_path: Option<String>,
@@ -58,19 +58,13 @@ pub fn run(
 
     info!("Node {} is starting", node_id);
 
-    match keypair {
-        Some(keypair_hex) => {
-            let dir_path = vec!["/tmp/", &node_id_str].concat();
-            let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
-            std::fs::create_dir_all(&dir_path)
-                .expect(&format!("Couldn't create directory: {}", dir_path));
-            let mut file = std::fs::File::create(file_path).unwrap();
-            file.write_all(keypair_hex.as_bytes()).unwrap();
-            let keypair_bytes = hex::decode(keypair_hex).unwrap();
-            Keypair::from_bytes(&keypair_bytes).unwrap()
-        }
-        None => panic!("Keypair is mandatory"),
-    };
+    let dir_path = vec!["/tmp/", &node_id_str].concat();
+    let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
+    std::fs::create_dir_all(&dir_path).expect(&format!("Couldn't create directory: {}", dir_path));
+    let mut file = std::fs::File::create(file_path).unwrap();
+    file.write_all(keypair.as_bytes()).unwrap();
+    let keypair_bytes = hex::decode(keypair).unwrap();
+    Keypair::from_bytes(&keypair_bytes).unwrap();
 
     let execution = async move {
         // Create the 'client' actor

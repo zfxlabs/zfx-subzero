@@ -1,0 +1,7 @@
+{
+    "listener_ip": "127.0.0.1:1234",
+    "bootstrap_peers": ["127.0.0.1:1235"],
+    "use_tls": true,
+    "certificate_file": "node.crt",
+    "private_key_file": "node.key"
+}
