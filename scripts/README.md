@@ -12,7 +12,7 @@ zfx-subzero $ ./scripts/testnode.sh 1
 zfx-subzero $ ./scripts/testnode.sh 2
 ```
 
-By default, TLS connections are used. In order to set up a testnet with plain TCP connectivity, the `USE_TCP` environment varialble should be set
+By default, TLS connections are used. In order to set up a testnet with plain TCP connectivity, the `USE_TCP` environment varialble should be set:
 
 ```sh
 zfx-subzero $ USE_TCP=1 ./scripts/testnode.sh 0

@@ -8,7 +8,8 @@ use tokio::{
 use crate::zfx_id::Id;
 
 /// A unified type for TCP and TLS streams for uniform handling of connections
-/// As it implements Tokio's `AsyncWrite` and `AsyncRead` traits, it is usable in
+/// As it implements Tokio's `AsyncWrite` and `AsyncRead` traits, it is usable
+/// with the generic functionality in Tokio and Actix
 #[derive(Debug)]
 pub enum ConnectionStream {
     Tcp(TcpStream),
