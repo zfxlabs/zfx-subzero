@@ -36,7 +36,7 @@ pub fn get_node_cert(cert_file: &Path, priv_key_file: &Path) -> Result<(Vec<u8>,
     }
 }
 
-/// Generate a valid, self signed X.509 certificate using the hash of the public key as name
+/// Generate a valid, self signed X.509 certificate and private key
 ///
 pub fn generate_node_cert() -> Result<(Vec<u8>, Vec<u8>)> {
     let alg = &PKCS_ED25519;
