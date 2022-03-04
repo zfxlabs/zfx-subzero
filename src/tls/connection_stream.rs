@@ -7,6 +7,8 @@ use tokio::{
 
 use crate::zfx_id::Id;
 
+/// A unified type for TCP and TLS streams for uniform handling of connections
+/// As it implements Tokio's `AsyncWrite` and `AsyncRead` traits, it is usable in
 #[derive(Debug)]
 pub enum ConnectionStream {
     Tcp(TcpStream),
@@ -70,6 +72,7 @@ pub fn id_from_client_connection(
     id_from_first_cert(state.peer_certificates())
 }
 
+/// Generate the peer ID from the first (and only) certificate
 fn id_from_first_cert(certs: Option<&[rustls::Certificate]>) -> io::Result<Id> {
     match certs {
         Some(certs) => {

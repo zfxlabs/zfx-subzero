@@ -68,11 +68,16 @@ impl Handler<ValidatorSet> for Router {
     }
 }
 
+/// Wrapper for a `Request`, augmenting it with the peer's ID
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
 pub struct RouterRequest {
+    /// ID of the peer. meaningful only when using TLS where the ID is generated from the certificate
+    /// presented during handshake
     pub peer_id: Id,
+    /// Whether the peer ID needs to be checked
     pub check_peer: bool,
+    /// The request received
     pub request: Request,
 }
 
@@ -145,6 +150,7 @@ impl Handler<RouterRequest> for Router {
                     Response::GenerateTxAck(receive_tx_ack)
                 }
                 Request::QueryTx(query_tx) => {
+                    // This request is only accepted from validators
                     if check_peer && !validators.contains(&peer_id) {
                         info!("Refusing validator request {:?} from peer {}", query_tx, peer_id);
                         return Response::RequestRefused;
@@ -154,6 +160,7 @@ impl Handler<RouterRequest> for Router {
                     Response::QueryTxAck(query_tx_ack)
                 }
                 Request::GetTxAncestors(get_ancestors) => {
+                    // This request is only accepted from validators
                     if check_peer && !validators.contains(&peer_id) {
                         info!(
                             "Refusing validator request {:?} from peer {}",
@@ -177,6 +184,7 @@ impl Handler<RouterRequest> for Router {
                     Response::BlockAck(block_ack)
                 }
                 Request::QueryBlock(query_block) => {
+                    // This request is only accepted from validators
                     if check_peer && !validators.contains(&peer_id) {
                         info!("Refusing validator request {:?} from peer {}", query_block, peer_id);
                         return Response::RequestRefused;

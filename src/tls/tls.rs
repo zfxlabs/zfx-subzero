@@ -1,3 +1,7 @@
+//! This module contains the code for configuring `tokio_rustls` for a peer-to-peer setting
+//! Client side authenication is enforced, but the server doesn't need a certificate chain,
+//! as both use single self-signed certificates.
+
 use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::{sync::Arc, time::SystemTime};
@@ -10,6 +14,7 @@ lazy_static! {
     pub static ref DUMMY_DOMAIN: ServerName = ServerName::try_from("example.org").unwrap();
 }
 
+/// Client verification: enforce the presence and check a single certificates
 struct ZfxClientCertVerifier;
 
 impl ClientCertVerifier for ZfxClientCertVerifier {
@@ -34,6 +39,7 @@ impl ClientCertVerifier for ZfxClientCertVerifier {
     }
 }
 
+/// Server verification: don't check certificate chain and domain name, just the presence of a certificate
 struct ZfxServerCertVerifier;
 
 impl ServerCertVerifier for ZfxServerCertVerifier {
@@ -50,6 +56,7 @@ impl ServerCertVerifier for ZfxServerCertVerifier {
     }
 }
 
+/// Build a client-side configuration from the certificate and private key, usable in a peer-to-peer network
 pub fn client_tls_config(raw_certificate: &[u8], raw_private_key: &[u8]) -> ClientConfig {
     let cert_vec = vec![rustls::Certificate(Vec::from(raw_certificate))];
     let pk = rustls::PrivateKey(Vec::from(raw_private_key));
@@ -59,11 +66,13 @@ pub fn client_tls_config(raw_certificate: &[u8], raw_private_key: &[u8]) -> Clie
         .with_root_certificates(rustls::RootCertStore::empty())
         .with_single_cert(cert_vec, pk)
         .unwrap();
+    // `dangerous` here only means that we're using our own certificate verification
     let mut config = config.dangerous();
     config.set_certificate_verifier(verifier);
     config.cfg.clone()
 }
 
+/// Build a server-side configuration from the certificate and private key, usable in a peer-to-peer network
 pub fn server_tls_config(raw_certificate: &[u8], raw_private_key: &[u8]) -> ServerConfig {
     let cert_vec = vec![rustls::Certificate(Vec::from(raw_certificate))];
     let pk = rustls::PrivateKey(Vec::from(raw_private_key));

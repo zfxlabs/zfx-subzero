@@ -7,6 +7,10 @@ use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 use super::connection_stream::ConnectionStream;
 
+/// `Upgrader` represents an `async` trait, for upgrading a `TcpStream` to a `ConnectionStream`.
+/// The implementors differ radically in their behaviour:
+/// For the TLS case, it involves the TLS handshake and setting up encrypted communication,
+/// while for TCP, it practically a no-op.
 pub trait Upgrader: Sync + Send {
     // === async fn upgrade(..) -> Result<ConnectionStream>;
     fn upgrade(&self, conn: TcpStream) -> UpgradeOutput;
