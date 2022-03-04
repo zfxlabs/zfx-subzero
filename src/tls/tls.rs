@@ -14,7 +14,7 @@ lazy_static! {
     pub static ref DUMMY_DOMAIN: ServerName = ServerName::try_from("example.org").unwrap();
 }
 
-/// Client verification: enforce the presence and check a single certificates
+/// Client verification: enforce the presence and check a single certificate
 struct ZfxClientCertVerifier;
 
 impl ClientCertVerifier for ZfxClientCertVerifier {
@@ -159,7 +159,7 @@ mod test {
     }
 
     async fn tls_client() {
-        let (cert, key) = cert_and_key("server");
+        let (cert, key) = cert_and_key("client");
         let addr: SocketAddr = ("localhost", 9889).to_socket_addrs().unwrap().next().unwrap();
 
         let stream = TcpStream::connect(&addr).await.expect("couldnt connect");

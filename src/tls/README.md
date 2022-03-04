@@ -1,6 +1,6 @@
 # TLS
 
-This directory contains the TLS - and certificate-related code for the Subzero project.
+This directory contains the TLS- and certificate-related code for the Subzero project.
 
 Nodes use self-signed certificates to identify themselves on the network---the node ID is derived from the certificate presented by the node. Consequently, both nodes, acting as the client and the server,  have to present their certificates, in order to establish a connection.
 
