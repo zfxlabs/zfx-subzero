@@ -292,12 +292,13 @@ impl Reservoir {
         // for (id, quorum) in self.quorums.iter() {
         //     s = format!("{}{:?}{}\n", s, id, quorum);
         // }
-        for (_id, (ip, choice, conviction)) in self.decisions.iter() {
+        for (id, (ip, choice, conviction)) in self.decisions.iter() {
             s = format!(
-                "{}{} {} | {:?} | {:?} {}\n",
+                "{}{} {} {} | {:?} | {:?} {}\n",
                 s,
                 "⦑".cyan(),
                 ip.to_string().yellow(),
+                id,
                 choice,
                 conviction,
                 "⦒".cyan(),

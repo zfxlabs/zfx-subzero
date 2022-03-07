@@ -46,6 +46,19 @@ hex = "*"
 tai64 = { version = "4.0.0", features = ["serde"] }
 base58check = "*"
 dirs = "4.0.0"
+igd = { version = "*", features = ["aio"] }
+
+# For TLS support
+tokio-rustls = { version = "0.23.1", features = ["dangerous_configuration"] }
+rustls = "*"
+# For TLS/X509 certificates
+rcgen = "0.8.14"
+ring = "0.16.20"
+pem = "1.0.1"
+x509-parser = ">= 0.10.0"
+
+derive_more = "0.99.9"
+lazy_static = "1.4"
 
 [features]
 integration_tests = []

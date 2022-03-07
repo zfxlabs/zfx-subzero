@@ -1,5 +1,6 @@
 use crate::cell::types::CellHash;
 use crate::integration_test::test_functions::wait_until_nodes_start;
+use crate::zfx_id::Id;
 use crate::Error;
 use ed25519_dalek::Keypair;
 use std::borrow::Borrow;
@@ -9,10 +10,14 @@ use std::process::{Child, Command};
 use std::time::Duration;
 use std::{panic, thread};
 use tracing::info;
+use x509_parser::nom::AsBytes;
 
 pub const KEYPAIR_NODE_0 : &str = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416";
 pub const KEYPAIR_NODE_1 : &str = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd";
 pub const KEYPAIR_NODE_2 : &str = "6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b";
+pub const NODE_ID_0: &str = "12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY";
+pub const NODE_ID_1: &str = "19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf";
+pub const NODE_ID_2: &str = "1A2iUK1VQWMfvtmrBpXXkVJjM5eMWmTfMEcBx4TatSJeuoSH7n";
 pub const NON_EXISTING_NODE : &str = "9f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b";
 pub const NODE_ADDRESS: &str = "127.0.0.1:123";
 
@@ -63,9 +68,9 @@ pub struct TestNodes {
 impl TestNodes {
     pub fn new() -> Self {
         let mut nodes = vec![];
-        nodes.push(TestNode::new(0, 1, KEYPAIR_NODE_0));
-        nodes.push(TestNode::new(1, 0, KEYPAIR_NODE_1));
-        nodes.push(TestNode::new(2, 1, KEYPAIR_NODE_2));
+        nodes.push(TestNode::new(0, 1, NODE_ID_1, KEYPAIR_NODE_0, NODE_ID_0));
+        nodes.push(TestNode::new(1, 0, NODE_ID_0, KEYPAIR_NODE_1, NODE_ID_1));
+        nodes.push(TestNode::new(2, 1, NODE_ID_1, KEYPAIR_NODE_2, NODE_ID_2));
 
         TestNodes { nodes }
     }
@@ -83,7 +88,7 @@ impl TestNodes {
     }
 
     pub fn get_non_existing_node(&self) -> TestNode {
-        return TestNode::new(9, 9, NON_EXISTING_NODE);
+        return TestNode::new(9, 9, NODE_ID_1, NON_EXISTING_NODE, NODE_ID_0);
     }
 
     pub fn kill_all(&mut self) {
@@ -128,6 +133,7 @@ pub struct TestNode {
     pub address_as_str: String,
     pub bootstrap_address: String,
     pub state: ProcessNodeState,
+    pub id: String,
 }
 
 pub enum ProcessNodeState {
@@ -136,14 +142,21 @@ pub enum ProcessNodeState {
 }
 
 impl TestNode {
-    pub fn new(id: u32, bootstrap_port: u32, keypair: &str) -> Self {
+    pub fn new(
+        id: u32,
+        bootstrap_port: u32,
+        bootstrap_node_id: &str,
+        keypair: &str,
+        node_id_str: &str,
+    ) -> Self {
         let (kp, pkh) = TestNode::create_keys_of_node(keypair);
         let mut address = String::from(NODE_ADDRESS);
-        let mut bootstrap_address = String::from(NODE_ADDRESS);
+        let mut bootstrap_address =
+            format!("{}@{}{}", bootstrap_node_id, NODE_ADDRESS, (bootstrap_port + 4).to_string());
         address.push_str((id + 4).to_string().borrow()); // port of node 0 ends in 4, node 1 in 5, etc.
-        bootstrap_address.push_str((bootstrap_port + 4).to_string().borrow()); // port of node 0 ends in 4, node 1 in 5, etc.
 
         TestNode {
+            id: String::from(node_id_str),
             keypair: kp,
             public_key: pkh,
             address: address.parse().expect("failed to construct address"),
@@ -193,12 +206,14 @@ impl TestNode {
             format!("{}/.cargo/bin/cargo", dirs::home_dir().unwrap().to_str().unwrap().to_string());
         let mut command = Command::new(cargo_path);
         command.args(&["run", "-p", "zfx-subzero"]);
-        command.args(&["--bin", "node", "--", "--listener-ip"]);
+        command.args(&["--bin", "node", "--", "-a"]);
         command.arg(&self.address_as_str);
-        command.arg("--bootstrap-ip");
+        command.arg("-b");
         command.arg(&self.bootstrap_address);
         command.arg("--keypair");
         command.arg(&self.keypair_as_str);
+        command.arg("--id");
+        command.arg(&self.id);
         command
     }
 }

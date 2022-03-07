@@ -5,7 +5,7 @@ use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
 use crate::alpha::AcceptedBlock;
 use crate::cell::Cell;
-use crate::client::Fanout;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::graph::DAG;
 use crate::protocol::{Request, Response};
@@ -40,7 +40,7 @@ pub struct Hail {
     /// The current block height.
     height: BlockHeight,
     /// The client used to make external requests.
-    sender: Recipient<Fanout>,
+    sender: Recipient<ClientRequest>,
     /// The identity of this validator.
     node_id: Id,
     /// The current block committee.
@@ -62,7 +62,7 @@ pub struct Hail {
 impl Hail {
     /// Hail is initialised with the most recent `frontier`, which is the last set of
     /// blocks yet to become final.
-    pub fn new(sender: Recipient<Fanout>, node_id: Id) -> Self {
+    pub fn new(sender: Recipient<ClientRequest>, node_id: Id) -> Self {
         Hail {
             last_accepted_hash: None,
             height: 0,
@@ -426,14 +426,10 @@ impl Handler<FreshBlock> for Hail {
     fn handle(&mut self, msg: FreshBlock, _ctx: &mut Context<Self>) -> Self::Result {
         let validators = self.sample(ALPHA).unwrap();
         info!("[{}] sampled {:?}", "hail".blue(), validators.clone());
-        let mut validator_ips = vec![];
-        for (_, ip) in validators.iter() {
-            validator_ips.push(ip.clone());
-        }
 
         // Fanout queries to sampled validators
-        let send_to_client = self.sender.send(Fanout {
-            ips: validator_ips.clone(),
+        let send_to_client = self.sender.send(ClientRequest::Fanout {
+            peers: validators.clone(),
             request: Request::QueryBlock(QueryBlock {
                 id: self.node_id.clone(),
                 block: msg.block.clone(),
@@ -445,15 +441,16 @@ impl Handler<FreshBlock> for Hail {
 
         let update_self = send_to_client.map(move |result, actor, ctx| {
             match result {
-                Ok(acks) => {
+                Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
                     // then every peer responded.
-                    if acks.len() == validator_ips.len() {
+                    if acks.len() == validators.len() {
                         Ok(ctx.notify(QueryComplete { block: msg.block.clone(), acks }))
                     } else {
                         Ok(ctx.notify(QueryIncomplete { block: msg.block.clone(), acks }))
                     }
                 }
+                Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
                 // FIXME
                 Err(_) => Err(Error::ActixMailboxError),
             }
@@ -531,6 +528,24 @@ impl Handler<GetBlock> for Hail {
 
     fn handle(&mut self, msg: GetBlock, _ctx: &mut Context<Self>) -> Self::Result {
         BlockAck { block: self.live_blocks.get(&msg.block_hash).map(|x| x.clone()) }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "BlockAck")]
+pub struct GetBlockByHeight {
+    pub block_height: BlockHeight,
+}
+
+impl Handler<GetBlockByHeight> for Hail {
+    type Result = BlockAck;
+
+    fn handle(&mut self, msg: GetBlockByHeight, _ctx: &mut Context<Self>) -> Self::Result {
+        let block = match self.live_blocks.iter().find(|e| e.1.height == msg.block_height) {
+            Some(entry) => Some(entry.1.clone()),
+            None => None,
+        };
+        BlockAck { block }
     }
 }
 

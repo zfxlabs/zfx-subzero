@@ -1,16 +1,18 @@
 use super::sampleable_map::SampleableMap;
 
-use crate::client;
+use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::ice::{self, Ice};
 use crate::protocol::{Request, Response};
 use crate::util;
 use crate::version::{Version, VersionAck};
 use crate::zfx_id::Id;
+use crate::{Error, Result};
 
 use tracing::{debug, info};
 
-use actix::{Actor, Addr, Context, Handler, ResponseFuture};
+use actix::{Actor, Addr, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -21,7 +23,10 @@ const BOOTSTRAP_QUORUM: usize = 2;
 /// The view contains the most up to date set of peer metadata.
 #[derive(Debug)]
 pub struct View {
+    /// The client used to make external requests.
+    sender: Recipient<ClientRequest>,
     ip: SocketAddr,
+    node_id: Id,
     peers: SampleableMap<Id, SocketAddr>,
     peer_list: HashSet<(Id, SocketAddr)>,
 }
@@ -41,20 +46,19 @@ impl std::ops::DerefMut for View {
 }
 
 impl View {
-    pub fn new(ip: SocketAddr) -> Self {
-        Self { ip, peers: SampleableMap::new(), peer_list: HashSet::new() }
+    pub fn new(sender: Recipient<ClientRequest>, ip: SocketAddr, node_id: Id) -> Self {
+        Self { sender, ip, node_id, peers: SampleableMap::new(), peer_list: HashSet::new() }
     }
 
-    pub fn init(&mut self, ips: Vec<SocketAddr>) {
-        for ip in ips.iter() {
-            let id = Id::from_ip(ip);
-            if let None = self.insert(id, ip.clone()) {
-                debug!("inserted <id: {:?}, ip: {:?}>", id, ip.clone());
+    pub fn init(&mut self, peers: Vec<(Id, SocketAddr)>) {
+        for (id, ip) in peers.iter() {
+            if let None = self.insert(id.clone(), ip.clone()) {
+                debug!("inserted <id: {:?}, ip: {:?}>", id.clone(), ip.clone());
             }
             if self.peer_list.len() < PEER_LIST_MAX {
-                if !self.peer_list.contains(&(id, ip.clone())) {
-                    debug!("inserting <id: {:?}, ip: {:?}> in peer list", id, ip.clone());
-                    self.peer_list.insert((id, ip.clone()));
+                if !self.peer_list.contains(&(id.clone(), ip.clone())) {
+                    debug!("inserting <id: {:?}, ip: {:?}> in peer list", id.clone(), ip.clone());
+                    self.peer_list.insert((id.clone(), ip.clone()));
                 }
             }
         }
@@ -62,7 +66,7 @@ impl View {
 
     // Returns whether the element was updated or not (if the element was missing)
     pub fn insert_update(&mut self, id: Id, ip: SocketAddr) -> bool {
-        if id == Id::from_ip(&self.ip) {
+        if id == self.node_id {
             return false;
         }
         match self.insert(id, ip.clone()) {
@@ -103,7 +107,7 @@ impl Handler<Version> for View {
     fn handle(&mut self, msg: Version, _ctx: &mut Context<Self>) -> Self::Result {
         // TODO: verify / extend `Version`
         let ip = msg.ip.clone();
-        let id = Id::from_ip(&ip);
+        let id = msg.id.clone();
         let _ = self.insert_update(id, ip);
 
         // Fetch the peer list
@@ -111,7 +115,7 @@ impl Handler<Version> for View {
         for peer in self.peer_list.iter().cloned() {
             peer_vec.push(peer);
         }
-        VersionAck { ip: self.ip.clone(), peer_list: peer_vec }
+        VersionAck { ip: self.ip.clone(), id: self.node_id.clone(), peer_list: peer_vec }
     }
 }
 
@@ -137,7 +141,7 @@ impl Handler<GetPeers> for View {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "BootstrapResult")]
+#[rtype(result = "Result<BootstrapResult>")]
 pub struct Bootstrap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -146,23 +150,34 @@ pub struct BootstrapResult {
 }
 
 impl Handler<Bootstrap> for View {
-    type Result = ResponseFuture<BootstrapResult>;
+    type Result = ResponseActFuture<Self, Result<BootstrapResult>>;
 
     fn handle(&mut self, _msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
         let ip = self.ip.clone();
-        let id = Id::from_ip(&ip);
+        let id = self.node_id;
         // Use all seeded ips as bootstrap ips (besides self_ip)
-        let mut bootstrap_ips = vec![];
-        for (_id, ip) in self.iter() {
+        let mut bootstrap_peers = vec![];
+        for (id, ip) in self.iter() {
             if ip.clone() != self.ip.clone() {
-                bootstrap_ips.push(ip.clone());
+                bootstrap_peers.push((id.clone(), ip.clone()));
             }
         }
-        Box::pin(async move {
-            // Fanout requests to the bootstrap ips for version information
-            let v = client::fanout(bootstrap_ips, Request::Version(Version { id, ip })).await;
-            BootstrapResult { responses: v }
-        })
+
+        // Fanout requests to the bootstrap seeds
+        let send_to_client = self.sender.send(ClientRequest::Fanout {
+            peers: bootstrap_peers.clone(),
+            request: Request::Version(Version { id, ip }),
+        });
+        // Wrap the future so that subsequent chained handlers can access the actor
+        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
+
+        let handle_response = send_to_client.map(move |result, _actor, ctx| match result {
+            Ok(ClientResponse::Fanout(responses)) => Ok(BootstrapResult { responses }),
+            Ok(_) => Err(Error::InvalidResponse),
+            Err(e) => Err(Error::Actix(e)),
+        });
+
+        Box::pin(handle_response)
     }
 }
 
@@ -188,8 +203,7 @@ impl Handler<UpdatePeers> for View {
         let mut updates = vec![];
         for response in msg.responses.iter() {
             match response {
-                Response::VersionAck(VersionAck { ip, peer_list }) => {
-                    let peer_id = Id::from_ip(&ip);
+                Response::VersionAck(VersionAck { ip, id: peer_id, peer_list }) => {
                     if self.insert_update(peer_id.clone(), ip.clone()) {
                         updates.push((peer_id.clone(), ip.clone()));
                     }
@@ -234,7 +248,7 @@ impl Handler<SampleOne> for View {
 pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
     let mut i = 3;
     loop {
-        let BootstrapResult { responses } = view.send(Bootstrap {}).await.unwrap();
+        let BootstrapResult { responses } = view.send(Bootstrap {}).await.unwrap().unwrap();
         let lim = responses.len();
         if lim > 0 {
             let Updated { bootstrapped, .. } =
