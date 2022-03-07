@@ -19,7 +19,6 @@ use tokio::time::Timeout;
 use tracing::{error, info};
 
 use crate::cell::types::{Capacity, CellHash, FEE};
-use crate::integration_test::actor_sample::{run_actix, Game, Ping, ShutdownableThread};
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::integration_test::test_node_chaos_manager::TestNodeChaosManager;
