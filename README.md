@@ -55,7 +55,7 @@ How the components fit together:
 
 ## Node Identity
 
-A node's identity is derived from its TLS certificate, and is verified for outgoing and incoming connections.
+A node's identity is derived from its TLS certificate, and is verified for outgoing and incoming connections. Bootstrap peers are identified by a node ID, and IP address pair.
 
 ## Build and test
 
@@ -80,6 +80,8 @@ cargo run --bin node -- -a 127.0.0.1:1235 -b 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1V
 
  cargo run --bin node -- -a 127.0.0.1:1236 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b --use-tls --cert-path test-certs/node2.crt -p test-certs/node2.key
 ```
+
+Old data directories under `/tmp` might need to be deleted if they contain an older version of the genesis.
 
 There are scripts to simplify node startup in the [`./scripts/`](./scripts)  directory.
 
