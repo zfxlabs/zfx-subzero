@@ -7,3 +7,4 @@ mod sleet_integration_test;
 mod stress_test;
 mod test_functions;
 mod test_model;
+mod test_node_chaos_manager;

@@ -1,44 +1,45 @@
+use actix::{Actor, AsyncContext};
+use actix_rt::{Arbiter, System};
 use std::collections::HashSet;
 use std::future::Future;
 use std::net::SocketAddr;
+use std::sync::mpsc::RecvError;
+use std::sync::{Arc, Mutex};
+use std::thread;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 
 use crate::cell::Cell;
 use futures_util::FutureExt;
+use rand::{thread_rng, Rng};
+use serde::de::Unexpected::Option;
 use tokio::task::JoinHandle;
 use tokio::time::Timeout;
 use tracing::{error, info};
 
 use crate::cell::types::{Capacity, CellHash, FEE};
+use crate::integration_test::actor_sample::{run_actix, Game, Ping, ShutdownableThread};
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
+use crate::integration_test::test_node_chaos_manager::TestNodeChaosManager;
 use crate::Result;
 
 const ITERATION_LIMIT: u64 = 40;
 
 pub async fn run_stress_test() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
+    let transfer_delay = Duration::from_millis(10);
 
     let mut nodes = TestNodes::new();
     nodes.start_all_and_wait().await?;
 
     let mut results_futures = vec![];
-    results_futures.push(send(0, 1));
-    results_futures.push(send(1, 2));
-    results_futures.push(send(2, 0));
+    results_futures.push(send(0, 1, transfer_delay));
+    results_futures.push(send(1, 2, transfer_delay));
+    results_futures.push(send(2, 0, transfer_delay));
 
-    let has_error = futures::future::join_all(results_futures)
-        .map(|results| {
-            let mut has_error = false;
-            for r in results.iter() {
-                if let Err(_) = r {
-                    has_error = true
-                }
-            }
-            has_error
-        })
-        .await;
+    let has_error = wait_for_future_response(results_futures).await;
 
     sleep(Duration::from_secs(5));
 
@@ -54,6 +55,34 @@ pub async fn run_stress_test() -> Result<()> {
     assert!(!has_error, "Stress test failed as one of the thread got an error");
 
     nodes.kill_all();
+
+    Result::Ok(())
+}
+
+pub async fn run_stress_test_with_chaos() -> Result<()> {
+    info!("Run stress test with chaos: Transfer balance n-times from all 3 nodes in parallel");
+
+    let mut nodes = TestNodes::new();
+    nodes.start_all_and_wait().await?;
+
+    let mut manager = TestNodeChaosManager::new(
+        Arc::new(Mutex::new(nodes)),
+        Duration::from_secs(420),
+        (60, 90),
+        (4, 5),
+    );
+    manager.run_chaos();
+
+    sleep(Duration::from_secs(20));
+
+    let mut results_futures = vec![];
+    results_futures.push(send(0, 1, Duration::from_secs(10)));
+
+    let has_error = wait_for_future_response(results_futures).await;
+
+    manager.stop();
+
+    assert!(!has_error, "Stress test failed as one of the thread got an error");
 
     Result::Ok(())
 }
@@ -107,7 +136,11 @@ async fn validate_blocks(nodes: &TestNodes) {
     // assert_eq!(total_cells_in_blocks, cells_in_blocks.len());
 }
 
-fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
+fn send(
+    from_node_id: usize,
+    to_node_id: usize,
+    transfer_delay: Duration,
+) -> JoinHandle<Result<()>> {
     const AMOUNT: Capacity = 1 as Capacity;
     const FULL_AMOUNT: u64 = AMOUNT + FEE;
 
@@ -138,7 +171,7 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
 
         // start sending cells
         let transfer_result =
-            spend_many(from, to, AMOUNT, iterations as usize, Duration::from_millis(10)).await?;
+            spend_many(from, to, AMOUNT, iterations as usize, transfer_delay).await?;
         sleep(Duration::from_secs(2));
 
         // validate the remaining balance and transferred cells
@@ -166,4 +199,19 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
         Ok(())
     });
     handle
+}
+
+async fn wait_for_future_response(mut results_futures: Vec<JoinHandle<Result<()>>>) -> bool {
+    let has_error = futures::future::join_all(results_futures)
+        .map(|results| {
+            let mut has_error = false;
+            for r in results.iter() {
+                if let Err(_) = r {
+                    has_error = true
+                }
+            }
+            has_error
+        })
+        .await;
+    has_error
 }
