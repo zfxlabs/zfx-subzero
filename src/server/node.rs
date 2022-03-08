@@ -27,7 +27,6 @@ pub fn run(
     use_tls: bool,
     cert_path: Option<String>,
     pk_path: Option<String>,
-    // FIXME this is a temporary workaround
     node_id: Option<Id>,
 ) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
@@ -36,7 +35,6 @@ pub fn run(
         .map(|p| util::parse_id_and_ip(p).unwrap())
         .collect::<Vec<(Id, SocketAddr)>>();
 
-    // This is temporary until we have TLS setup
     let (node_id, upgraders) = if use_tls {
         let (cert, key) = tls::certificate::get_node_cert(
             Path::new(&cert_path.unwrap()),
@@ -45,10 +43,7 @@ pub fn run(
         .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
         (Id::new(&cert), upgraders)
-        // FIXME, until we change alpha and genesis
-        // (Id::from_ip(&listener_ip), upgraders)
     } else {
-        // FIXME, until we change alpha and genesis
         match node_id {
             None => (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders()),
             Some(id) => (id, tls::upgrader::tcp_upgraders()),
