@@ -3,6 +3,7 @@ use actix_rt::{Arbiter, System};
 use std::collections::HashSet;
 use std::future::Future;
 use std::net::SocketAddr;
+use std::ops::Range;
 use std::sync::mpsc::RecvError;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -67,8 +68,8 @@ pub async fn run_stress_test_with_chaos() -> Result<()> {
     let mut manager = TestNodeChaosManager::new(
         Arc::new(Mutex::new(nodes)),
         Duration::from_secs(420),
-        (60, 90),
-        (4, 5),
+        Range { start: 60, end: 90 },
+        Range { start: 4, end: 5 },
     );
     manager.run_chaos();
 
