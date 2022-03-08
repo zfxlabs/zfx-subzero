@@ -6,6 +6,7 @@ use futures_util::FutureExt;
 use rand::{thread_rng, Rng};
 use std::borrow::Borrow;
 use std::collections::HashSet;
+use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::{sleep, JoinHandle};
@@ -17,8 +18,8 @@ use tracing::{debug, error, info};
 pub struct TestNodeChaosManager {
     pub duration: Duration,
     pub test_nodes: Arc<Mutex<TestNodes>>,
-    pub delay_sec_range: (u64, u64),
-    pub node_ids_range: (usize, usize),
+    pub delay_sec_range: Range<u64>,
+    pub node_ids_range: Range<usize>,
     is_stopped: Arc<Mutex<bool>>,
 }
 
@@ -26,8 +27,8 @@ impl TestNodeChaosManager {
     pub fn new(
         test_nodes: Arc<Mutex<TestNodes>>,
         duration: Duration,
-        delay_sec_range: (u64, u64),
-        node_ids_range: (usize, usize),
+        delay_sec_range: Range<u64>,
+        node_ids_range: Range<usize>,
     ) -> TestNodeChaosManager {
         TestNodeChaosManager {
             duration,
@@ -46,7 +47,7 @@ impl TestNodeChaosManager {
     /// There is a 50/50 chance for each chaos manager that the node remains
     /// in the same state (ex. started or stopped)
     pub fn run_chaos(&mut self) {
-        for id in self.node_ids_range.0..self.node_ids_range.1 {
+        for id in self.node_ids_range.start..self.node_ids_range.end {
             self.run_chaos_for_node(id);
         }
     }
@@ -68,7 +69,7 @@ impl TestNodeChaosManager {
 
             let mut elapsed = now.elapsed();
             while elapsed <= duration && !*is_stopped.lock().unwrap() {
-                let delay = rng.gen_range(delay_sec_range.0, delay_sec_range.1);
+                let delay = rng.gen_range(delay_sec_range.start, delay_sec_range.end);
 
                 debug!("Wait for {} sec before managing node {}", delay, node_id);
                 sleep(Duration::from_secs(delay));
@@ -83,8 +84,6 @@ impl TestNodeChaosManager {
                         node_ids.insert(node_id);
                         test_nodes.lock().unwrap().start_node(node_id);
                     }
-                } else {
-                    debug!("no action");
                 }
                 elapsed = now.elapsed();
             }
