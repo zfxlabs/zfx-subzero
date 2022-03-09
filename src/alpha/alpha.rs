@@ -21,7 +21,7 @@ use actix::{Actor, Addr, Arbiter, AsyncContext, Context, Handler, Recipient};
 use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
 use tracing::{debug, info};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -138,19 +138,22 @@ impl Handler<QueryLastAccepted> for Alpha {
                     // accepted hash.
                     let mut occurences: HashMap<BlockHash, usize> = HashMap::new();
                     for last_accepted in v.iter() {
-                        if let Some(count) = occurences.get(last_accepted) {
-                            let count_clone = count.clone();
-                            occurences.insert(last_accepted.clone(), count + 1);
-                            if count_clone + 1 >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
-                                ctx.notify(ReceiveLastAccepted {
-                                    last_block_hash: last_accepted.clone(),
-                                    last_block: last_block.clone(),
-                                    last_vrf_output: last_block.vrf_out.clone(),
-                                    last_accepted: last_accepted.clone(),
-                                })
+                        match occurences.entry(*last_accepted) {
+                            Entry::Occupied(mut o) => {
+                                let count = o.get_mut();
+                                *count += 1;
+                                if *count >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
+                                    ctx.notify(ReceiveLastAccepted {
+                                        last_block_hash: last_accepted.clone(),
+                                        last_block: last_block.clone(),
+                                        last_vrf_output: last_block.vrf_out.clone(),
+                                        last_accepted: last_accepted.clone(),
+                                    })
+                                }
                             }
-                        } else {
-                            occurences.insert(last_accepted.clone(), 0);
+                            Entry::Vacant(v) => {
+                                let _ = v.insert(0);
+                            }
                         }
                     }
                 }
