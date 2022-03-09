@@ -257,6 +257,8 @@ pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
                 // reservoir is bootstrapped with the peers in `view`.
                 info!("[{}] obtained bootstrap quorum {}", "view".green(), "✓".green());
                 let PeersResult { peers } = view.send(GetPeers).await.unwrap();
+                #[allow(irrefutable_let_patterns)]
+                // TODO: Ice currently only returns `BootStrapped`
                 if let ice::Bootstrapped = ice.send(ice::Bootstrap { peers }).await.unwrap() {
                     break;
                 }

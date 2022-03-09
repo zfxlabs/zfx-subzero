@@ -80,7 +80,7 @@ impl ConflictMap {
             }
             // The block is currently non-conflicting.
             Entry::Vacant(v) => {
-                let mut cs = ConflictSet::new(block.hash().unwrap());
+                let cs = ConflictSet::new(block.hash().unwrap());
                 v.insert(cs.clone());
                 Ok(cs)
             }

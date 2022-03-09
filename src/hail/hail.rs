@@ -146,7 +146,7 @@ impl Hail {
             }
         }
         if vxs.len() > 1 {
-            let mut hashes: Vec<Vertex> = vxs.clone();
+            let hashes: Vec<Vertex> = vxs.clone();
             let mut h = hashes[0].clone();
             for i in 1..hashes.len() {
                 let hi = hashes[i].clone();
@@ -321,7 +321,7 @@ pub struct QueryIncomplete {
 impl Handler<QueryIncomplete> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
         ()
     }
 }
@@ -400,7 +400,7 @@ pub struct Accepted {
 impl Handler<Accepted> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: Accepted, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: Accepted, _ctx: &mut Context<Self>) -> Self::Result {
         // At this point we can be sure that the block is known
         // let (_, block) =
         //     block_storage::get_block(&self.known_blocks, msg.vertex.block_hash).unwrap();
@@ -439,7 +439,7 @@ impl Handler<FreshBlock> for Hail {
         // Wrap the future so that subsequent chained handlers can access te actor.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-        let update_self = send_to_client.map(move |result, actor, ctx| {
+        let update_self = send_to_client.map(move |result, _actor, ctx| {
             match result {
                 Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,
