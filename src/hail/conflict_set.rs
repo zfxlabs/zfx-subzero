@@ -1,4 +1,3 @@
-use crate::alpha::block::Block;
 use crate::alpha::types::BlockHash;
 
 use std::collections::HashSet;

@@ -1,7 +1,5 @@
-use super::{Error, Result};
-use crate::alpha::coinbase::CoinbaseState;
-use crate::alpha::stake::StakeState;
-use crate::cell::inputs::{Input, Inputs};
+use super::Result;
+use crate::cell::inputs::Inputs;
 use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};
@@ -59,6 +57,7 @@ impl TransferOperation {
 
 #[cfg(test)]
 mod test {
+    use super::super::Error;
     use super::*;
 
     use crate::alpha::coinbase::CoinbaseOperation;

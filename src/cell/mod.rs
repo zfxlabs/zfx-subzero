@@ -16,8 +16,6 @@ pub use cell_ids::*;
 pub use cell_type::*;
 pub use cell_unlock_script::*;
 
-use crate::graph;
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     Hex(String),

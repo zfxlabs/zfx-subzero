@@ -4,7 +4,6 @@ use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::ice::{self, Ice};
 use crate::protocol::{Request, Response};
-use crate::util;
 use crate::version::{Version, VersionAck};
 use crate::zfx_id::Id;
 use crate::{Error, Result};
@@ -12,7 +11,7 @@ use crate::{Error, Result};
 use tracing::{debug, info};
 
 use actix::{Actor, Addr, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture};
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -171,7 +170,7 @@ impl Handler<Bootstrap> for View {
         // Wrap the future so that subsequent chained handlers can access the actor
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-        let handle_response = send_to_client.map(move |result, _actor, ctx| match result {
+        let handle_response = send_to_client.map(move |result, _actor, _ctx| match result {
             Ok(ClientResponse::Fanout(responses)) => Ok(BootstrapResult { responses }),
             Ok(_) => Err(Error::InvalidResponse),
             Err(e) => Err(Error::Actix(e)),

@@ -1,6 +1,5 @@
 use crate::zfx_id::Id;
 
-use crate::alpha::types::VrfOutput;
 use crate::alpha::{self, Alpha};
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
@@ -17,12 +16,10 @@ use super::reservoir::Reservoir;
 use tracing::{debug, error, info};
 
 use actix::{Actor, Addr, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::SocketAddr;
-
-use rand::Rng;
 
 pub struct Ice {
     /// The client used to make external requests.
@@ -47,7 +44,7 @@ impl Ice {
 impl Actor for Ice {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!(": started");
     }
 }
@@ -159,7 +156,7 @@ impl Handler<SampleQueries> for Ice {
         let mut queries = vec![];
         if self.reservoir.len() > 0 {
             let sample = self.reservoir.sample();
-            for (id, (ip, choice, conviction)) in sample.iter() {
+            for (id, (ip, choice, _conviction)) in sample.iter() {
                 queries.push(Query {
                     peer_id: id.clone(),
                     peer_ip: ip.clone(),
@@ -311,7 +308,7 @@ impl Handler<PrintReservoir> for Ice {
     type Result = ();
 
     // The peer did not respond or responded erroneously
-    fn handle(&mut self, msg: PrintReservoir, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: PrintReservoir, _ctx: &mut Context<Self>) -> Self::Result {
         info!("{}", self.reservoir.print());
     }
 }
@@ -335,7 +332,7 @@ impl Handler<DoPing> for Ice {
             request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
         });
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
-        let handle_response = send_to_client.map(move |result, _actor, ctx| {
+        let handle_response = send_to_client.map(move |result, _actor, _ctx| {
             match result {
                 Ok(ClientResponse::Oneshot(res)) => {
                     match res {
@@ -367,7 +364,7 @@ pub struct Status {
 impl Handler<CheckStatus> for Ice {
     type Result = Status;
 
-    fn handle(&mut self, msg: CheckStatus, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: CheckStatus, _ctx: &mut Context<Self>) -> Self::Result {
         Status { bootstrapped: self.bootstrapped }
     }
 }

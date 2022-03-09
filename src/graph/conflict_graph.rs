@@ -1,6 +1,5 @@
 use super::{Error, Result};
 
-use crate::cell::inputs::{Input, Inputs};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 
@@ -53,7 +52,7 @@ impl ConflictGraph {
                 // had the same hash as another transaction through the hash in `from_outputs`.
                 Entry::Occupied(_) => return Err(Error::DuplicateCell),
                 // Otherwise we create an empty entry (same as when creating genesis).
-                Entry::Vacant(mut v) => {
+                Entry::Vacant(v) => {
                     let _ = v.insert(vec![]);
                 }
             }
@@ -280,7 +279,7 @@ mod test {
             CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap().clone(),
         );
 
-        let mut inputs = vec![
+        let inputs = vec![
             Input::new(&kp1, genesis_tx.hash(), 0).unwrap(),
             Input::new(&kp2, genesis_tx.hash(), 1).unwrap(),
             Input::new(&kp2, genesis_tx.hash(), 2).unwrap(),
@@ -317,7 +316,7 @@ mod test {
                     Inputs::new(vec![inputs[n].clone()]),
                     Outputs::new(vec![transfer::transfer_output(pkh2.clone(), iteration).unwrap()]),
                 );
-                dh.insert_cell(tx.clone()).unwrap().clone();
+                dh.insert_cell(tx.clone()).unwrap();
                 let c = dh.conflicting_cells(&tx.hash()).unwrap();
                 assert_eq!(c.pref, origin_tx_hash); // pref must be the original one which succeeded last time
             }

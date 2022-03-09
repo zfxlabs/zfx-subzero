@@ -1,7 +1,7 @@
 use super::router::{Router, RouterRequest};
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
-use crate::tls::upgrader::{TcpUpgrader, Upgrader};
+use crate::tls::upgrader::Upgrader;
 use crate::{Error, Result};
 use tracing::{error, info};
 

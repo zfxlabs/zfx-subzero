@@ -4,8 +4,7 @@ use super::block::Block;
 use super::stake::StakeState;
 use super::{Error, Result};
 
-use crate::cell::outputs::{Output, Outputs};
-use crate::cell::types::{Capacity, PublicKeyHash};
+use crate::cell::types::Capacity;
 use crate::cell::{Cell, CellId, CellIds, CellType};
 
 use crate::colored::Colorize;
@@ -55,7 +54,7 @@ impl State {
             let mut consumed_cell_ids = CellIds::empty();
             let mut consumed_cell_outputs = vec![];
             let mut consumed_capacity = 0u64;
-            let mut intersecting_cell_ids = CellIds::empty();
+            let intersecting_cell_ids = CellIds::empty();
             for (live_cell_ids, live_cell) in state.live_cells.iter() {
                 // println!("live_cell_ids = {:?}", live_cell_ids.clone());
                 if input_cell_ids.intersects_with(live_cell_ids) {
@@ -196,19 +195,13 @@ mod test {
     use super::*;
 
     use crate::alpha::block;
-    use crate::alpha::coinbase::CoinbaseOperation;
+    // use crate::alpha::coinbase::CoinbaseOperation;
+    // use crate::alpha::transfer::TransferOperation;
     use crate::alpha::initial_staker::InitialStaker;
-    use crate::alpha::transfer::TransferOperation;
-
     use crate::cell::types::FEE;
-
     use crate::zfx_id::Id;
 
-    use std::convert::TryInto;
-    use std::net::SocketAddr;
     use std::str::FromStr;
-
-    use ed25519_dalek::Keypair;
 
     #[actix_rt::test]
     async fn test_apply_genesis() {
