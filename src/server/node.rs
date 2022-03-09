@@ -150,6 +150,7 @@ pub fn run(
     Ok(())
 }
 
+#[allow(unused)] // TODO check if we need this after config is done
 fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
     let tmp_dir = vec!["/tmp/", &node_id].concat();
     std::fs::create_dir_all(&tmp_dir).expect(&format!("Couldn't create directory: {}", tmp_dir));

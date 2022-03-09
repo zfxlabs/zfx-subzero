@@ -1,6 +1,6 @@
 use zfx_sortition::sortition;
 
-use crate::alpha::types::{BlockHeight, VrfOutput, Weight};
+use crate::alpha::types::{VrfOutput, Weight};
 use crate::util;
 use crate::zfx_id::Id;
 

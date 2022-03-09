@@ -142,7 +142,7 @@ pub fn get_blocks_in_range(
     let end = Key::new(end_height, end_hash);
     for kv in db.range(start.as_bytes()..end.as_bytes()).rev() {
         match kv {
-            Ok((k, v)) => {
+            Ok((_k, v)) => {
                 let block = bincode::deserialize(v.as_bytes())?;
                 blocks.push(block);
             }

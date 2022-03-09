@@ -58,7 +58,7 @@ impl ConflictSet {
         if self.conflicts.len() == 0 {
             None
         } else {
-            let mut hashes: Vec<BlockHash> = self.conflicts.iter().cloned().collect();
+            let hashes: Vec<BlockHash> = self.conflicts.iter().cloned().collect();
             let mut h = hashes[0];
             for i in 1..hashes.len() {
                 let hi = hashes[i];
