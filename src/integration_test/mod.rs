@@ -1,4 +1,6 @@
 #![cfg(test)]
+// Suppress 'unused' warnings for the testsuite
+#![allow(unused)]
 
 mod cell_transfer_benchmark;
 mod hail_integration_test;
