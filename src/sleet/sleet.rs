@@ -233,7 +233,7 @@ impl Sleet {
 
     /// Clean up the conflict graph and the DAG
     /// Returns the children of rejected transactions
-    pub fn remove_conflicts(&mut self, tx_hash: &TxHash, tx: &Tx) -> Result<HashSet<CellHash>> {
+    pub fn remove_conflicts(&mut self, tx: &Tx) -> Result<HashSet<CellHash>> {
         let rejected = self.conflict_graph.accept_cell(tx.cell.clone())?;
         let mut children = HashSet::new();
         for hash in rejected {
@@ -447,7 +447,7 @@ impl Handler<NewAccepted> for Sleet {
 
             // TODO we most likely will need to re-issue the children of rejected transactions
             //      with better parents
-            let _children_of_rejected = self.remove_conflicts(&tx_hash, &tx);
+            let _children_of_rejected = self.remove_conflicts(&tx);
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
         }

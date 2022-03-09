@@ -1,7 +1,6 @@
-use super::cell::Cell;
 use super::cell_id::CellId;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
+use super::inputs::Inputs;
+use super::outputs::Outputs;
 use super::types::CellHash;
 use super::Result;
 
@@ -144,6 +143,7 @@ mod test {
 
     use crate::alpha::coinbase::CoinbaseOperation;
     use crate::alpha::transfer::TransferOperation;
+    use crate::cell::Cell;
 
     use std::convert::TryInto;
 

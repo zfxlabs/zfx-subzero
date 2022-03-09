@@ -1,14 +1,8 @@
 use std::io::{BufReader, Read, Write};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::alpha::Alpha;
-use actix::{Actor, Arbiter};
-use ed25519_dalek::Keypair;
-use rand::rngs::OsRng;
-use tracing::info;
-use tracing_subscriber;
-
 use crate::client::Client;
 use crate::hail::Hail;
 use crate::ice::{self, Ice, Reservoir};
@@ -19,6 +13,10 @@ use crate::util;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
+use actix::{Actor, Arbiter};
+use ed25519_dalek::Keypair;
+use rand::rngs::OsRng;
+use tracing::info;
 
 pub fn run(
     ip: String,

@@ -7,7 +7,7 @@ use crate::zfx_id::Id;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
-use tracing::{debug, error, info};
+use tracing::*;
 
 use crate::colored::Colorize;
 

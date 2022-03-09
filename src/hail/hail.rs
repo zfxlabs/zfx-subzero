@@ -21,10 +21,10 @@ use super::{Error, Result};
 
 use tracing::{debug, error, info};
 
-use actix::{Actor, AsyncContext, Context, Handler, Recipient, ResponseFuture};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
+use actix::{Actor, AsyncContext, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture};
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 // Safety parameters
@@ -265,7 +265,7 @@ impl Hail {
 impl Actor for Hail {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!(": started");
     }
 }

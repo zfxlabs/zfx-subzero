@@ -8,7 +8,7 @@ use crate::alpha::types::{BlockHash, BlockHeight};
 
 use super::hail::BETA1;
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap};
 
 use tracing::info;
 

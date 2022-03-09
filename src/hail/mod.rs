@@ -30,7 +30,7 @@ pub enum Error {
 impl std::error::Error for Error {}
 
 impl std::convert::From<actix::MailboxError> for Error {
-    fn from(error: actix::MailboxError) -> Self {
+    fn from(_error: actix::MailboxError) -> Self {
         Error::ActixMailboxError
     }
 }

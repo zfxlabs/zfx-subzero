@@ -1,18 +1,15 @@
 use crate::zfx_id::Id;
 
-use crate::alpha::coinbase::CoinbaseState;
-use crate::alpha::transfer::{self, TransferState};
+use crate::alpha::transfer;
 
-use crate::cell::inputs::{Input, Inputs};
+use crate::cell::inputs::Inputs;
 use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};
 
-use super::{Error, Result};
+use super::Result;
 
-use crate::alpha::cell_operation::{
-    consume_from_cell, validate_capacity, validate_output, ConsumeResult,
-};
+use crate::alpha::cell_operation::{consume_from_cell, ConsumeResult};
 use ed25519_dalek::Keypair;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -61,6 +58,7 @@ impl StakeOperation {
 
 #[cfg(test)]
 mod test {
+    use super::super::Error;
     use super::*;
 
     use crate::alpha::coinbase::CoinbaseOperation;

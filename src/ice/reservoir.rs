@@ -174,7 +174,7 @@ impl Reservoir {
     /// Resets the conviction of a `Faulty` decision and sets it to `Live`. This is
     /// used when a peer has responded to a query but was previously marked as `Faulty`.
     fn reset_faulty_decision(&mut self, id: Id) {
-        self.decisions.entry(id.clone()).and_modify(|(ip, decision, conviction)| match decision {
+        self.decisions.entry(id.clone()).and_modify(|(_ip, decision, conviction)| match decision {
             Choice::Faulty => {
                 *decision = Choice::Live;
                 *conviction = 0;
@@ -196,7 +196,7 @@ impl Reservoir {
     fn process_quorum(&mut self, responder_id: Id, peer_id: Id, choice: Choice) -> Quorum {
         // Fetch the quorum corresponding to the `id`s current consensus instance.
         if let Entry::Occupied(mut o) = self.quorums.entry(peer_id.clone()) {
-            let mut quorum = o.get_mut();
+            let quorum = o.get_mut();
             // If the responder has already influenced the outcome of this quorum
             // then skip this `responder`.
             if quorum.contains(&responder_id) {
