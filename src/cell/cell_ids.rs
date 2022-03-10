@@ -151,7 +151,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_cell_ids() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let genesis_op = CoinbaseOperation::new(vec![(pkh1.clone(), 1000), (pkh1.clone(), 1000)]);
         let genesis_tx: Cell = genesis_op.try_into().unwrap();

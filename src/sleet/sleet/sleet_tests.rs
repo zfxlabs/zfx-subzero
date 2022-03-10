@@ -616,7 +616,7 @@ async fn test_sleet_tx_late_parents() {
 
 #[actix_rt::test]
 async fn test_sleet_tx_two_late_parents() {
-    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, _client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
     let cell = genesis_tx.clone();
 

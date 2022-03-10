@@ -71,18 +71,18 @@ mod test {
 
     #[actix_rt::test]
     async fn test_stake_more_than_allowed_then_throw_error() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, _pkh1, pkh2) = generate_keys();
 
         let c1 = generate_coinbase(&kp1, 1000);
         let stake_op1 = StakeOperation::new(c1.clone(), Id::generate(), pkh2, 1000);
         let stake_op2 = StakeOperation::new(c1, Id::generate(), pkh2, 1001 - FEE);
         assert_eq!(stake_op1.stake(&kp1), Err(Error::ExceedsAvailableFunds));
-        assert_eq!(stake_op1.stake(&kp1), Err(Error::ExceedsAvailableFunds));
+        assert_eq!(stake_op2.stake(&kp1), Err(Error::ExceedsAvailableFunds));
     }
 
     #[actix_rt::test]
     async fn test_stake() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         // Generate a coinbase transaction and stake it
         let c1 = generate_coinbase(&kp1, 1000);

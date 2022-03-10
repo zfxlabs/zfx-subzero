@@ -125,7 +125,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_dependency_graph() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, _pkh2) = generate_keys();
 
         let mut g = DependencyGraph::new();
 

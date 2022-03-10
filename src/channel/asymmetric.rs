@@ -109,7 +109,7 @@ mod tests {
             let address: SocketAddr =
                 "127.0.0.1:20000".parse().expect("failed to construct address");
             let listener = TcpListener::bind(&address).await.unwrap();
-            let (socket, address) = listener.accept().await.unwrap();
+            let (socket, _address) = listener.accept().await.unwrap();
             let upgrader = TcpUpgrader::new();
             let socket = upgrader.upgrade(socket).await.unwrap();
             let mut channel = Channel::wrap(socket).expect("failed to accept connection");

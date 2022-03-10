@@ -312,10 +312,6 @@ impl Reservoir {
 mod tests {
     use super::*;
 
-    use crate::util;
-
-    use std::net::SocketAddr;
-
     #[actix_rt::test]
     async fn test_insert() {
         let ip1 = "127.0.0.1:1234".parse().unwrap();
