@@ -68,7 +68,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_transfer_more_than_owner_output_has() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let coinbase_op = CoinbaseOperation::new(vec![(pkh2.clone(), 688), (pkh1.clone(), 120)]);
         let coinbase_tx = coinbase_op.try_into().unwrap();
@@ -80,7 +80,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_transfer_with_total_less_than_fee() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let coinbase_op = CoinbaseOperation::new(vec![(pkh1.clone(), 1), (pkh1.clone(), 1)]);
         let coinbase_tx = coinbase_op.try_into().unwrap();
@@ -92,7 +92,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_transfer_with_three_outputs() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let coinbase_op = CoinbaseOperation::new(vec![
             (pkh1.clone(), 700),
@@ -111,7 +111,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_transfer_zero_then_throw_error() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let coinbase_tx = generate_coinbase(&kp1, 1000);
         let transfer_op = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 0);
@@ -120,7 +120,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_transfer_more_than_allowed_then_throw_error() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let coinbase_tx = generate_coinbase(&kp1, 1000);
         let transfer_op1 =

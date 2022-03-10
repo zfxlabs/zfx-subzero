@@ -213,6 +213,8 @@ mod test {
         assert_eq!(produced_state.total_staking_capacity, 3000);
     }
 
+    // Not sure if we'll need this
+    #[allow(dead_code)]
     fn initial_stakers() -> Vec<InitialStaker> {
         vec![
 	    InitialStaker::from_hex(

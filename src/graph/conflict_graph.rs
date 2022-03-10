@@ -250,11 +250,9 @@ mod test {
     use crate::alpha::transfer;
 
     use crate::cell::inputs::{Input, Inputs};
-    use crate::cell::outputs::{Output, Outputs};
+    use crate::cell::outputs::Outputs;
     use crate::cell::types::{Capacity, CellHash};
     use crate::cell::{Cell, CellIds};
-
-    use crate::sleet::conflict_set::ConflictSet;
 
     use std::collections::HashSet;
     use std::convert::TryInto;
@@ -486,7 +484,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_accept_cell() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         // Some root unspent outputs for `genesis`. We assume this input refers to a cell with funds
         // but for the purposes of the conflict graph it doesn't matter.
@@ -498,7 +496,6 @@ mod test {
         let mut dh: ConflictGraph = ConflictGraph::new(genesis_output_cell_ids.clone());
 
         let input1 = Input::new(&kp1, genesis_tx.hash(), 0).unwrap();
-        let input2 = Input::new(&kp2, genesis_tx.hash(), 1).unwrap();
 
         // A transaction that spends `genesis` and produces a new output for `pkh2`.
         let tx1 = Cell::new(

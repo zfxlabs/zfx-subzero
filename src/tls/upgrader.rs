@@ -122,7 +122,7 @@ mod test {
     use crate::tls::certificate;
     use crate::zfx_id::Id;
     use std::net::ToSocketAddrs;
-    use std::{net::SocketAddr, sync::Arc};
+    use std::net::SocketAddr;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::{self, sync::oneshot};
