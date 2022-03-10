@@ -277,7 +277,6 @@ impl Handler<LiveCommittee> for Ice {
         let mut self_staking_capacity = None;
         for (id, amount) in msg.validators.iter() {
             if id.clone() == self.id {
-                let w = util::percent_of(*amount, msg.total_staking_capacity);
                 self_staking_capacity = Some(*amount);
             } else {
                 match self.reservoir.get_live_endpoint(id) {
