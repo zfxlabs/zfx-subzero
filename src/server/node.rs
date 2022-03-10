@@ -118,7 +118,7 @@ pub fn run(
         let alpha_addr_clone = alpha_addr.clone();
 
         let bootstrap_execution = async move {
-            view::bootstrap(node_id, view_addr_clone.clone(), ice_addr_clone.clone()).await;
+            view::bootstrap(view_addr_clone.clone(), ice_addr_clone.clone()).await;
             let view_addr_clone = view_addr_clone.clone();
             let ice_addr_clone = ice_addr_clone.clone();
             let ice_execution = async move {
