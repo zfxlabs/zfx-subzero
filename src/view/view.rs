@@ -244,7 +244,7 @@ impl Handler<SampleOne> for View {
 
 //-- Retry to bootstrap until a quorum is reached
 
-pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
+pub async fn bootstrap(view: Addr<View>, ice: Addr<Ice>) {
     let mut i = 3;
     loop {
         let BootstrapResult { responses } = view.send(Bootstrap {}).await.unwrap().unwrap();
