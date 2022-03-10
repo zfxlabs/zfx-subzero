@@ -580,7 +580,7 @@ impl Handler<GenerateTx> for Sleet {
 pub struct QueryTx {
     /// The node's own ID
     pub id: Id,
-    /// The node's own listening address, for sending queries back (`GetAncestors` in particular)
+    /// The node's own listening address, for sending queries back (`GetTxAncestors` in particular)
     pub ip: SocketAddr,
     pub tx: Tx,
 }
@@ -621,11 +621,7 @@ impl Handler<QueryTx> for Sleet {
                 Box::pin(async move { QueryTxAck { id, tx_hash, outcome } })
             }
             Err(Error::MissingAncestry) => {
-                info!(
-                    "[{}] Couldn't answer transaction query (missing ancestry): {}",
-                    "sleet".cyan(),
-                    msg.tx
-                );
+                info!("[{}] Transaction query: fetching ancestry for {}", "sleet".cyan(), msg.tx);
                 let (sender, receiver) = oneshot::channel();
                 self.pending_queries.push((msg.tx.clone(), sender));
                 // Ask the querying node to send us the ancestors of the queried transaction
@@ -650,6 +646,7 @@ impl Handler<QueryTx> for Sleet {
                         () = timeout => {
                             // Sleet couldn't fetch all ancestors
                             // TODO: we may also respond with a timeout-like message
+                            info!("Timeout: Couldn't fetch ancestry for {}", hex::encode(tx_hash));
                             QueryTxAck { id, tx_hash, outcome: false }
                         }
                     }
@@ -791,7 +788,7 @@ impl Handler<GetTxAncestors> for Sleet {
         let mut ancestors = vec![];
         let tx_hashes = self.dag.get_ancestors(&tx_hash);
         for hash in tx_hashes {
-            let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
+            let (_, tx) = tx_storage::get_tx(&self.known_txs, hash).unwrap();
             ancestors.push(tx);
         }
         TxAncestors { ancestors }
