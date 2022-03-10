@@ -99,7 +99,7 @@ impl State {
             }
 
             // Remove consumed output cells from the live cell map.
-            state.remove_intersection(consumed_cell_ids);
+            state.remove_intersection(consumed_cell_ids)?;
 
             // Apply the primitive cell types which change the `alpha` state.
             let mut coinbase_capacity = 0u64;
