@@ -54,7 +54,8 @@ impl State {
             let mut consumed_cell_ids = CellIds::empty();
             let mut consumed_cell_outputs = vec![];
             let mut consumed_capacity = 0u64;
-            let intersecting_cell_ids = CellIds::empty();
+            // TODO figure out if we need this
+            let _intersecting_cell_ids = CellIds::empty();
             for (live_cell_ids, live_cell) in state.live_cells.iter() {
                 // println!("live_cell_ids = {:?}", live_cell_ids.clone());
                 if input_cell_ids.intersects_with(live_cell_ids) {

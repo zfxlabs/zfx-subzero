@@ -64,7 +64,7 @@ pub fn accept_genesis(db: &sled::Db, genesis: Block) -> Result<BlockHash> {
 /// Accepts a next block, ensuring that the previous block height = `height - 1`.
 pub fn accept_next_block(db: sled::Db, block: Block) -> Result<BlockHash> {
     match db.last() {
-        Ok(Some((k, v))) => {
+        Ok(Some((k, _v))) => {
             let key: Key = Key::read_from(k.as_bytes()).ok_or(Error::InvalidLast)?;
             // check that height(block) = predecessor.height + 1
             if block.height != u64::from(key.height) - 1u64 {

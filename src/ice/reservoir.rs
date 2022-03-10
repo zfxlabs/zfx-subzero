@@ -104,7 +104,7 @@ impl Reservoir {
 
     /// Updates the choice for a given entry and returns whether the reservoir
     /// has obtained a bootstrap quorum (where `k` entries are decided).
-    pub fn update_choice(&mut self, peer_id: Id, ip: SocketAddr, new_choice: Choice) -> bool {
+    pub fn update_choice(&mut self, peer_id: Id, new_choice: Choice) -> bool {
         if let Entry::Occupied(mut o) = self.decisions.entry(peer_id.clone()) {
             let (_, choice, conviction) = o.get_mut();
             if choice.clone() != new_choice.clone() {
