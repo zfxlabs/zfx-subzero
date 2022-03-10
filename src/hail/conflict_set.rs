@@ -31,6 +31,7 @@ impl ConflictSet {
         ConflictSet { conflicts, pref: t.clone(), last: t, cnt: 0 }
     }
 
+    #[allow(unused)] // Currently not used
     pub fn is_equivalent(&self, hs: HashSet<BlockHash>) -> bool {
         self.conflicts == hs
     }
@@ -43,6 +44,7 @@ impl ConflictSet {
         self.conflicts.len() == 1
     }
 
+    #[allow(unused)] // Currently not used
     pub fn set_conflicts(&mut self, conflicts: HashSet<BlockHash>) {
         self.conflicts = conflicts;
     }

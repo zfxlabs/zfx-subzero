@@ -61,7 +61,8 @@ async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
             block.cells.iter().for_each(|c| {
                 assert!(
                     accepted_cell_hashes.contains(&c.hash()),
-                    "Block {} doesn't contain an expected cell hash", i
+                    "Block {} doesn't contain an expected cell hash",
+                    i
                 );
             });
 
@@ -73,7 +74,8 @@ async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
 
                 assert!(
                     expected_vrfs.contains(&block.vrf_out),
-                    "VRF for block wih height {} was not generated correctly", i
+                    "VRF for block wih height {} was not generated correctly",
+                    i
                 );
                 assert_eq!(previous_block_hash, block.predecessor.unwrap());
             }

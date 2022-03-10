@@ -131,6 +131,7 @@ impl Committee {
         self.block_proposed = false;
     }
 
+    #[allow(unused)] // Currently not used
     pub fn is_valid_vrf(&self, vrf_output: VrfOutput) -> bool {
         self.block_producers.contains(&vrf_output)
     }

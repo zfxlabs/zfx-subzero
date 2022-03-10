@@ -53,7 +53,8 @@ pub async fn run_cell_transfer_benchmark() -> Result<()> {
             info!("Min = {:.2?}, Max = {:.2?}, Avg = {:.2?}", min, max, avg);
             assert!(
                 avg.as_millis() < 50,
-                "Average cell processing time took too long: {:.2?}", avg
+                "Average cell processing time took too long: {:.2?}",
+                avg
             );
         }
         Err(_) => {
