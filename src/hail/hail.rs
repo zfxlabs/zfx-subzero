@@ -1,9 +1,7 @@
 use crate::zfx_id::Id;
-use zfx_sortition::sortition;
 
 use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
-use crate::alpha::AcceptedBlock;
 use crate::cell::Cell;
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
@@ -15,7 +13,6 @@ use crate::util;
 use super::block::HailBlock;
 use super::committee::Committee;
 use super::conflict_map::ConflictMap;
-use super::conflict_set::ConflictSet;
 use super::vertex::Vertex;
 use super::{Error, Result};
 
@@ -288,8 +285,8 @@ impl Handler<LiveCommittee> for Hail {
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received live committee at height = {:?}", "hail".blue(), msg.height);
-        let self_id = msg.self_id.clone();
-        let self_staking_capacity = msg.self_staking_capacity.clone();
+        let _self_id = msg.self_id.clone();
+        let _self_staking_capacity = msg.self_staking_capacity.clone();
 
         self.committee.next(msg.self_staking_capacity, msg.vrf_out, msg.validators);
 
