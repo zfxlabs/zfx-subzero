@@ -65,7 +65,6 @@ pub struct Ack {
 /// Processes a query into an `Outcome`c.
 fn process_query(reservoir: &mut Reservoir, self_id: Id, query: Query) -> Outcome {
     let peer_id = query.peer_id.clone();
-    let peer_ip = query.peer_ip.clone();
     let choice = query.choice.clone();
 
     // If the queried `id` is the same as the `self_id` then the outcome should
@@ -220,7 +219,7 @@ impl Handler<PingFailure> for Ice {
     fn handle(&mut self, msg: PingFailure, _ctx: &mut Context<Self>) -> Self::Result {
         // If updating the choice to `Faulty` reverts `ice` to a non-bootstrapped state,
         // communicate this to the `alpha` chain.
-        if !self.reservoir.update_choice(msg.id, msg.ip, Choice::Faulty) {
+        if !self.reservoir.update_choice(msg.id, Choice::Faulty) {
             if self.bootstrapped {
                 return true;
             }
