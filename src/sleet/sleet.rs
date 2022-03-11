@@ -106,7 +106,7 @@ impl Sleet {
             return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
         }
         if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
-            if !self.dag.has_vertices(sleet_tx.parents.clone()) {
+            if let Err(_missing_parents) = self.dag.has_vertices(sleet_tx.parents.clone()) {
                 return Err(Error::MissingAncestry);
             }
             self.insert(sleet_tx.clone())?;
@@ -670,7 +670,7 @@ impl Handler<CheckPending> for Sleet {
     fn handle(&mut self, _msg: CheckPending, ctx: &mut Context<Self>) -> Self::Result {
         let mut remaining = vec![];
         while let Some((tx, sender)) = self.pending_queries.pop() {
-            if self.dag.has_vertices(tx.parents.clone()) {
+            if let Ok(()) = self.dag.has_vertices(tx.parents.clone()) {
                 match self.on_receive_tx(tx.clone()) {
                     Ok(is_new) => {
                         if is_new {
