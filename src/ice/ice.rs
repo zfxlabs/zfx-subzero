@@ -117,7 +117,7 @@ pub struct Bootstrap {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Bootstrapped;
+pub struct Bootstrapped(pub bool);
 
 impl Handler<Bootstrap> for Ice {
     type Result = Bootstrapped;
@@ -127,7 +127,7 @@ impl Handler<Bootstrap> for Ice {
         for (id, ip) in msg.peers.iter() {
             self.reservoir.insert(id.clone(), ip.clone(), Choice::Live, 0);
         }
-        Bootstrapped {}
+        Bootstrapped(true)
     }
 }
 
