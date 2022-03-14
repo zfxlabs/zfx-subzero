@@ -106,7 +106,7 @@ impl Sleet {
             return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
         }
         if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
-            if let Err(_missing_parents) = self.dag.has_vertices(sleet_tx.parents.clone()) {
+            if !self.has_parents(&sleet_tx) {
                 return Err(Error::MissingAncestry);
             }
             self.insert(sleet_tx.clone())?;
@@ -123,10 +123,26 @@ impl Sleet {
     pub fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
-        self.dag.insert_vx(tx.hash(), tx.parents.clone())?;
+        let parents = self.remove_accepted_parents(tx.parents.clone());
+        self.dag.insert_vx(tx.hash(), parents)?;
         Ok(())
     }
 
+    /// Check if Sleet has all the parents for a transaction
+    /// (otherwise the ancestry needs to be fetched
+    pub fn has_parents(&self, tx: &Tx) -> bool {
+        match self.dag.has_vertices(&tx.parents) {
+            Ok(()) => true,
+            Err(missing_parents) => missing_parents.iter().all(|p| self.accepted_txs.contains(p)),
+        }
+    }
+
+    /// Removes the transactions that already have been accepted, and might not be present
+    /// in the DAG at insertion time
+    pub fn remove_accepted_parents(&self, mut parents: Vec<TxHash>) -> Vec<TxHash> {
+        parents.retain(|p| !self.accepted_txs.contains(p));
+        parents
+    }
     // Branch preference
 
     /// Starts at some vertex and does a depth first search in order to compute whether
@@ -670,7 +686,7 @@ impl Handler<CheckPending> for Sleet {
     fn handle(&mut self, _msg: CheckPending, ctx: &mut Context<Self>) -> Self::Result {
         let mut remaining = vec![];
         while let Some((tx, sender)) = self.pending_queries.pop() {
-            if let Ok(()) = self.dag.has_vertices(tx.parents.clone()) {
+            if self.has_parents(&tx) {
                 match self.on_receive_tx(tx.clone()) {
                     Ok(is_new) => {
                         if is_new {
