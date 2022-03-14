@@ -4,14 +4,15 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 use tracing::debug;
 
 use crate::alpha::block::Block;
 use crate::alpha::transfer::TransferOperation;
 use crate::alpha::types::BlockHeight;
-use crate::cell::outputs::Output;
+use crate::cell::inputs::Inputs;
+use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::{Capacity, CellHash, PublicKeyHash, FEE};
 use crate::cell::{Cell, CellType};
 use crate::hail::GetBlockByHeight;
@@ -19,6 +20,7 @@ use crate::ice::Status;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
 use crate::protocol::Response;
 use crate::sleet::sleet_cell_handlers::GetAcceptedCell;
+use crate::zfx_id::Id;
 use crate::Result;
 use crate::{client, sleet, Request};
 
@@ -53,10 +55,7 @@ pub async fn spend_cell(
     cell: Cell,
     amount: u64,
 ) -> Result<Option<CellHash>> {
-    debug!(
-        "Sending a cell with amount {:?}, from = {}, to: {}",
-        amount, from.address_as_str, to.address_as_str
-    );
+    debug!("Sending a cell {}, from = {}, to: {}", cell, from.address_as_str, to.address_as_str);
 
     if let Ok(Ok(Some(Response::GenerateTxAck(ack)))) = timeout(
         Duration::from_secs(5),
@@ -103,6 +102,11 @@ pub async fn spend_from(
         spendable_cell_hashes.iter().find(|(_, c)| *c > total_to_spend)
     {
         let spent_cell_hash = spend_cell_from_hash(from, to, *cell_hash, amount).await?.unwrap();
+        debug!(
+            "Cell has been sent {:?}, from = {}",
+            hex::encode(spent_cell_hash),
+            from.address_as_str
+        );
 
         let new_capacity = capacity - total_to_spend;
         updated_spendable_cell_hashes.retain(|(h, _)| h != cell_hash);
@@ -163,6 +167,92 @@ pub async fn spend_many_from_cell_hashes(
     }
 
     Ok((accepted_cell_hashes, cells_hashes))
+}
+
+/// Attempt to spend many accepted cells and send from one node to another.
+/// This function is useful in a stress testing when you need to mix valid transfers with invalid,
+/// as every attempt of cell transfer here will fail.
+///
+/// `Iteration` indicates number of transfers and `delay` - is a delay between transfers of cells.
+pub async fn spend_many_from_accepted_cells(
+    from: &TestNode,
+    to: &TestNode,
+    iterations: usize,
+    delay: Duration,
+) -> Result<()> {
+    for i in 1..iterations {
+        sleep(delay);
+
+        let mut accepted_cell_hashes = get_accepted_cell_hashes(from.address)
+            .await?
+            .iter()
+            .cloned()
+            .collect::<Vec<CellHash>>();
+        accepted_cell_hashes.shuffle(&mut rand::thread_rng()); // to avoid getting the same tx hash
+
+        if let Some(cell_hash) = accepted_cell_hashes.first() {
+            debug!("Attempting to spend accepted cell {}", hex::encode(cell_hash));
+            if let Some(cell) = get_cell_from_hash(*cell_hash, from.address).await? {
+                let spendable_amount = cell
+                    .outputs_of_owner(&from.public_key)
+                    .iter()
+                    .map(|o| o.capacity)
+                    .sum::<Capacity>();
+                if spendable_amount > i as Capacity + FEE {
+                    if let Some(spent_cell_hash) =
+                        spend_cell(&from, &to, cell, i as Capacity).await?
+                    {
+                        assert!(get_cell_from_hash(spent_cell_hash.clone(), from.address)
+                            .await?
+                            .is_none());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Attempt to spend many invalid cells and send from one node to another.
+/// This function is useful in a stress testing when you need to mix valid transfers with invalid,
+/// as every attempt of cell transfer here will fail.
+///
+/// `Iteration` indicates number of transfers and `delay` - is a delay between transfers of cells.
+pub async fn spend_many_from_invalid_cells(
+    from: &TestNode,
+    to: &TestNode,
+    iterations: usize,
+    delay: Duration,
+) -> Result<()> {
+    for i in 1..iterations {
+        sleep(delay);
+
+        if let Some(cell_hash) = get_cell_hashes(from.address).await?.first() {
+            if let Some(cell) = get_cell_from_hash(*cell_hash, from.address).await? {
+                if let Some(input) = cell.inputs().iter().cloned().last() {
+                    let mut inputs = HashSet::new();
+                    inputs.insert(input);
+                    let new_cell = Cell::new(
+                        Inputs { inputs },
+                        Outputs {
+                            outputs: vec![Output {
+                                capacity: 1000 as Capacity,
+                                cell_type: CellType::Transfer,
+                                data: vec![],
+                                lock: from.public_key.clone(),
+                            }],
+                        },
+                    );
+
+                    debug!("Try to spend an invalid cell");
+                    assert!(spend_cell(&from, &to, new_cell, i as Capacity).await?.is_none());
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Get outputs belonging to the indicated `owner`
