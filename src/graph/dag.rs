@@ -61,7 +61,7 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 
     /// Check if the given (parent) vertices exist
-    pub fn has_vertices(&self, vs: Vec<V>) -> std::result::Result<(), Vec<V>> {
+    pub fn has_vertices(&self, vs: &Vec<V>) -> std::result::Result<(), Vec<V>> {
         let mut missing = vec![];
         for v in vs.iter() {
             if !self.g.contains_key(v) {
@@ -537,11 +537,11 @@ mod test {
         dag.insert_vx(2, vec![0]).unwrap();
         dag.insert_vx(3, vec![1, 2]).unwrap();
 
-        assert!(Ok(()) == dag.has_vertices(vec![1, 2, 3]));
-        assert!(Err(vec![4]) == dag.has_vertices(vec![1, 2, 3, 4]));
-        assert!(Err(vec![4]) == dag.has_vertices(vec![4, 1, 2, 3]));
-        assert!(Ok(()) == dag.has_vertices(vec![]));
-        assert!(Err(vec![4]) == dag.has_vertices(vec![4]));
+        assert!(Ok(()) == dag.has_vertices(&vec![1, 2, 3]));
+        assert!(Err(vec![4]) == dag.has_vertices(&vec![1, 2, 3, 4]));
+        assert!(Err(vec![4]) == dag.has_vertices(&vec![4, 1, 2, 3]));
+        assert!(Ok(()) == dag.has_vertices(&vec![]));
+        assert!(Err(vec![4]) == dag.has_vertices(&vec![4]));
     }
 
     #[actix_rt::test]
