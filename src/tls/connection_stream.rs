@@ -36,9 +36,9 @@ impl ConnectionStream {
 
     pub fn is_tls(&self) -> bool {
         match self {
-            Self::Tcp(s) => false,
-            Self::TlsServer(s) => true,
-            Self::TlsClient(s) => true,
+            Self::Tcp(_) => false,
+            Self::TlsServer(_) => true,
+            Self::TlsClient(_) => true,
         }
     }
 

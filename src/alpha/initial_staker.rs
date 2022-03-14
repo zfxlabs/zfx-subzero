@@ -15,15 +15,6 @@ pub struct InitialStaker {
 }
 
 impl InitialStaker {
-    pub fn new(
-        keypair: Keypair,
-        node_id: Id,
-        total_allocation: Capacity,
-        staked_allocation: Capacity,
-    ) -> Self {
-        InitialStaker { keypair, node_id, total_allocation, staked_allocation }
-    }
-
     pub fn from_hex(
         kps: String,
         node_id: Id,

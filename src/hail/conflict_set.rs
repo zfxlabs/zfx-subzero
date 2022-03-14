@@ -1,4 +1,3 @@
-use crate::alpha::block::Block;
 use crate::alpha::types::BlockHash;
 
 use std::collections::HashSet;
@@ -32,6 +31,7 @@ impl ConflictSet {
         ConflictSet { conflicts, pref: t.clone(), last: t, cnt: 0 }
     }
 
+    #[allow(unused)] // Currently not used
     pub fn is_equivalent(&self, hs: HashSet<BlockHash>) -> bool {
         self.conflicts == hs
     }
@@ -44,6 +44,7 @@ impl ConflictSet {
         self.conflicts.len() == 1
     }
 
+    #[allow(unused)] // Currently not used
     pub fn set_conflicts(&mut self, conflicts: HashSet<BlockHash>) {
         self.conflicts = conflicts;
     }
@@ -59,7 +60,7 @@ impl ConflictSet {
         if self.conflicts.len() == 0 {
             None
         } else {
-            let mut hashes: Vec<BlockHash> = self.conflicts.iter().cloned().collect();
+            let hashes: Vec<BlockHash> = self.conflicts.iter().cloned().collect();
             let mut h = hashes[0];
             for i in 1..hashes.len() {
                 let hi = hashes[i];

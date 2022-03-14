@@ -15,13 +15,13 @@ use crate::storage::block;
 use super::block::{build_genesis, Block};
 use super::state::State;
 use super::types::{BlockHash, VrfOutput};
-use super::{Error, Result};
+use super::Result;
 
 use actix::{Actor, Addr, Arbiter, AsyncContext, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture, WrapFuture};
+use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
 use tracing::{debug, info};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -113,7 +113,7 @@ impl Handler<QueryLastAccepted> for Alpha {
 
     fn handle(&mut self, msg: QueryLastAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         // Read the last accepted final block (or genesis)
-        let (last_hash, last_block) = block::get_last_accepted(&self.tree).unwrap();
+        let (_last_hash, last_block) = block::get_last_accepted(&self.tree).unwrap();
 
         let send_to_client = self
             .sender
@@ -138,19 +138,22 @@ impl Handler<QueryLastAccepted> for Alpha {
                     // accepted hash.
                     let mut occurences: HashMap<BlockHash, usize> = HashMap::new();
                     for last_accepted in v.iter() {
-                        if let Some(count) = occurences.get(last_accepted) {
-                            let count_clone = count.clone();
-                            occurences.insert(last_accepted.clone(), count + 1);
-                            if count_clone + 1 >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
-                                ctx.notify(ReceiveLastAccepted {
-                                    last_block_hash: last_accepted.clone(),
-                                    last_block: last_block.clone(),
-                                    last_vrf_output: last_block.vrf_out.clone(),
-                                    last_accepted: last_accepted.clone(),
-                                })
+                        match occurences.entry(*last_accepted) {
+                            Entry::Occupied(mut o) => {
+                                let count = o.get_mut();
+                                *count += 1;
+                                if *count >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
+                                    ctx.notify(ReceiveLastAccepted {
+                                        last_block_hash: last_accepted.clone(),
+                                        last_block: last_block.clone(),
+                                        last_vrf_output: last_block.vrf_out.clone(),
+                                        last_accepted: last_accepted.clone(),
+                                    })
+                                }
                             }
-                        } else {
-                            occurences.insert(last_accepted.clone(), 0);
+                            Entry::Vacant(v) => {
+                                let _ = v.insert(0);
+                            }
                         }
                     }
                 }
@@ -176,7 +179,7 @@ pub struct ReceiveLastAccepted {
 impl Handler<ReceiveLastAccepted> for Alpha {
     type Result = ();
 
-    fn handle(&mut self, msg: ReceiveLastAccepted, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: ReceiveLastAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         let ice_addr = self.ice.clone();
         let sleet_addr = self.sleet.clone();
         let hail_addr = self.hail.clone();
@@ -304,7 +307,7 @@ pub struct Bootstrapped;
 impl Handler<Bootstrap> for Alpha {
     type Result = Bootstrapped;
 
-    fn handle(&mut self, msg: Bootstrap, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
         // The `alpha` bootstrapping procedure fetches the ancestors of a block recursively
         // until `genesis`.
 
@@ -354,7 +357,7 @@ pub struct AcceptedBlock {
 impl Handler<AcceptedBlock> for Alpha {
     type Result = ();
 
-    fn handle(&mut self, msg: AcceptedBlock, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: AcceptedBlock, _ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received accepted block", "alpha".yellow());
 
         // TODO

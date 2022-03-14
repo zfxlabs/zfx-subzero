@@ -75,14 +75,14 @@ impl DependencyGraph {
             sorted.push_front(root.clone());
 
             // Remove edges poining from a root to other vertices
-            let mut removed_edges = CellIds::empty();
+            let removed_edges: CellIds;
             match graph.entry(root.clone()) {
                 Entry::Occupied(mut o) => {
                     let edges = o.get_mut();
                     removed_edges = edges.clone();
                     *edges = CellIds::empty();
                 }
-                Entry::Vacant(v) => return Err(Error::UndefinedCell),
+                Entry::Vacant(_) => return Err(Error::UndefinedCell),
             };
 
             // Find all of the producers which intersect with the consumers
@@ -125,7 +125,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_dependency_graph() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, _pkh2) = generate_keys();
 
         let mut g = DependencyGraph::new();
 
@@ -161,12 +161,12 @@ mod test {
         let tx5_cell_ids = CellIds::from_outputs(tx5.hash(), tx5.outputs()).unwrap();
 
         // Insert the transactions in some random order
-        g.insert(tx4.clone());
-        g.insert(tx2.clone());
-        g.insert(genesis_tx.clone());
-        g.insert(tx1.clone());
-        g.insert(tx3.clone());
-        g.insert(tx5.clone());
+        g.insert(tx4.clone()).unwrap();
+        g.insert(tx2.clone()).unwrap();
+        g.insert(genesis_tx.clone()).unwrap();
+        g.insert(tx1.clone()).unwrap();
+        g.insert(tx3.clone()).unwrap();
+        g.insert(tx5.clone()).unwrap();
 
         assert_eq!(g.roots.len(), 2);
         assert_eq!(g.roots.clone(), vec![tx4_cell_ids.clone(), tx5_cell_ids.clone()]);

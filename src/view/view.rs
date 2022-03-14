@@ -4,7 +4,6 @@ use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::ice::{self, Ice};
 use crate::protocol::{Request, Response};
-use crate::util;
 use crate::version::{Version, VersionAck};
 use crate::zfx_id::Id;
 use crate::{Error, Result};
@@ -12,7 +11,7 @@ use crate::{Error, Result};
 use tracing::{debug, info};
 
 use actix::{Actor, Addr, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture};
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -171,7 +170,7 @@ impl Handler<Bootstrap> for View {
         // Wrap the future so that subsequent chained handlers can access the actor
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-        let handle_response = send_to_client.map(move |result, _actor, ctx| match result {
+        let handle_response = send_to_client.map(move |result, _actor, _ctx| match result {
             Ok(ClientResponse::Fanout(responses)) => Ok(BootstrapResult { responses }),
             Ok(_) => Err(Error::InvalidResponse),
             Err(e) => Err(Error::Actix(e)),
@@ -245,7 +244,7 @@ impl Handler<SampleOne> for View {
 
 //-- Retry to bootstrap until a quorum is reached
 
-pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
+pub async fn bootstrap(view: Addr<View>, ice: Addr<Ice>) {
     let mut i = 3;
     loop {
         let BootstrapResult { responses } = view.send(Bootstrap {}).await.unwrap().unwrap();
@@ -258,7 +257,7 @@ pub async fn bootstrap(self_id: Id, view: Addr<View>, ice: Addr<Ice>) {
                 // reservoir is bootstrapped with the peers in `view`.
                 info!("[{}] obtained bootstrap quorum {}", "view".green(), "✓".green());
                 let PeersResult { peers } = view.send(GetPeers).await.unwrap();
-                if let ice::Bootstrapped = ice.send(ice::Bootstrap { peers }).await.unwrap() {
+                if let ice::Bootstrapped(true) = ice.send(ice::Bootstrap { peers }).await.unwrap() {
                     break;
                 }
             }

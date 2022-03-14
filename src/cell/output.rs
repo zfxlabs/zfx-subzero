@@ -1,8 +1,7 @@
 use crate::alpha::stake::StakeState;
 
-use super::cell_id::CellId;
 use super::cell_type::CellType;
-use super::types::{Capacity, CellHash, PublicKeyHash};
+use super::types::{Capacity, PublicKeyHash};
 use super::{Error, Result};
 
 use crate::colored::Colorize;

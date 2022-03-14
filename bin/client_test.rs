@@ -4,11 +4,9 @@ use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
 use zfx_subzero::tls;
-use zfx_subzero::zfx_id::Id;
 use zfx_subzero::Result;
 
 use ed25519_dalek::Keypair;
-use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
 

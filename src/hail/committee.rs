@@ -1,13 +1,13 @@
 use zfx_sortition::sortition;
 
-use crate::alpha::types::{BlockHeight, VrfOutput, Weight};
+use crate::alpha::types::{VrfOutput, Weight};
 use crate::util;
 use crate::zfx_id::Id;
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
-use tracing::{debug, error, info};
+use tracing::*;
 
 use crate::colored::Colorize;
 
@@ -131,6 +131,7 @@ impl Committee {
         self.block_proposed = false;
     }
 
+    #[allow(unused)] // Currently not used
     pub fn is_valid_vrf(&self, vrf_output: VrfOutput) -> bool {
         self.block_producers.contains(&vrf_output)
     }

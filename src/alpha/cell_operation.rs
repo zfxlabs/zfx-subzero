@@ -3,12 +3,10 @@ use crate::alpha::coinbase::CoinbaseState;
 use crate::alpha::stake::StakeState;
 use crate::alpha::transfer::TransferState;
 use crate::cell::inputs::Input;
-use crate::cell::inputs::Inputs;
 use crate::cell::outputs::Output;
 use crate::cell::types::{Capacity, FEE};
 use crate::cell::{Cell, CellType};
 use ed25519_dalek::Keypair;
-use std::collections::HashMap;
 
 pub struct ConsumeResult {
     pub consumed: Capacity,

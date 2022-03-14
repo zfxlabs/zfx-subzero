@@ -1,6 +1,5 @@
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_serde::formats::*;
 use tokio_serde::Framed;
@@ -93,7 +92,6 @@ mod tests {
     use super::*;
     use crate::tls::upgrader::TcpUpgrader;
     use std::net::SocketAddr;
-    use std::str::FromStr;
     use tokio::net::TcpListener;
     use tokio::net::TcpStream;
 
@@ -111,7 +109,7 @@ mod tests {
             let address: SocketAddr =
                 "127.0.0.1:20000".parse().expect("failed to construct address");
             let listener = TcpListener::bind(&address).await.unwrap();
-            let (socket, address) = listener.accept().await.unwrap();
+            let (socket, _address) = listener.accept().await.unwrap();
             let upgrader = TcpUpgrader::new();
             let socket = upgrader.upgrade(socket).await.unwrap();
             let mut channel = Channel::wrap(socket).expect("failed to accept connection");
@@ -136,8 +134,7 @@ mod tests {
         let handle_2 = tokio::spawn(async {
             let address: SocketAddr =
                 "127.0.0.1:20000".parse().expect("failed to construct address");
-            let mut socket =
-                TcpStream::connect(&address).await.expect("failed to accept connection");
+            let socket = TcpStream::connect(&address).await.expect("failed to accept connection");
             let upgrader = TcpUpgrader::new();
             let socket = upgrader.upgrade(socket).await.unwrap();
             let mut channel: Channel<Response, Request> =

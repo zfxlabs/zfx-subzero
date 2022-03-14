@@ -1,7 +1,6 @@
-use super::cell::Cell;
 use super::cell_id::CellId;
-use super::inputs::{Input, Inputs};
-use super::outputs::{Output, Outputs};
+use super::inputs::Inputs;
+use super::outputs::Outputs;
 use super::types::CellHash;
 use super::Result;
 
@@ -144,6 +143,7 @@ mod test {
 
     use crate::alpha::coinbase::CoinbaseOperation;
     use crate::alpha::transfer::TransferOperation;
+    use crate::cell::Cell;
 
     use std::convert::TryInto;
 
@@ -151,7 +151,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_cell_ids() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         let genesis_op = CoinbaseOperation::new(vec![(pkh1.clone(), 1000), (pkh1.clone(), 1000)]);
         let genesis_tx: Cell = genesis_op.try_into().unwrap();

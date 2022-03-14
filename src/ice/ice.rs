@@ -1,6 +1,5 @@
 use crate::zfx_id::Id;
 
-use crate::alpha::types::VrfOutput;
 use crate::alpha::{self, Alpha};
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
@@ -17,12 +16,10 @@ use super::reservoir::Reservoir;
 use tracing::{debug, error, info};
 
 use actix::{Actor, Addr, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::SocketAddr;
-
-use rand::Rng;
 
 pub struct Ice {
     /// The client used to make external requests.
@@ -47,7 +44,7 @@ impl Ice {
 impl Actor for Ice {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!(": started");
     }
 }
@@ -68,7 +65,6 @@ pub struct Ack {
 /// Processes a query into an `Outcome`c.
 fn process_query(reservoir: &mut Reservoir, self_id: Id, query: Query) -> Outcome {
     let peer_id = query.peer_id.clone();
-    let peer_ip = query.peer_ip.clone();
     let choice = query.choice.clone();
 
     // If the queried `id` is the same as the `self_id` then the outcome should
@@ -121,7 +117,7 @@ pub struct Bootstrap {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Bootstrapped;
+pub struct Bootstrapped(pub bool);
 
 impl Handler<Bootstrap> for Ice {
     type Result = Bootstrapped;
@@ -131,7 +127,7 @@ impl Handler<Bootstrap> for Ice {
         for (id, ip) in msg.peers.iter() {
             self.reservoir.insert(id.clone(), ip.clone(), Choice::Live, 0);
         }
-        Bootstrapped {}
+        Bootstrapped(true)
     }
 }
 
@@ -159,7 +155,7 @@ impl Handler<SampleQueries> for Ice {
         let mut queries = vec![];
         if self.reservoir.len() > 0 {
             let sample = self.reservoir.sample();
-            for (id, (ip, choice, conviction)) in sample.iter() {
+            for (id, (ip, choice, _conviction)) in sample.iter() {
                 queries.push(Query {
                     peer_id: id.clone(),
                     peer_ip: ip.clone(),
@@ -223,7 +219,7 @@ impl Handler<PingFailure> for Ice {
     fn handle(&mut self, msg: PingFailure, _ctx: &mut Context<Self>) -> Self::Result {
         // If updating the choice to `Faulty` reverts `ice` to a non-bootstrapped state,
         // communicate this to the `alpha` chain.
-        if !self.reservoir.update_choice(msg.id, msg.ip, Choice::Faulty) {
+        if !self.reservoir.update_choice(msg.id, Choice::Faulty) {
             if self.bootstrapped {
                 return true;
             }
@@ -281,7 +277,6 @@ impl Handler<LiveCommittee> for Ice {
         let mut self_staking_capacity = None;
         for (id, amount) in msg.validators.iter() {
             if id.clone() == self.id {
-                let w = util::percent_of(*amount, msg.total_staking_capacity);
                 self_staking_capacity = Some(*amount);
             } else {
                 match self.reservoir.get_live_endpoint(id) {
@@ -311,7 +306,7 @@ impl Handler<PrintReservoir> for Ice {
     type Result = ();
 
     // The peer did not respond or responded erroneously
-    fn handle(&mut self, msg: PrintReservoir, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: PrintReservoir, _ctx: &mut Context<Self>) -> Self::Result {
         info!("{}", self.reservoir.print());
     }
 }
@@ -335,7 +330,7 @@ impl Handler<DoPing> for Ice {
             request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
         });
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
-        let handle_response = send_to_client.map(move |result, _actor, ctx| {
+        let handle_response = send_to_client.map(move |result, _actor, _ctx| {
             match result {
                 Ok(ClientResponse::Oneshot(res)) => {
                     match res {
@@ -367,7 +362,7 @@ pub struct Status {
 impl Handler<CheckStatus> for Ice {
     type Result = Status;
 
-    fn handle(&mut self, msg: CheckStatus, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: CheckStatus, _ctx: &mut Context<Self>) -> Self::Result {
         Status { bootstrapped: self.bootstrapped }
     }
 }
