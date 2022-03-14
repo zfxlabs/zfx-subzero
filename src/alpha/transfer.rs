@@ -4,7 +4,7 @@ use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};
 
-use crate::alpha::cell_operation::{consume_from_cell, ConsumeResult};
+use crate::cell::cell_operation::{consume_from_cell, ConsumeResult};
 use ed25519_dalek::Keypair;
 
 /// Empty transfer state - capacity transfers do not need to store extra state.

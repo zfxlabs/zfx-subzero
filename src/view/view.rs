@@ -216,7 +216,7 @@ impl Handler<UpdatePeers> for View {
                 _ => (),
             }
         }
-        let bootstrapped = if msg.responses.len() >= BOOTSTRAP_QUORUM { true } else { false };
+        let bootstrapped = msg.responses.len() >= BOOTSTRAP_QUORUM;
         Updated { updates, bootstrapped }
     }
 }
