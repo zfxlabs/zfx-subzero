@@ -16,7 +16,13 @@ pub struct Query {
 
 impl std::fmt::Debug for Query {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "QUERY({}, {:?})", format!("{}", self.peer_ip).yellow(), self.choice,)
+        write!(
+            fmt,
+            "QUERY({} ({}), {:?})",
+            format!("{}", self.peer_ip).yellow(),
+            self.peer_id,
+            self.choice,
+        )
     }
 }
 

@@ -5,7 +5,6 @@ pub mod dependency_graph;
 
 pub use dag::*;
 
-use crate::alpha::types::TxHash;
 use crate::cell;
 use crate::cell::types::CellHash;
 
@@ -17,6 +16,7 @@ pub enum Error {
     UndefinedChit,
     UndefinedVertex,
     ChitReplace,
+    ChitOverflow,
     // Dependency graph
     EmptyConflictGraph,
     DuplicateCell,

@@ -1,17 +1,25 @@
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
+use crate::tls::upgrader::Upgrader;
+use crate::zfx_id::Id;
 use crate::{Error, Result};
-use tracing::{debug, error};
+
+use tracing::{debug, error, warn};
+
+use tokio::net::TcpStream;
 
 use actix::{Actor, Context, Handler, ResponseFuture};
 use futures::FutureExt;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
-pub struct Client;
+pub struct Client {
+    upgrader: Arc<dyn Upgrader>,
+}
 
 impl Client {
-    pub fn new() -> Client {
-        Client {}
+    pub fn new(upgrader: Arc<dyn Upgrader>) -> Client {
+        Client { upgrader }
     }
 }
 
@@ -23,39 +31,64 @@ impl Actor for Client {
     }
 }
 
-/// Sends a single request and waits for a response.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Result<Option<Response>>")]
-pub struct Oneshot {
-    pub ip: SocketAddr,
-    pub request: Request,
+#[rtype(result = "ClientResponse")]
+pub enum ClientRequest {
+    /// Sends a single request and waits for a response.
+    Oneshot {
+        id: Id,
+        ip: SocketAddr,
+        request: Request,
+    },
+    Fanout {
+        peers: Vec<(Id, SocketAddr)>,
+        request: Request,
+    },
 }
 
-impl Handler<Oneshot> for Client {
-    type Result = ResponseFuture<Result<Option<Response>>>;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ClientResponse {
+    Oneshot(Option<Response>),
+    Fanout(Vec<Response>),
+}
 
-    fn handle(&mut self, msg: Oneshot, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(async move { oneshot(msg.ip.clone(), msg.request.clone()).await })
+impl Handler<ClientRequest> for Client {
+    type Result = ResponseFuture<ClientResponse>;
+
+    fn handle(&mut self, msg: ClientRequest, _ctx: &mut Context<Self>) -> Self::Result {
+        let upgrader = self.upgrader.clone();
+        match msg {
+            ClientRequest::Oneshot { id, ip, request } => Box::pin(async move {
+                let response = oneshot(id.clone(), ip.clone(), request.clone(), upgrader).await;
+                ClientResponse::Oneshot(err_to_none(response))
+            }),
+            ClientRequest::Fanout { peers, request } => Box::pin(async move {
+                ClientResponse::Fanout(fanout(peers.clone(), request.clone(), upgrader).await)
+            }),
+        }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Vec<Response>")]
-pub struct Fanout {
-    pub ips: Vec<SocketAddr>,
-    pub request: Request,
-}
+// TODO this shouldn't be `pub` but `client_test` is using it
 
-impl Handler<Fanout> for Client {
-    type Result = ResponseFuture<Vec<Response>>;
-
-    fn handle(&mut self, msg: Fanout, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(async move { fanout(msg.ips.clone(), msg.request.clone()).await })
+/// Eventually, all outgoing communication happens through this function, allowing
+// for the checking of the peer's identity for TLS connections.
+/// It is an error condition, if the IP address doesn't match the ID.
+pub async fn oneshot(
+    id: Id,
+    ip: SocketAddr,
+    request: Request,
+    upgrader: Arc<dyn Upgrader>,
+) -> Result<Option<Response>> {
+    let socket = TcpStream::connect(&ip).await.map_err(Error::IO)?;
+    let connection = upgrader.upgrade(socket).await?;
+    if connection.is_tls()
+        && id != connection.get_id().map_err(|_| Error::UnexpectedPeerConnected)?
+    {
+        warn!("connected peer id doesn't match expected id");
+        return Err(Error::UnexpectedPeerConnected);
     }
-}
-
-pub async fn oneshot(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
-    let mut channel: Channel<Request, Response> = Channel::connect(&ip).await?;
+    let mut channel: Channel<Request, Response> = Channel::wrap(connection)?;
     let (mut sender, mut receiver) = channel.split();
     // send a message to a peer
     let () = sender.send(request).await?;
@@ -67,29 +100,28 @@ pub async fn oneshot(ip: SocketAddr, request: Request) -> Result<Option<Response
     Ok(response)
 }
 
+/// To be used in the integration tests (TCP-only)
+#[cfg(test)]
+pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Response>> {
+    oneshot(Id::zero(), ip, request, crate::tls::upgrader::TcpUpgrader::new()).await
+}
+
 /// A gentle fanout function which sends requests to peers and collects responses.
-pub async fn fanout(ips: Vec<SocketAddr>, request: Request) -> Vec<Response> {
+async fn fanout(
+    peers: Vec<(Id, SocketAddr)>,
+    request: Request,
+    upgrader: Arc<dyn Upgrader>,
+) -> Vec<Response> {
     let mut client_futs = vec![];
     // fanout oneshot requests to the ips designated in `ips` and collect the client
     // futures.
-    for ip in ips.iter().cloned() {
+    for (id, ip) in peers.iter().cloned() {
         let request = request.clone();
-        let client_fut = tokio::spawn(async move {
-            match oneshot(ip, request.clone()).await {
-                Ok(result) => result,
-                // NOTE: The error here is logged and `None` is returned
-                Err(err) => match err {
-                    Error::ChannelError(s) => {
-                        debug!("{}", s);
-                        None
-                    }
-                    err => {
-                        debug!("{:?}", err);
-                        None
-                    }
-                },
-            }
-        });
+        let upgrader = upgrader.clone();
+        let client_fut =
+            tokio::spawn(
+                async move { err_to_none(oneshot(id, ip, request.clone(), upgrader).await) },
+            );
         client_futs.push(client_fut)
     }
     // join the futures and collect the responses
@@ -109,4 +141,23 @@ pub async fn fanout(ips: Vec<SocketAddr>, request: Request) -> Vec<Response> {
             responses
         })
         .await
+}
+
+/// Helper function to simplify the return value of the `oneshot` function
+#[inline]
+fn err_to_none<T>(x: Result<Option<T>>) -> Option<T> {
+    match x {
+        Ok(result) => result,
+        // NOTE: The error here is logged and `None` is returned
+        Err(err) => match err {
+            Error::ChannelError(s) => {
+                debug!("{}", s);
+                None
+            }
+            err => {
+                debug!("{:?}", err);
+                None
+            }
+        },
+    }
 }

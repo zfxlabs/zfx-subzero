@@ -3,6 +3,8 @@
 
 The `zfx-subzero` project is a unification of the core products which `zero.fx` has been working on throughout the year.
 
+For build and test instructions, see [below](#build-and-test).
+
 The purpose of `subzero` is provide a network which can reach consensus on blocks containing operations for potentially multiple distinct blockchains. `subzero` acts as a consensus and storage layer, delegating the task of executing state transitions and verifying the specific contents of operations to other client chains.
 
 The `alpha` primitives are the only exception to this rule. `alpha`s purpose is to define very simple primitives which allow for an economic model to exist (primitives for transfers and staking namely), so that there is a notion of state capacity on the network (this is necessary in order to provide sybil resistance).
@@ -51,22 +53,42 @@ How the components fit together:
 5. `hail` is initialised with the latest validator set in the same way as `sleet`. Whenever the VRF based selection selects the validator running `hail`, final transactions in `sleet` are used to generate a new block. `hail` resolves conflicts between blocks, ensuring that whenever a block conflicts at the same height the block with the lowest hash is selected.
 6. A `block` recipient chain receives accepted blocks (final blocks) containing the cells that were finalised, executes the cells which are relevant to it and extends its blockchain.
 
-## Running the local testnet
+## Node Identity
 
-The local testnet is currently comprised of 3 nodes (for simplicity) which can be spawned by running the following commands. 
+A node's identity is derived from its TLS certificate, and is verified for outgoing and incoming connections.
 
-```
-cargo run --bin node -- -a 127.0.0.1:1234 -b 127.0.0.1:1235 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416
+## Build and test
 
-cargo run --bin node -- -a 127.0.0.1:1235 -b 127.0.0.1:1234 --keypair 5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd
-
-cargo run --bin node -- -a 127.0.0.1:1236 -b 127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b
-```
-
-## Running the client test
-
-The client test which sends transactions in a loop to one of the validators mempools can be executed with the following command, where the `--loop` argument can be used to control how many transactions get generated.
+Assuming that the standard set of Rust and C build tools are present, the following commands can be used to check out, build the project and run the tests:
 
 ```
-cargo run --bin client_test -- --peer-ip 127.0.0.1:1234 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --cell-hash b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e # --loop 16
+git clone git@github.com:zfxlabs/zfx-subzero.git zfx-subzero
+cd zfx-subzero
+git checkout m3
+cargo b
+cargo t
+```
+
+### Running the local testnet
+
+The local testnet is currently comprised of 3 nodes (for simplicity) which can be spawned by running the following commands run from the root of the Subzero repository:
+
+```
+cargo run --bin node -- -a 127.0.0.1:1234 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --use-tls --cert-path test-certs/node0.crt -p test-certs/node0.key
+
+cargo run --bin node -- -a 127.0.0.1:1235 -b 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY@127.0.0.1:1234 --keypair 5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd --use-tls --cert-path test-certs/node1.crt -p test-certs/node1.key
+
+ cargo run --bin node -- -a 127.0.0.1:1236 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b --use-tls --cert-path test-certs/node2.crt -p test-certs/node2.key
+```
+
+There are scripts to simplify node startup in the [`./scripts/`](./scripts)  directory.
+
+### Running the client test
+
+The client test which sends transactions in a loop to one of the validators mempool in the running local testnet can be executed with the following command, where the `--loop` argument can be used to control how many transactions get generated.
+
+The tesnet needs to be fully bootstrapped (Ice, Sleet and Hail initialised), in order to be able to accept transactions.
+
+```
+cargo run --bin client_test -- --peer 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY@127.0.0.1:1234 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --cell-hash b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e --use-tls -p test.key -c test.crt # --loop 16
 ```

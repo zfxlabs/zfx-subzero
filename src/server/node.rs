@@ -1,28 +1,61 @@
 use std::io::{BufReader, Read, Write};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::alpha::Alpha;
-use actix::{Actor, Arbiter};
-use ed25519_dalek::Keypair;
-use rand::rngs::OsRng;
-use tracing::info;
-use tracing_subscriber;
-
 use crate::client::Client;
 use crate::hail::Hail;
 use crate::ice::dissemination::DisseminationComponent;
 use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server};
 use crate::sleet::Sleet;
+use crate::tls;
+use crate::util;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
+use actix::{Actor, Arbiter};
+use ed25519_dalek::Keypair;
+use rand::rngs::OsRng;
+use tracing::info;
 
-pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> Result<()> {
+pub fn run(
+    ip: String,
+    bootstrap_peers: Vec<String>,
+    keypair: Option<String>,
+    use_tls: bool,
+    cert_path: Option<String>,
+    pk_path: Option<String>,
+    // FIXME this is a temporary workaround
+    node_id: Option<Id>,
+) -> Result<()> {
     let listener_ip: SocketAddr = ip.parse().unwrap();
-    let node_id = Id::from_ip(&listener_ip);
+    let converted_bootstrap_peers = bootstrap_peers
+        .iter()
+        .map(|p| util::parse_id_and_ip(p).unwrap())
+        .collect::<Vec<(Id, SocketAddr)>>();
+
+    // This is temporary until we have TLS setup
+    let (node_id, upgraders) = if use_tls {
+        let (cert, key) = tls::certificate::get_node_cert(
+            Path::new(&cert_path.unwrap()),
+            Path::new(&pk_path.unwrap()),
+        )
+        .unwrap();
+        let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
+        (Id::new(&cert), upgraders)
+        // FIXME, until we change alpha and genesis
+        // (Id::from_ip(&listener_ip), upgraders)
+    } else {
+        // FIXME, until we change alpha and genesis
+        match node_id {
+            None => (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders()),
+            Some(id) => (id, tls::upgrader::tcp_upgraders()),
+        }
+    };
     let node_id_str = hex::encode(node_id.as_bytes());
+
+    info!("Node {} is starting", node_id);
 
     match keypair {
         Some(keypair_hex) => {
@@ -38,13 +71,14 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
         None => panic!("Keypair is mandatory"),
     };
 
-    let converted_bootstrap_ips =
-        bootstrap_ips.iter().map(|ip| ip.parse().unwrap()).collect::<Vec<SocketAddr>>();
-
     let execution = async move {
+        // Create the 'client' actor
+        let client = Client::new(upgraders.client.clone());
+        let client_addr = client.start();
+
         // Initialise a view with the bootstrap ips and start its actor
-        let mut view = View::new(listener_ip);
-        view.init(converted_bootstrap_ips);
+        let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
+        view.init(converted_bootstrap_peers);
         let view_addr = view.start();
 
         // Create Dissemination Component
@@ -53,12 +87,14 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
 
         // Create the `ice` actor
         let reservoir = Reservoir::new();
-        let ice = Ice::new(node_id, listener_ip, reservoir);
+        let ice = Ice::new(
+            client_addr.clone().recipient(),
+            node_id,
+            listener_ip,
+            reservoir,
+            dc_addr.clone().recipient(),
+        );
         let ice_addr = ice.start();
-
-        // Create the 'client' actor
-        let client = Client::new();
-        let client_addr = client.start();
 
         // Create the `hail` actor
         let hail = Hail::new(client_addr.clone().recipient(), node_id);
@@ -66,13 +102,19 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
 
         // Create the `sleet` actor
         // FIXME: Sleet has to be initialised with the genesis utxo ids.
-        let sleet =
-            Sleet::new(client_addr.clone().recipient(), hail_addr.clone().recipient(), node_id);
+        let sleet = Sleet::new(
+            client_addr.clone().recipient(),
+            hail_addr.clone().recipient(),
+            node_id,
+            listener_ip,
+        );
         let sleet_addr = sleet.start();
 
         // Create the `alpha` actor
         let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
         let alpha = Alpha::create(
+            client_addr.clone().recipient(),
+            node_id,
             Path::new(&db_path),
             ice_addr.clone(),
             sleet_addr.clone(),
@@ -87,12 +129,12 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
         let alpha_addr_clone = alpha_addr.clone();
 
         let bootstrap_execution = async move {
-            view::bootstrap(node_id, view_addr_clone.clone(), ice_addr_clone.clone()).await;
+            view::bootstrap(view_addr_clone.clone(), ice_addr_clone.clone()).await;
             let view_addr_clone = view_addr_clone.clone();
             let ice_addr_clone = ice_addr_clone.clone();
             let ice_execution = async move {
                 // Setup `ice` consensus for establishing the liveness of peers
-                ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone, dc_addr).await;
+                ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone).await;
             };
             let arbiter = Arbiter::new();
             arbiter.spawn(ice_execution);
@@ -103,7 +145,7 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
             let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
             let router_addr = router.start();
             // Setup the server
-            let server = Server::new(listener_ip, router_addr);
+            let server = Server::new(listener_ip, router_addr, upgraders.server.clone());
             // Listen for incoming connections
             server.listen().await.unwrap()
         };
@@ -119,6 +161,7 @@ pub fn run(ip: String, bootstrap_ips: Vec<String>, keypair: Option<String>) -> R
     Ok(())
 }
 
+#[allow(unused)] // TODO check if we need this after config is done
 fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
     let tmp_dir = vec!["/tmp/", &node_id].concat();
     std::fs::create_dir_all(&tmp_dir).expect(&format!("Couldn't create directory: {}", tmp_dir));

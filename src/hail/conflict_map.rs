@@ -8,7 +8,7 @@ use crate::alpha::types::{BlockHash, BlockHeight};
 
 use super::hail::BETA1;
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap};
 
 use tracing::info;
 
@@ -80,7 +80,7 @@ impl ConflictMap {
             }
             // The block is currently non-conflicting.
             Entry::Vacant(v) => {
-                let mut cs = ConflictSet::new(block.hash().unwrap());
+                let cs = ConflictSet::new(block.hash().unwrap());
                 v.insert(cs.clone());
                 Ok(cs)
             }

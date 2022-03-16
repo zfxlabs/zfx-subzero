@@ -2,7 +2,7 @@ use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
 
-use actix::{Actor, Addr, Context, Handler};
+use actix::{Actor, Context, Handler, Recipient};
 
 // for hash function
 use priority_queue::double_priority_queue::DoublePriorityQueue;
@@ -13,8 +13,11 @@ const GOSSIP_LIMIT: usize = 3; // Amount of gossip allowed to be passed
 
 type GossipId = u64;
 
-pub async fn pull_rumours(dc: &Addr<DisseminationComponent>, network_size: usize) -> Vec<Gossip> {
-    let Rumours { rumours } = dc.send(GossipQuery { network_size }).await.unwrap();
+pub async fn pull_rumours(
+    dc_recipient: Recipient<GossipQuery>,
+    network_size: usize,
+) -> Vec<Gossip> {
+    let Rumours { rumours } = dc_recipient.send(GossipQuery { network_size }).await.unwrap();
     rumours
 }
 
@@ -35,7 +38,7 @@ pub struct GossipQuery {
 
 #[derive(Debug, Clone, MessageResponse)]
 pub struct Rumours {
-    rumours: Vec<Gossip>,
+    pub rumours: Vec<Gossip>,
 }
 
 struct PriorityMap {
@@ -223,7 +226,7 @@ mod tests {
             _ => panic!("unexpected send result"),
         }
 
-        let mut rumours = pull_rumours(&dc_addr, NETWORK_SIZE).await;
+        let mut rumours = pull_rumours(dc_addr.clone().recipient(), NETWORK_SIZE).await;
         assert_eq!(rumours.len(), 1);
         let Gossip::Joiner { id } = rumours.pop().unwrap();
         assert_eq!(id, stored_id);
@@ -250,7 +253,7 @@ mod tests {
         let pulls = ((N * logn) / GOSSIP_LIMIT) + 1;
 
         for i in 0..pulls {
-            let rumours = pull_rumours(&dc_addr, NETWORK_SIZE).await;
+            let rumours = pull_rumours(dc_addr.clone().recipient(), NETWORK_SIZE).await;
             let len = rumours.len();
             if len > GOSSIP_LIMIT {
                 panic!("unexpected rumours length {:?}", len);
@@ -263,7 +266,7 @@ mod tests {
                 assert!(ids.contains(&id));
             }
         }
-        let rumours = pull_rumours(&dc_addr, NETWORK_SIZE).await;
+        let rumours = pull_rumours(dc_addr.clone().recipient(), NETWORK_SIZE).await;
         assert_eq!(rumours.len(), 0);
     }
 }

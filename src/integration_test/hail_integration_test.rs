@@ -1,97 +1,125 @@
-#[cfg(test)]
-#[cfg(feature = "hail_test")]
-mod hail_test {
-    use crate::alpha::transfer::TransferOperation;
-    use crate::cell::types::CellHash;
-    use crate::client;
-    use crate::integration_test::test_model::{IntegrationTestContext, TestNode};
-    use crate::protocol::{Request, Response};
-    use crate::sleet;
-    use crate::Result;
+use crate::alpha::transfer::TransferOperation;
+use crate::cell::types::Capacity;
+use crate::integration_test::test_functions::*;
+use crate::integration_test::test_model::TestNodes;
+use crate::Result;
+use std::collections::HashSet;
+use std::thread::sleep;
 
-    use std::time::Duration;
-    use tracing::info;
+use crate::alpha::block::Block;
+use crate::alpha::types::VrfOutput;
+use crate::zfx_id::Id;
+use std::time::Duration;
+use tracing::info;
 
-    // We know that this output has 2000 to spend, and FEE = 100.
-    // 9 transactions will be accepted from the 19 issued.
-    const INITIAL_HASH: &str = "b5fba12b605e166987f031c300e33969e07e295285a3744692f326535fba555e";
-    const ITERATIONS: u64 = 19;
+pub async fn run_hail_integration_test() -> Result<()> {
+    let mut nodes = TestNodes::new();
 
-    #[actix_rt::test]
-    async fn run_hail_test() -> Result<()> {
-        let mut context = IntegrationTestContext::new();
+    nodes.start_all_and_wait().await?;
 
-        run_nodes(&mut context.test_nodes.nodes);
-        tokio::time::sleep(Duration::from_secs(40)).await;
+    let last_block_height = test_successful_block_generation(&nodes).await?;
+    test_transfer_failure_and_check_block_not_generated(&nodes, last_block_height).await?;
 
-        let mut cell_hash = starting_hash();
-        for i in 0..ITERATIONS {
-            cell_hash = spend_cell(&mut context, cell_hash, 1 + i).await?;
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-        Ok(())
-    }
+    nodes.kill_all();
 
-    fn starting_hash() -> CellHash {
-        let cell_hash_vec = hex::decode(INITIAL_HASH).unwrap();
-        let mut cell_hash_bytes = [0u8; 32];
-        cell_hash_bytes.copy_from_slice(&cell_hash_vec[..32]);
-        cell_hash_bytes
-    }
+    Result::Ok(())
+}
 
-    /// Spend the specified cell and return its output
-    async fn spend_cell(
-        ctx: &mut IntegrationTestContext,
-        cell_hash: CellHash,
-        amount: u64,
-    ) -> Result<CellHash> {
-        let node = ctx.test_nodes.get_node(0).unwrap();
-        if let Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) = client::oneshot(
-            node.address,
-            Request::GetCell(sleet::GetCell { cell_hash: cell_hash.clone() }),
-        )
-        .await?
-        {
-            // info!("spendable:\n{}\n", cell_in.clone());
-            let transfer_op = TransferOperation::new(
-                cell_in.clone(),
-                node.public_key.clone(),
-                node.public_key.clone(),
-                amount + 1,
-            );
-            let transfer_tx = transfer_op.transfer(&node.keypair).unwrap();
-            let new_cell_hash = transfer_tx.hash();
-            match client::oneshot(
-                node.address,
-                Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
-            )
-            .await?
-            {
-                Some(Response::GenerateTxAck(sleet::GenerateTxAck { cell_hash: Some(h) })) => {
-                    assert_eq!(h, new_cell_hash)
-                }
-                other => panic!("Unexpected: {:?}", other),
+async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
+    info!("Run successful hail test: Transfer balance n-times between nodes and validate blocks");
+
+    let from = nodes.get_node(0).unwrap();
+    let to = nodes.get_node(1).unwrap();
+    let cells_hashes = vec![*get_cell_hashes_with_max_capacity(from).await.get(0).unwrap()];
+
+    let result = spend_many_from_cell_hashes(
+        &from,
+        &to,
+        1 as Capacity,
+        20,
+        Duration::from_millis(100),
+        cells_hashes,
+    )
+    .await?;
+    let accepted_cell_hashes = result.0;
+
+    sleep(Duration::from_secs(3));
+
+    let mut previous_block: Option<Block> = None;
+    let mut last_block_height: u64 = 0;
+    let mut block_cells = HashSet::new();
+
+    // as the default confidence level is 11,
+    // we expect 10 accepted blocks having 1 cell from first 10 transferred cells
+    // according to the transferred order
+    for i in 1..12 {
+        if let Some(block) = get_block(from.address, i).await? {
+            info!("Block height = {}", i);
+            block.cells.iter().for_each(|c| {
+                block_cells.insert(c.clone());
+            });
+            block.cells.iter().for_each(|c| {
+                assert!(
+                    accepted_cell_hashes.contains(&c.hash()),
+                    "Block {} doesn't contain an expected cell hash",
+                    i
+                );
+            });
+
+            if previous_block.is_some() {
+                let block_ref = previous_block.unwrap();
+                let previous_block_hash = block_ref.hash().unwrap();
+                // FIXME: uncomment when hail is working properly. In rare scenarios VRF can be different from expected
+                let expected_vrfs = get_expected_vrfs(&nodes, &block_ref);
+
+                assert!(
+                    expected_vrfs.contains(&block.vrf_out),
+                    "VRF for block wih height {} was not generated correctly",
+                    i
+                );
+                assert_eq!(previous_block_hash, block.predecessor.unwrap());
             }
-            // info!("sent tx:\n{:?}\n", tx.clone());
-            // info!("new cell_hash: {}", hex::encode(&new_cell_hash));
-            Ok(new_cell_hash)
-        } else {
-            panic!("cell doesn't exist: {}", hex::encode(&cell_hash));
+            previous_block = Some(block);
+            last_block_height = i;
         }
     }
+    assert!(block_cells.len() <= 10);
 
-    // FIXME: this is copied from integration_test.rs
-    fn run_nodes(nodes: &mut Vec<TestNode>) {
-        tracing_subscriber::fmt()
-            .with_level(false)
-            .with_target(false)
-            .without_time()
-            .compact()
-            .with_max_level(tracing::Level::INFO)
-            .init();
+    Result::Ok(last_block_height)
+}
 
-        for node in nodes {
-            node.start()
-        }
-    }
+async fn test_transfer_failure_and_check_block_not_generated(
+    nodes: &TestNodes,
+    latest_block_height: u64,
+) -> Result<()> {
+    info!("Run unsuccessful block generation test: Transfer invalid cell and check block was not created");
+
+    let from = nodes.get_node(0).unwrap();
+    let to = nodes.get_node(1).unwrap();
+    let cell_hash = *get_cell_hashes_with_max_capacity(from).await.get(0).unwrap();
+    let amount = 20;
+
+    let cell = get_cell_from_hash(cell_hash.0, from.address).await?.unwrap();
+    let odd_transfer_op =
+        TransferOperation::new(cell.clone(), Id::generate().bytes(), from.public_key, amount);
+    let odd_transfer = odd_transfer_op.transfer(&from.keypair).unwrap();
+
+    spend_cell(&from, &to, odd_transfer, amount).await?;
+
+    // previous block was generated but next one shouldn't
+    assert!(get_block(from.address, latest_block_height + 1).await?.is_none());
+
+    Result::Ok(())
+}
+
+fn get_expected_vrfs(nodes: &TestNodes, block_ref: &Block) -> Vec<VrfOutput> {
+    nodes
+        .nodes
+        .iter()
+        .map(|n| {
+            let node_id = Id::from_ip(&n.address);
+            let vrf_h = vec![node_id.as_bytes(), &block_ref.vrf_out].concat();
+            blake3::hash(&vrf_h).as_bytes().clone()
+        })
+        .collect::<Vec<VrfOutput>>()
 }

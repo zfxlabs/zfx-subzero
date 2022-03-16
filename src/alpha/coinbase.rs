@@ -1,5 +1,5 @@
 use super::{Error, Result};
-use crate::cell::inputs::{Input, Inputs};
+use crate::cell::inputs::Inputs;
 use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};

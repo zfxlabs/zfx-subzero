@@ -48,7 +48,8 @@ impl CellId {
         CellId(cell_id)
     }
 
-    pub fn from_output(cell_hash: CellHash, i: u8, output: Output) -> Result<Self> {
+    // TODO check if we need the `output` argument
+    pub fn from_output(cell_hash: CellHash, i: u8, _output: Output) -> Result<Self> {
         let bytes = vec![cell_hash.to_vec(), vec![i]].concat();
         let encoded = bincode::serialize(&bytes)?;
         Ok(CellId(blake3::hash(&encoded).as_bytes().clone()))
