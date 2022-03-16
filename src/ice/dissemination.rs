@@ -95,10 +95,12 @@ impl PriorityMap {
         v.iter().map(|(id, _)| self.h.get(&id).unwrap().clone()).collect()
     }
 
+    #[allow(dead_code)]
     fn empty(&self) -> bool {
         self.q.len() == 0
     }
 
+    #[allow(dead_code)]
     fn len(&self) -> usize {
         self.q.len()
     }
@@ -221,8 +223,8 @@ mod tests {
         let slice = rand::thread_rng().gen::<[u8; 32]>(); // Random 32byte byte slice
         let stored_id = Id::new(&slice);
 
-        match dc_addr.send(Gossip::Joiner { id: stored_id.clone() }).await.unwrap() {
-            GossipAck {} => (),
+        match dc_addr.send(Gossip::Joiner { id: stored_id.clone() }).await {
+            Ok(GossipAck {}) => (),
             _ => panic!("unexpected send result"),
         }
 
@@ -239,12 +241,12 @@ mod tests {
 
         let mut ids: Vec<Id> = vec![];
 
-        for i in 0..N {
+        for _i in 0..N {
             let slice = rand::thread_rng().gen::<[u8; 32]>(); // Random 32byte byte slice
             let id = Id::new(&slice);
             ids.push(id);
-            match dc_addr.send(Gossip::Joiner { id: id.clone() }).await.unwrap() {
-                GossipAck {} => (),
+            match dc_addr.send(Gossip::Joiner { id: id.clone() }).await {
+                Ok(GossipAck {}) => (),
                 _ => panic!("unexpected send result"),
             }
         }
@@ -252,7 +254,7 @@ mod tests {
         let logn = ((NETWORK_SIZE as f64).log2()) as usize;
         let pulls = ((N * logn) / GOSSIP_LIMIT) + 1;
 
-        for i in 0..pulls {
+        for _i in 0..pulls {
             let rumours = pull_rumours(dc_addr.clone().recipient(), NETWORK_SIZE).await;
             let len = rumours.len();
             if len > GOSSIP_LIMIT {

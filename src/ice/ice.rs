@@ -11,7 +11,7 @@ use crate::{Error, Result};
 use super::choice::Choice;
 use super::constants::*;
 use super::dissemination;
-use super::dissemination::{Gossip, GossipQuery, Rumours};
+use super::dissemination::{Gossip, GossipQuery};
 use super::query::{Outcome, Query};
 use super::reservoir::Reservoir;
 
