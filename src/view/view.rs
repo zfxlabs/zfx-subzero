@@ -221,23 +221,23 @@ impl Handler<UpdatePeers> for View {
     }
 }
 
-//-- Sample a random peer from the view
-
+//-- Sample k random peers from the view
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "SampleResult")]
-pub struct SampleOne;
+pub struct SampleK {
+    pub k: usize,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct SampleResult {
     pub sample: Vec<(Id, SocketAddr)>,
 }
-
-impl Handler<SampleOne> for View {
+impl Handler<SampleK> for View {
     type Result = SampleResult;
 
-    fn handle(&mut self, _msg: SampleOne, _ctx: &mut Context<Self>) -> Self::Result {
-        let sample = self.sample_k(1);
-        debug!("sample = {:?}", sample.clone());
+    fn handle(&mut self, msg: SampleK, _ctx: &mut Context<Self>) -> Self::Result {
+        let sample = self.sample_k(msg.k);
+        debug!("sample (k: {:?}) = {:?}", msg.k, sample.clone());
         SampleResult { sample }
     }
 }
