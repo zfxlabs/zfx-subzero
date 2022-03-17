@@ -10,7 +10,7 @@ mod integration_test {
     use std::thread::sleep;
     use std::time::Duration;
 
-    #[actix_rt::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn run_integration_test_suite() -> Result<()> {
         tracing_subscriber::fmt()
             .with_level(false)

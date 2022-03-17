@@ -9,7 +9,7 @@ use crate::cell::{Cell, CellType};
 
 use super::Result;
 
-use crate::alpha::cell_operation::{consume_from_cell, ConsumeResult};
+use crate::cell::cell_operation::{consume_from_cell, ConsumeResult};
 use ed25519_dalek::Keypair;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

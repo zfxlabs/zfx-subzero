@@ -1,7 +1,7 @@
-use super::{Error, Result};
 use crate::alpha::coinbase::CoinbaseState;
 use crate::alpha::stake::StakeState;
 use crate::alpha::transfer::TransferState;
+use crate::alpha::{Error, Result};
 use crate::cell::inputs::Input;
 use crate::cell::outputs::Output;
 use crate::cell::types::{Capacity, FEE};

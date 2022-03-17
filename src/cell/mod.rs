@@ -1,6 +1,7 @@
 mod cell;
 mod cell_id;
 mod cell_ids;
+pub mod cell_operation;
 mod cell_type;
 mod cell_unlock_script;
 mod input;
