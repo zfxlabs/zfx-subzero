@@ -10,6 +10,8 @@ use crate::{Error, Result};
 
 use super::choice::Choice;
 use super::constants::*;
+use super::dissemination;
+use super::dissemination::{Gossip, GossipQuery};
 use super::query::{Outcome, Query};
 use super::reservoir::Reservoir;
 
@@ -21,6 +23,8 @@ use actix::{ActorFutureExt, ResponseActFuture};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
+use actix::WrapFuture;
+
 pub struct Ice {
     /// The client used to make external requests.
     sender: Recipient<ClientRequest>,
@@ -28,6 +32,7 @@ pub struct Ice {
     pub ip: SocketAddr,
     reservoir: Reservoir,
     bootstrapped: bool,
+    dc_recipient: Recipient<GossipQuery>,
 }
 
 impl Ice {
@@ -36,8 +41,9 @@ impl Ice {
         id: Id,
         ip: SocketAddr,
         reservoir: Reservoir,
+        dc_recipient: Recipient<GossipQuery>,
     ) -> Self {
-        Ice { sender, id, ip, reservoir, bootstrapped: false }
+        Ice { sender, id, ip, reservoir, bootstrapped: false, dc_recipient }
     }
 }
 
@@ -54,6 +60,7 @@ impl Actor for Ice {
 pub struct Ping {
     pub id: Id,
     pub queries: Vec<Query>,
+    pub rumours: Vec<Gossip>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -61,7 +68,6 @@ pub struct Ack {
     pub id: Id,
     pub outcomes: Vec<Outcome>,
 }
-
 /// Processes a query into an `Outcome`c.
 fn process_query(reservoir: &mut Reservoir, self_id: Id, query: Query) -> Outcome {
     let peer_id = query.peer_id.clone();
@@ -312,41 +318,66 @@ impl Handler<PrintReservoir> for Ice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "usize")]
+pub struct ReservoirSize;
+
+impl Handler<ReservoirSize> for Ice {
+    type Result = usize;
+
+    fn handle(&mut self, _msg: ReservoirSize, _ctx: &mut Context<Self>) -> Self::Result {
+        self.reservoir.len()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<Ack>")]
 pub struct DoPing {
     self_id: Id,
     id: Id,
     ip: SocketAddr,
     queries: Vec<Query>,
+    network_size: usize,
 }
 
 impl Handler<DoPing> for Ice {
     type Result = ResponseActFuture<Self, Result<Ack>>;
 
     fn handle(&mut self, msg: DoPing, _ctx: &mut Context<Self>) -> Self::Result {
-        let send_to_client = self.sender.send(ClientRequest::Oneshot {
-            id: msg.id,
-            ip: msg.ip,
-            request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
-        });
-        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
-        let handle_response = send_to_client.map(move |result, _actor, _ctx| {
-            match result {
-                Ok(ClientResponse::Oneshot(res)) => {
-                    match res {
-                        // Success -> Ack
-                        Some(Response::Ack(ack)) => Ok(ack.clone()),
-                        // Failure (byzantine)
-                        Some(_) => Err(Error::Byzantine),
-                        // Failure (crash)
-                        None => Err(Error::Crash),
-                    }
-                }
-                Ok(_) => Err(Error::InvalidResponse),
-                Err(e) => Err(Error::Actix(e)),
+        let dc = self.dc_recipient.clone();
+        let sender = self.sender.clone();
+        Box::pin(
+            async move {
+                let rumours = dissemination::pull_rumours(dc, msg.network_size).await;
+                sender
+                    .send(ClientRequest::Oneshot {
+                        id: msg.id,
+                        ip: msg.ip,
+                        request: Request::Ping(Ping {
+                            id: msg.self_id,
+                            queries: msg.queries,
+                            rumours: rumours,
+                        }),
+                    })
+                    .await
             }
-        });
-        Box::pin(handle_response)
+            .into_actor(self)
+            .map(move |result, _actor, _ctx| {
+                match result {
+                    Ok(ClientResponse::Oneshot(res)) => {
+                        match res {
+                            // Success -> Ack
+                            Some(Response::Ack(ack)) => Ok(ack.clone()),
+                            // Failure (byzantine)
+                            Some(_) => Err(Error::Byzantine),
+                            // Failure (crash)
+                            None => Err(Error::Crash),
+                        }
+                    }
+                    Ok(_) => Err(Error::InvalidResponse),
+                    Err(e) => Err(Error::Actix(e)),
+                }
+            }),
+        )
     }
 }
 
@@ -392,6 +423,7 @@ pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: S
 pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alpha>) {
     loop {
         let () = ice.send(PrintReservoir).await.unwrap();
+        let network_size = ice.send(ReservoirSize).await.unwrap();
 
         // Sample a random peer from the view
         let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
@@ -402,8 +434,9 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
 
             // Ping the designated peer
+
             match ice
-                .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries })
+                .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries, network_size })
                 .await
                 .unwrap()
             {

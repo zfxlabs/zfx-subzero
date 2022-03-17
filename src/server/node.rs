@@ -5,6 +5,7 @@ use std::path::Path;
 use crate::alpha::Alpha;
 use crate::client::Client;
 use crate::hail::Hail;
+use crate::ice::dissemination::DisseminationComponent;
 use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server};
 use crate::sleet::Sleet;
@@ -80,9 +81,19 @@ pub fn run(
         view.init(converted_bootstrap_peers);
         let view_addr = view.start();
 
+        // Create Dissemination Component
+        let dc = DisseminationComponent::new();
+        let dc_addr = dc.start();
+
         // Create the `ice` actor
         let reservoir = Reservoir::new();
-        let ice = Ice::new(client_addr.clone().recipient(), node_id, listener_ip, reservoir);
+        let ice = Ice::new(
+            client_addr.clone().recipient(),
+            node_id,
+            listener_ip,
+            reservoir,
+            dc_addr.clone().recipient(),
+        );
         let ice_addr = ice.start();
 
         // Create the `hail` actor

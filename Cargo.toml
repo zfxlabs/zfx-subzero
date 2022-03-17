@@ -45,6 +45,9 @@ serde_derive = "1.0.132"
 hex = "*"
 tai64 = { version = "4.0.0", features = ["serde"] }
 base58check = "*"
+
+priority-queue = "1.2.1"
+
 dirs = "4.0.0"
 igd = { version = "*", features = ["aio"] }
 
