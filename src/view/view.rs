@@ -84,7 +84,7 @@ impl View {
     }
 
     pub fn sample_k(&mut self, k: usize) -> Vec<(Id, SocketAddr)> {
-        if self.len() > k {
+        if self.len() >= k {
             self.sample(k)
         } else {
             vec![]
