@@ -64,12 +64,15 @@ pub struct Sleet {
     /// The map contains transactions already accepted
     accepted_txs: HashSet<TxHash>,
     /// The map contains transactions rejected because they conflict with an accepted transaction
-    /// Note: we rely heavily on the fact that transacrions have the same hash as the wrapped cell
+    /// Note: we rely heavily on the fact that transactions have the same hash as the wrapped cell
     rejected_txs: HashSet<TxHash>,
     /// Incoming queries pending that couldn't be processed because of missing ancestry
     pending_queries: Vec<(Tx, oneshot::Sender<bool>)>,
-    /// The consensus graph.
+    /// The consensus graph. Contains the accepted frontier and the undecided transactions
     dag: DAG<TxHash>,
+    /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
+    /// up to a vertices considered final, collecting all the final nodes.
+    accepted_frontier: HashSet<TxHash>,
 }
 
 impl Sleet {
@@ -94,6 +97,7 @@ impl Sleet {
             rejected_txs: HashSet::new(),
             pending_queries: vec![],
             dag: DAG::new(),
+            accepted_frontier: HashSet::new(),
         }
     }
 
@@ -133,14 +137,20 @@ impl Sleet {
     pub fn has_parents(&self, tx: &Tx) -> bool {
         match self.dag.has_vertices(&tx.parents) {
             Ok(()) => true,
-            Err(missing_parents) => missing_parents.iter().all(|p| self.accepted_txs.contains(p)),
+            Err(missing_parents) => missing_parents.iter().all(|p| {
+                self.accepted_txs.contains(p)
+                    || tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)
+            }),
         }
     }
 
     /// Removes the transactions that already have been accepted, and might not be present
     /// in the DAG at insertion time
     pub fn remove_accepted_parents(&self, mut parents: Vec<TxHash>) -> Vec<TxHash> {
-        parents.retain(|p| !self.accepted_txs.contains(p));
+        parents.retain(|p| {
+            !self.accepted_txs.contains(p)
+                && !tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)
+        });
         parents
     }
     // Branch preference
@@ -271,10 +281,10 @@ impl Sleet {
 
     /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
     /// up to a vertices considered final, collecting all the final nodes.
-    pub fn get_accepted_frontier(&self) -> HashSet<TxHash> {
+    pub fn compute_accepted_frontier(&mut self) {
         let mut accepted_frontier = HashSet::new();
         if self.dag.is_empty() {
-            return accepted_frontier;
+            self.accepted_frontier = HashSet::new();
         }
         let mut above_frontier: HashSet<TxHash> = HashSet::new();
         let leaves = self.dag.leaves();
@@ -287,18 +297,18 @@ impl Sleet {
                 }
             }
         }
-        accepted_frontier
+        self.accepted_frontier = accepted_frontier;
     }
 
     /// Remove transactions from the dag above the accepted frontier
     pub fn prune_at_accepted_frontier(&mut self) {
-        let frontier = self.get_accepted_frontier();
+        self.compute_accepted_frontier();
         let mut to_be_pruned = HashSet::new();
-        for f in frontier.iter() {
+        for f in self.accepted_frontier.iter() {
             to_be_pruned.extend(self.dag.dfs(f));
         }
         for a in to_be_pruned.iter() {
-            if !frontier.contains(a) {
+            if !self.accepted_frontier.contains(a) {
                 info!("Pruned {}", hex::encode(a));
                 let _ = self.dag.remove_vx(a);
             }

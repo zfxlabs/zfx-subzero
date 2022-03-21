@@ -104,7 +104,7 @@ impl Handler<GetStatus> for Sleet {
             accepted_txs: self.accepted_txs.clone(),
             rejected_txs: self.rejected_txs.clone(),
             dag_len: self.dag.len(),
-            accepted_frontier: self.get_accepted_frontier(),
+            accepted_frontier: self.accepted_frontier.clone(),
         }
     }
 }
