@@ -12,7 +12,7 @@ use crate::protocol::{Request, Response};
 use crate::storage::tx as tx_storage;
 use crate::util;
 
-use super::tx::Tx;
+use super::tx::{Tx, TxStatus};
 use super::{Error, Result};
 
 use tracing::{debug, error, info};
@@ -211,6 +211,11 @@ impl Sleet {
     /// Checks whether the transaction `TxHash` is accepted as final.
     pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> bool {
         // It's a bug if we check a non-existent transaction
+        if self.accepted_txs.contains(tx_hash)
+            || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
+        {
+            return true;
+        }
         let confidence = match self.conflict_graph.get_confidence(tx_hash) {
             Ok(c) => c,
             Err(e) => panic!("{}", e),
@@ -254,6 +259,7 @@ impl Sleet {
         let mut children = HashSet::new();
         for hash in rejected {
             let _ = self.rejected_txs.insert(hash.clone());
+            tx_storage::set_status(&self.known_txs, &hash, TxStatus::Rejected)?;
             let ch = self.dag.remove_vx(&hash)?;
             children.extend(ch.iter());
         }
@@ -307,6 +313,7 @@ impl Sleet {
             if !self.accepted_txs.contains(t) && self.is_accepted_memo(t, &mut memo) {
                 new.push(t.clone());
                 let _ = self.accepted_txs.insert(t.clone());
+                tx_storage::set_status(&self.known_txs, t, TxStatus::Accepted).unwrap();
             }
         }
         new
@@ -441,6 +448,7 @@ impl Handler<QueryComplete> for Sleet {
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
         tx_storage::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
+        tx_storage::set_status(&self.known_txs, &msg.tx.hash(), TxStatus::Queried).unwrap();
     }
 }
 
