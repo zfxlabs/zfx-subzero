@@ -8,12 +8,14 @@ pub use sleet::*;
 use crate::alpha::types::TxHash;
 use crate::cell;
 use crate::graph;
+use crate::storage;
 
 #[derive(Debug)]
 pub enum Error {
     Actix(actix::MailboxError),
     Sled(sled::Error),
     Cell(cell::Error),
+    Storage(storage::Error),
     /// Coinbase transactions cannot be sent to the mempool
     InvalidCoinbaseTransaction(cell::Cell),
     InvalidTxHash(TxHash),
@@ -40,6 +42,12 @@ impl std::convert::From<cell::Error> for Error {
 impl std::convert::From<graph::Error> for Error {
     fn from(error: graph::Error) -> Self {
         Error::Graph(error)
+    }
+}
+
+impl std::convert::From<storage::Error> for Error {
+    fn from(error: storage::Error) -> Self {
+        Error::Storage(error)
     }
 }
 
