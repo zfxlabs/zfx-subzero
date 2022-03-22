@@ -103,7 +103,7 @@ impl Sleet {
     fn on_receive_tx(&mut self, sleet_tx: Tx) -> Result<bool> {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
-        if has_coinbase_output(&sleet_tx.cell) {
+        if util::has_coinbase_output(&sleet_tx.cell) {
             return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
         }
         if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
@@ -335,17 +335,6 @@ impl Sleet {
         }
         util::sample_weighted(minimum_weight, validators).ok_or(Error::InsufficientWeight)
     }
-}
-
-// TODO: this function should probably moved elsewhere
-/// Check if a cell creates a coinbase output.
-pub fn has_coinbase_output(cell: &Cell) -> bool {
-    for o in cell.outputs().iter() {
-        if o.cell_type == crate::cell::CellType::Coinbase {
-            return true;
-        }
-    }
-    false
 }
 
 impl Actor for Sleet {
