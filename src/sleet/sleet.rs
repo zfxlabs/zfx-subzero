@@ -343,6 +343,11 @@ impl Actor for Sleet {
     fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!("started sleet");
     }
+
+    fn stopping(&mut self, _ctx: &mut Context<Self>) -> actix::Running {
+        let _ = self.known_txs.flush();
+        actix::Running::Stop
+    }
 }
 
 // When the committee is initialised in `alpha` or when it comes back online due to a
