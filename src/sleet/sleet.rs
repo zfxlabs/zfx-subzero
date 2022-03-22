@@ -531,27 +531,6 @@ impl Handler<FreshTx> for Sleet {
     }
 }
 
-// Allow clients to fetch transactions for testing.
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "CellAck")]
-pub struct GetCell {
-    pub cell_hash: CellHash,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct CellAck {
-    pub cell: Option<Cell>,
-}
-
-impl Handler<GetCell> for Sleet {
-    type Result = CellAck;
-
-    fn handle(&mut self, msg: GetCell, _ctx: &mut Context<Self>) -> Self::Result {
-        CellAck { cell: self.live_cells.get(&msg.cell_hash).map(|x| x.clone()) }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "GenerateTxAck")]
 pub struct GenerateTx {
@@ -819,23 +798,10 @@ impl Handler<GetTxAncestors> for Sleet {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "CellHashes")]
-pub struct GetCellHashes;
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct CellHashes {
-    pub ids: Vec<CellHash>,
-}
-
-impl Handler<GetCellHashes> for Sleet {
-    type Result = CellHashes;
-
-    fn handle(&mut self, _msg: GetCellHashes, _ctx: &mut Context<Self>) -> Self::Result {
-        return CellHashes { ids: self.live_cells.keys().cloned().collect::<Vec<CellHash>>() };
-    }
-}
-
+// Message handlers used in testing
 pub mod sleet_cell_handlers;
+// Re-export message types
+pub use sleet_cell_handlers::*;
+
 #[cfg(test)]
 mod sleet_tests;
