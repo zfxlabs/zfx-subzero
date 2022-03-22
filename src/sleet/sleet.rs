@@ -55,8 +55,6 @@ pub struct Sleet {
     committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions in storage.
     known_txs: sled::Db,
-    /// The set of all queried transactions in storage.
-    queried_txs: sled::Db,
     /// The graph of conflicting transactions (potentially multi-input).
     conflict_graph: ConflictGraph,
     /// A mapping of a cell hashes to unspent cells.
@@ -90,7 +88,6 @@ impl Sleet {
             node_ip,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
-            queried_txs: sled::Config::new().temporary(true).open().unwrap(),
             conflict_graph: ConflictGraph::new(CellIds::empty()),
             live_cells: HashMap::default(),
             accepted_txs: HashSet::new(),
@@ -457,7 +454,6 @@ impl Handler<QueryComplete> for Sleet {
             }
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        tx_storage::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
         tx_storage::set_status(&self.known_txs, &msg.tx.hash(), TxStatus::Queried).unwrap();
     }
 }
