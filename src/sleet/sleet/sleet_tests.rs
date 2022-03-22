@@ -84,7 +84,6 @@ pub struct GetStatus;
 #[derive(Debug, Clone, MessageResponse)]
 pub struct SleetStatus {
     known_txs: sled::Db,
-    queried_txs: sled::Db,
     conflict_graph_len: usize,
     live_cells: HashMap<CellHash, Cell>,
     accepted_txs: HashSet<TxHash>,
@@ -98,7 +97,6 @@ impl Handler<GetStatus> for Sleet {
     fn handle(&mut self, _msg: GetStatus, _ctx: &mut Context<Self>) -> Self::Result {
         SleetStatus {
             known_txs: self.known_txs.clone(),
-            queried_txs: self.queried_txs.clone(),
             conflict_graph_len: self.conflict_graph.len(),
             live_cells: self.live_cells.clone(),
             accepted_txs: self.accepted_txs.clone(),
