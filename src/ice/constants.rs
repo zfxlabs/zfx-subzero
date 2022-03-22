@@ -6,6 +6,7 @@ pub const PROTOCOL_PERIOD: Duration = Duration::from_secs(6);
 
 // Gossip settings
 pub const GOSSIP_RATE: usize = 3;
+pub const PING_MAX_SIZE: usize = 11;
 
 // Consensus settings
 
