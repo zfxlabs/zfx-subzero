@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use rand::seq::SliceRandom;
 
 use crate::alpha::types::Weight;
+use crate::cell::{Cell, CellType};
 use crate::zfx_id::Id;
 use crate::{Error, Result};
 
@@ -57,6 +58,16 @@ pub fn parse_id_and_ip(s: &str) -> Result<(Id, SocketAddr)> {
     } else {
         Err(Error::PeerParseError)
     }
+}
+
+/// Check if a cell creates a coinbase output.
+pub fn has_coinbase_output(cell: &Cell) -> bool {
+    for o in cell.outputs().iter() {
+        if o.cell_type == CellType::Coinbase {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
