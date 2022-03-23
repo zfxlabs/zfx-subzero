@@ -1,5 +1,5 @@
 use std::io::{BufReader, Read, Write};
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::alpha::Alpha;
@@ -7,12 +7,11 @@ use actix::{Actor, Arbiter};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 use tracing::info;
-use tracing_subscriber;
 
 use crate::client::Client;
 use crate::hail::Hail;
 use crate::ice::{self, Ice, Reservoir};
-use crate::server::{Router, Server};
+use crate::server::{Router, Server, Settings};
 use crate::sleet::Sleet;
 use crate::tls;
 use crate::util;
@@ -20,27 +19,19 @@ use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
 
-pub fn run(
-    ip: String,
-    bootstrap_peers: Vec<String>,
-    keypair: String,
-    use_tls: bool,
-    cert_path: Option<String>,
-    pk_path: Option<String>,
-    // FIXME this is a temporary workaround
-    node_id: Option<Id>,
-) -> Result<()> {
-    let listener_ip: SocketAddr = ip.parse().unwrap();
-    let converted_bootstrap_peers = bootstrap_peers
+pub fn run(settings: Settings) -> Result<()> {
+    let listener_ip: SocketAddr = settings.listener_ip.parse().unwrap();
+    let converted_bootstrap_peers = settings
+        .bootstrap_peers
         .iter()
         .map(|p| util::parse_id_and_ip(p).unwrap())
         .collect::<Vec<(Id, SocketAddr)>>();
 
     // This is temporary until we have TLS setup
-    let (node_id, upgraders) = if use_tls {
+    let (node_id, upgraders) = if settings.use_tls {
         let (cert, key) = tls::certificate::get_node_cert(
-            Path::new(&cert_path.unwrap()),
-            Path::new(&pk_path.unwrap()),
+            Path::new(&settings.certificate_file.unwrap()),
+            Path::new(&settings.private_key_file.unwrap()),
         )
         .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
@@ -49,7 +40,7 @@ pub fn run(
         // (Id::from_ip(&listener_ip), upgraders)
     } else {
         // FIXME, until we change alpha and genesis
-        match node_id {
+        match settings.id {
             None => (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders()),
             Some(id) => (id, tls::upgrader::tcp_upgraders()),
         }
@@ -62,8 +53,8 @@ pub fn run(
     let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
     std::fs::create_dir_all(&dir_path).expect(&format!("Couldn't create directory: {}", dir_path));
     let mut file = std::fs::File::create(file_path).unwrap();
-    file.write_all(keypair.as_bytes()).unwrap();
-    let keypair_bytes = hex::decode(keypair).unwrap();
+    file.write_all(settings.keypair.as_bytes()).unwrap();
+    let keypair_bytes = hex::decode(settings.keypair).unwrap();
     Keypair::from_bytes(&keypair_bytes).unwrap();
 
     let execution = async move {

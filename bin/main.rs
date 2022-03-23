@@ -1,24 +1,14 @@
-use lazy_static::lazy_static;
-
 use tracing::info;
 use tracing::trace;
 use tracing_subscriber;
 
 use clap::{value_t, values_t, App, Arg};
 
+use std::str::FromStr;
 use zfx_subzero::server::node;
 use zfx_subzero::server::settings::Settings;
 use zfx_subzero::zfx_id;
 use zfx_subzero::Result;
-
-// Configuration settings
-//
-// These can be found in `server/settings/*.json`.
-lazy_static! {
-    static ref SETTINGS: Settings = Settings::new().expect("failed to load configuration.");
-}
-
-use std::str::FromStr;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -74,11 +64,13 @@ fn main() -> Result<()> {
                 .requires("use-tls")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("home").short("h").long("home").takes_value(true).required(false))
         // FIXME this is a temporary workaround for tcp nodes
         .arg(Arg::with_name("node-id").long("id").value_name("NODE-ID").takes_value(true))
         .get_matches();
 
-    let mut settings = SETTINGS.clone();
+    let home_dir = matches.value_of("home");
+    let mut settings = Settings::new(home_dir).expect("failed to load configuration.");
 
     if let Some(ip) = matches.value_of("listener-ip") {
         trace!("CLI arg for listener-ip provided: {}", ip);
@@ -99,33 +91,19 @@ fn main() -> Result<()> {
     if matches.is_present("use-tls") {
         trace!("CLI arg for use-tls provided");
         settings.use_tls = true;
-    };
 
-    if settings.use_tls {
         settings.certificate_file =
             Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()));
         settings.private_key_file =
             Some(value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit()));
-    }
+    };
 
-    let keypair = value_t!(matches.value_of("keypair"), String).unwrap_or_else(|e| e.exit());
-
-    let node_id = match matches.value_of("node-id") {
-        Some(node_str) => Some(zfx_id::Id::from_str(node_str).unwrap()),
-        _ => None,
+    if let Some(node_str) = matches.value_of("node-id") {
+        settings.id = Some(zfx_id::Id::from_str(node_str).unwrap())
     };
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(
-            settings.listener_ip,
-            settings.bootstrap_peers,
-            keypair,
-            settings.use_tls,
-            settings.certificate_file,
-            settings.private_key_file,
-            node_id,
-        )
-        .unwrap();
+        node::run(settings).unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;
