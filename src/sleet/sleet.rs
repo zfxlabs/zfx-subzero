@@ -213,6 +213,15 @@ impl Sleet {
         Ok(())
     }
 
+    /// Recursively reset the confidence counter for a transaction and its ancestry.
+    /// Called when a query didn't yield enough votes
+    pub fn reset_ancestor_confidence(&mut self, root_txhash: &TxHash) -> Result<()> {
+        for tx_hash in self.dag.dfs(root_txhash) {
+            self.conflict_graph.reset_count(&tx_hash)?;
+        }
+        Ok(())
+    }
+
     // Finality
 
     /// Checks whether the transaction `TxHash` is accepted as final.
@@ -404,8 +413,10 @@ pub struct QueryIncomplete {
 impl Handler<QueryIncomplete> for Sleet {
     type Result = ();
 
-    fn handle(&mut self, _msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
-        ()
+    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+        self.reset_ancestor_confidence(&msg.tx.hash()).unwrap();
+        // Mark as `Queried`, since the transaction won't be queried again
+        tx_storage::set_status(&self.known_txs, &msg.tx.hash(), TxStatus::Queried).unwrap();
     }
 }
 
@@ -446,6 +457,8 @@ impl Handler<QueryComplete> for Sleet {
             if !new_accepted.is_empty() {
                 ctx.notify(NewAccepted { tx_hashes: new_accepted });
             }
+        } else {
+            self.reset_ancestor_confidence(&msg.tx.hash()).unwrap();
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
         tx_storage::set_status(&self.known_txs, &msg.tx.hash(), TxStatus::Queried).unwrap();
