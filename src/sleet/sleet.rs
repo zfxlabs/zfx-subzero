@@ -274,6 +274,7 @@ impl Sleet {
         let rejected = self.conflict_graph.accept_cell(tx.cell.clone())?;
         let mut children = HashSet::new();
         for hash in rejected {
+            info!("Rejected {}", hex::encode(hash));
             let _ = self.rejected_txs.insert(hash.clone());
             tx_storage::set_status(&self.known_txs, &hash, TxStatus::Rejected)?;
             let ch = self.dag.remove_vx(&hash)?;
