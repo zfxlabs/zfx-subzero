@@ -235,6 +235,21 @@ impl ConflictGraph {
         }
     }
 
+    /// Reset the confidence counter for a cell
+    pub fn reset_count(&mut self, cell_hash: &CellHash) -> Result<()> {
+        if self.cs.len() > 0 {
+            match self.cs.get_mut(cell_hash) {
+                Some(cs) => {
+                    cs.cnt = 0;
+                    Ok(())
+                }
+                None => Err(Error::UndefinedCellHash(cell_hash.clone())),
+            }
+        } else {
+            Err(Error::EmptyConflictGraph)
+        }
+    }
+
     /// Returns the number of cells in the conflict graph
     #[cfg(test)]
     pub fn len(&self) -> usize {
