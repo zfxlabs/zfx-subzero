@@ -14,3 +14,6 @@ config-zfx-testnet
 # test artifacts
 zfx-test-contracts/res/*
 zfx-test-contracts/*/target
+
+# Emacs backup files
+*~

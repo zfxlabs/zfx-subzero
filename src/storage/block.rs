@@ -64,7 +64,7 @@ pub fn accept_genesis(db: &sled::Db, genesis: Block) -> Result<BlockHash> {
 /// Accepts a next block, ensuring that the previous block height = `height - 1`.
 pub fn accept_next_block(db: sled::Db, block: Block) -> Result<BlockHash> {
     match db.last() {
-        Ok(Some((k, v))) => {
+        Ok(Some((k, _v))) => {
             let key: Key = Key::read_from(k.as_bytes()).ok_or(Error::InvalidLast)?;
             // check that height(block) = predecessor.height + 1
             if block.height != u64::from(key.height) - 1u64 {
@@ -142,7 +142,7 @@ pub fn get_blocks_in_range(
     let end = Key::new(end_height, end_hash);
     for kv in db.range(start.as_bytes()..end.as_bytes()).rev() {
         match kv {
-            Ok((k, v)) => {
+            Ok((_k, v)) => {
                 let block = bincode::deserialize(v.as_bytes())?;
                 blocks.push(block);
             }

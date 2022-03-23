@@ -1,6 +1,5 @@
 use super::{Error, Result};
 
-use crate::cell::inputs::{Input, Inputs};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 
@@ -53,7 +52,7 @@ impl ConflictGraph {
                 // had the same hash as another transaction through the hash in `from_outputs`.
                 Entry::Occupied(_) => return Err(Error::DuplicateCell),
                 // Otherwise we create an empty entry (same as when creating genesis).
-                Entry::Vacant(mut v) => {
+                Entry::Vacant(v) => {
                     let _ = v.insert(vec![]);
                 }
             }
@@ -251,11 +250,9 @@ mod test {
     use crate::alpha::transfer;
 
     use crate::cell::inputs::{Input, Inputs};
-    use crate::cell::outputs::{Output, Outputs};
+    use crate::cell::outputs::Outputs;
     use crate::cell::types::{Capacity, CellHash};
     use crate::cell::{Cell, CellIds};
-
-    use crate::sleet::conflict_set::ConflictSet;
 
     use std::collections::HashSet;
     use std::convert::TryInto;
@@ -280,7 +277,7 @@ mod test {
             CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap().clone(),
         );
 
-        let mut inputs = vec![
+        let inputs = vec![
             Input::new(&kp1, genesis_tx.hash(), 0).unwrap(),
             Input::new(&kp2, genesis_tx.hash(), 1).unwrap(),
             Input::new(&kp2, genesis_tx.hash(), 2).unwrap(),
@@ -317,7 +314,7 @@ mod test {
                     Inputs::new(vec![inputs[n].clone()]),
                     Outputs::new(vec![transfer::transfer_output(pkh2.clone(), iteration).unwrap()]),
                 );
-                dh.insert_cell(tx.clone()).unwrap().clone();
+                dh.insert_cell(tx.clone()).unwrap();
                 let c = dh.conflicting_cells(&tx.hash()).unwrap();
                 assert_eq!(c.pref, origin_tx_hash); // pref must be the original one which succeeded last time
             }
@@ -487,7 +484,7 @@ mod test {
 
     #[actix_rt::test]
     async fn test_accept_cell() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         // Some root unspent outputs for `genesis`. We assume this input refers to a cell with funds
         // but for the purposes of the conflict graph it doesn't matter.
@@ -499,7 +496,6 @@ mod test {
         let mut dh: ConflictGraph = ConflictGraph::new(genesis_output_cell_ids.clone());
 
         let input1 = Input::new(&kp1, genesis_tx.hash(), 0).unwrap();
-        let input2 = Input::new(&kp2, genesis_tx.hash(), 1).unwrap();
 
         // A transaction that spends `genesis` and produces a new output for `pkh2`.
         let tx1 = Cell::new(

@@ -53,6 +53,10 @@ How the components fit together:
 5. `hail` is initialised with the latest validator set in the same way as `sleet`. Whenever the VRF based selection selects the validator running `hail`, final transactions in `sleet` are used to generate a new block. `hail` resolves conflicts between blocks, ensuring that whenever a block conflicts at the same height the block with the lowest hash is selected.
 6. A `block` recipient chain receives accepted blocks (final blocks) containing the cells that were finalised, executes the cells which are relevant to it and extends its blockchain.
 
+## Node Identity
+
+A node's identity is derived from its TLS certificate, and is verified for outgoing and incoming connections.
+
 ## Build and test
 
 Assuming that the standard set of Rust and C build tools are present, the following commands can be used to check out, build the project and run the tests:
@@ -76,6 +80,8 @@ cargo run --bin node -- -a 127.0.0.1:1235 -b 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1V
 
  cargo run --bin node -- -a 127.0.0.1:1236 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b --use-tls --cert-path test-certs/node2.crt -p test-certs/node2.key
 ```
+
+There are scripts to simplify node startup in the [`./scripts/`](./scripts)  directory.
 
 ### Running the client test
 

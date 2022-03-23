@@ -1,6 +1,5 @@
 use crate::zfx_id::Id;
 
-use crate::alpha::types::VrfOutput;
 use crate::alpha::{self, Alpha};
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
@@ -11,18 +10,20 @@ use crate::{Error, Result};
 
 use super::choice::Choice;
 use super::constants::*;
+use super::dissemination;
+use super::dissemination::{Gossip, GossipQuery};
 use super::query::{Outcome, Query};
 use super::reservoir::Reservoir;
 
 use tracing::{debug, error, info};
 
 use actix::{Actor, Addr, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
+use actix::{ActorFutureExt, ResponseActFuture};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use rand::Rng;
+use actix::WrapFuture;
 
 pub struct Ice {
     /// The client used to make external requests.
@@ -31,6 +32,7 @@ pub struct Ice {
     pub ip: SocketAddr,
     reservoir: Reservoir,
     bootstrapped: bool,
+    dc_recipient: Recipient<GossipQuery>,
 }
 
 impl Ice {
@@ -39,15 +41,16 @@ impl Ice {
         id: Id,
         ip: SocketAddr,
         reservoir: Reservoir,
+        dc_recipient: Recipient<GossipQuery>,
     ) -> Self {
-        Ice { sender, id, ip, reservoir, bootstrapped: false }
+        Ice { sender, id, ip, reservoir, bootstrapped: false, dc_recipient }
     }
 }
 
 impl Actor for Ice {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!(": started");
     }
 }
@@ -57,6 +60,7 @@ impl Actor for Ice {
 pub struct Ping {
     pub id: Id,
     pub queries: Vec<Query>,
+    pub rumours: Vec<Gossip>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
@@ -64,11 +68,9 @@ pub struct Ack {
     pub id: Id,
     pub outcomes: Vec<Outcome>,
 }
-
 /// Processes a query into an `Outcome`c.
 fn process_query(reservoir: &mut Reservoir, self_id: Id, query: Query) -> Outcome {
     let peer_id = query.peer_id.clone();
-    let peer_ip = query.peer_ip.clone();
     let choice = query.choice.clone();
 
     // If the queried `id` is the same as the `self_id` then the outcome should
@@ -121,7 +123,7 @@ pub struct Bootstrap {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Bootstrapped;
+pub struct Bootstrapped(pub bool);
 
 impl Handler<Bootstrap> for Ice {
     type Result = Bootstrapped;
@@ -131,7 +133,7 @@ impl Handler<Bootstrap> for Ice {
         for (id, ip) in msg.peers.iter() {
             self.reservoir.insert(id.clone(), ip.clone(), Choice::Live, 0);
         }
-        Bootstrapped {}
+        Bootstrapped(true)
     }
 }
 
@@ -159,7 +161,7 @@ impl Handler<SampleQueries> for Ice {
         let mut queries = vec![];
         if self.reservoir.len() > 0 {
             let sample = self.reservoir.sample();
-            for (id, (ip, choice, conviction)) in sample.iter() {
+            for (id, (ip, choice, _conviction)) in sample.iter() {
                 queries.push(Query {
                     peer_id: id.clone(),
                     peer_ip: ip.clone(),
@@ -223,7 +225,7 @@ impl Handler<PingFailure> for Ice {
     fn handle(&mut self, msg: PingFailure, _ctx: &mut Context<Self>) -> Self::Result {
         // If updating the choice to `Faulty` reverts `ice` to a non-bootstrapped state,
         // communicate this to the `alpha` chain.
-        if !self.reservoir.update_choice(msg.id, msg.ip, Choice::Faulty) {
+        if !self.reservoir.update_choice(msg.id, Choice::Faulty) {
             if self.bootstrapped {
                 return true;
             }
@@ -281,7 +283,6 @@ impl Handler<LiveCommittee> for Ice {
         let mut self_staking_capacity = None;
         for (id, amount) in msg.validators.iter() {
             if id.clone() == self.id {
-                let w = util::percent_of(*amount, msg.total_staking_capacity);
                 self_staking_capacity = Some(*amount);
             } else {
                 match self.reservoir.get_live_endpoint(id) {
@@ -311,8 +312,20 @@ impl Handler<PrintReservoir> for Ice {
     type Result = ();
 
     // The peer did not respond or responded erroneously
-    fn handle(&mut self, msg: PrintReservoir, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: PrintReservoir, _ctx: &mut Context<Self>) -> Self::Result {
         info!("{}", self.reservoir.print());
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "usize")]
+pub struct ReservoirSize;
+
+impl Handler<ReservoirSize> for Ice {
+    type Result = usize;
+
+    fn handle(&mut self, _msg: ReservoirSize, _ctx: &mut Context<Self>) -> Self::Result {
+        self.reservoir.len()
     }
 }
 
@@ -323,35 +336,48 @@ pub struct DoPing {
     id: Id,
     ip: SocketAddr,
     queries: Vec<Query>,
+    network_size: usize,
 }
 
 impl Handler<DoPing> for Ice {
     type Result = ResponseActFuture<Self, Result<Ack>>;
 
     fn handle(&mut self, msg: DoPing, _ctx: &mut Context<Self>) -> Self::Result {
-        let send_to_client = self.sender.send(ClientRequest::Oneshot {
-            id: msg.id,
-            ip: msg.ip,
-            request: Request::Ping(Ping { id: msg.self_id, queries: msg.queries }),
-        });
-        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
-        let handle_response = send_to_client.map(move |result, _actor, ctx| {
-            match result {
-                Ok(ClientResponse::Oneshot(res)) => {
-                    match res {
-                        // Success -> Ack
-                        Some(Response::Ack(ack)) => Ok(ack.clone()),
-                        // Failure (byzantine)
-                        Some(_) => Err(Error::Byzantine),
-                        // Failure (crash)
-                        None => Err(Error::Crash),
-                    }
-                }
-                Ok(_) => Err(Error::InvalidResponse),
-                Err(e) => Err(Error::Actix(e)),
+        let dc = self.dc_recipient.clone();
+        let sender = self.sender.clone();
+        Box::pin(
+            async move {
+                let rumours = dissemination::pull_rumours(dc, msg.network_size).await;
+                sender
+                    .send(ClientRequest::Oneshot {
+                        id: msg.id,
+                        ip: msg.ip,
+                        request: Request::Ping(Ping {
+                            id: msg.self_id,
+                            queries: msg.queries,
+                            rumours: rumours,
+                        }),
+                    })
+                    .await
             }
-        });
-        Box::pin(handle_response)
+            .into_actor(self)
+            .map(move |result, _actor, _ctx| {
+                match result {
+                    Ok(ClientResponse::Oneshot(res)) => {
+                        match res {
+                            // Success -> Ack
+                            Some(Response::Ack(ack)) => Ok(ack.clone()),
+                            // Failure (byzantine)
+                            Some(_) => Err(Error::Byzantine),
+                            // Failure (crash)
+                            None => Err(Error::Crash),
+                        }
+                    }
+                    Ok(_) => Err(Error::InvalidResponse),
+                    Err(e) => Err(Error::Actix(e)),
+                }
+            }),
+        )
     }
 }
 
@@ -367,7 +393,7 @@ pub struct Status {
 impl Handler<CheckStatus> for Ice {
     type Result = Status;
 
-    fn handle(&mut self, msg: CheckStatus, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: CheckStatus, _ctx: &mut Context<Self>) -> Self::Result {
         Status { bootstrapped: self.bootstrapped }
     }
 }
@@ -397,6 +423,7 @@ pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: S
 pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alpha>) {
     loop {
         let () = ice.send(PrintReservoir).await.unwrap();
+        let network_size = ice.send(ReservoirSize).await.unwrap();
 
         // Sample a random peer from the view
         let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
@@ -407,8 +434,9 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
 
             // Ping the designated peer
+
             match ice
-                .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries })
+                .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries, network_size })
                 .await
                 .unwrap()
             {

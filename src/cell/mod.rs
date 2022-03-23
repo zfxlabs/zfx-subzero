@@ -1,6 +1,7 @@
 mod cell;
 mod cell_id;
 mod cell_ids;
+pub mod cell_operation;
 mod cell_type;
 mod cell_unlock_script;
 mod input;
@@ -15,8 +16,6 @@ pub use cell_id::*;
 pub use cell_ids::*;
 pub use cell_type::*;
 pub use cell_unlock_script::*;
-
-use crate::graph;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {

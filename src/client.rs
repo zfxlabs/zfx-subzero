@@ -70,6 +70,10 @@ impl Handler<ClientRequest> for Client {
 }
 
 // TODO this shouldn't be `pub` but `client_test` is using it
+
+/// Eventually, all outgoing communication happens through this function, allowing
+// for the checking of the peer's identity for TLS connections.
+/// It is an error condition, if the IP address doesn't match the ID.
 pub async fn oneshot(
     id: Id,
     ip: SocketAddr,

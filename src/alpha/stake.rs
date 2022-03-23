@@ -1,18 +1,15 @@
 use crate::zfx_id::Id;
 
-use crate::alpha::coinbase::CoinbaseState;
-use crate::alpha::transfer::{self, TransferState};
+use crate::alpha::transfer;
 
-use crate::cell::inputs::{Input, Inputs};
+use crate::cell::inputs::Inputs;
 use crate::cell::outputs::{Output, Outputs};
 use crate::cell::types::*;
 use crate::cell::{Cell, CellType};
 
-use super::{Error, Result};
+use super::Result;
 
-use crate::alpha::cell_operation::{
-    consume_from_cell, validate_capacity, validate_output, ConsumeResult,
-};
+use crate::cell::cell_operation::{consume_from_cell, ConsumeResult};
 use ed25519_dalek::Keypair;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -61,6 +58,7 @@ impl StakeOperation {
 
 #[cfg(test)]
 mod test {
+    use super::super::Error;
     use super::*;
 
     use crate::alpha::coinbase::CoinbaseOperation;
@@ -73,18 +71,18 @@ mod test {
 
     #[actix_rt::test]
     async fn test_stake_more_than_allowed_then_throw_error() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, _pkh1, pkh2) = generate_keys();
 
         let c1 = generate_coinbase(&kp1, 1000);
         let stake_op1 = StakeOperation::new(c1.clone(), Id::generate(), pkh2, 1000);
         let stake_op2 = StakeOperation::new(c1, Id::generate(), pkh2, 1001 - FEE);
         assert_eq!(stake_op1.stake(&kp1), Err(Error::ExceedsAvailableFunds));
-        assert_eq!(stake_op1.stake(&kp1), Err(Error::ExceedsAvailableFunds));
+        assert_eq!(stake_op2.stake(&kp1), Err(Error::ExceedsAvailableFunds));
     }
 
     #[actix_rt::test]
     async fn test_stake() {
-        let (kp1, kp2, pkh1, pkh2) = generate_keys();
+        let (kp1, _kp2, pkh1, pkh2) = generate_keys();
 
         // Generate a coinbase transaction and stake it
         let c1 = generate_coinbase(&kp1, 1000);

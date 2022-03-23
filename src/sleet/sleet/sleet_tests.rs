@@ -80,6 +80,7 @@ impl Handler<DumpDAG> for Sleet {
 #[rtype(result = "SleetStatus")]
 pub struct GetStatus;
 
+#[allow(unused)] // Some fields are never read currently
 #[derive(Debug, Clone, MessageResponse)]
 pub struct SleetStatus {
     known_txs: sled::Db,
@@ -197,25 +198,22 @@ impl Handler<ClientRequest> for DummyClient {
     fn handle(&mut self, msg: ClientRequest, _ctx: &mut Context<Self>) -> Self::Result {
         let responses = self.responses.clone();
         match msg {
-            ClientRequest::Fanout { peers: _, request } => {
-                let responses = self.responses.clone();
-                Box::pin(async move {
-                    let r = match request {
-                        Request::QueryTx(QueryTx { tx, .. }) => responses
-                            .iter()
-                            .map(|(id, outcome)| {
-                                Response::QueryTxAck(QueryTxAck {
-                                    id: id.clone(),
-                                    tx_hash: tx.hash(),
-                                    outcome: outcome.clone(),
-                                })
+            ClientRequest::Fanout { peers: _, request } => Box::pin(async move {
+                let r = match request {
+                    Request::QueryTx(QueryTx { tx, .. }) => responses
+                        .iter()
+                        .map(|(id, outcome)| {
+                            Response::QueryTxAck(QueryTxAck {
+                                id: id.clone(),
+                                tx_hash: tx.hash(),
+                                outcome: outcome.clone(),
                             })
-                            .collect(),
-                        x => panic!("unexpected request: {:?}", x),
-                    };
-                    ClientResponse::Fanout(r)
-                })
-            }
+                        })
+                        .collect(),
+                    x => panic!("unexpected request: {:?}", x),
+                };
+                ClientResponse::Fanout(r)
+            }),
             ClientRequest::Oneshot { id: _, ip: _, request } => {
                 let ancestors = self.ancestors.clone();
                 Box::pin(async move {
@@ -417,7 +415,7 @@ async fn test_sleet_accept_many() {
     let addr = new_pkh();
 
     let mut spend_cell = genesis_tx.clone();
-    for i in 0..N {
+    for _ in 0..N {
         let cell = generate_transfer_whith_recipient(&root_kp, spend_cell.clone(), addr, 1);
         println!("Cell: {}", cell.clone());
 
@@ -560,9 +558,9 @@ async fn test_sleet_many_conflicts() {
 
 #[actix_rt::test]
 async fn test_sleet_tx_no_parents() {
-    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, _client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
-    let mut cell = genesis_tx.clone();
+    let cell = genesis_tx.clone();
 
     let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
     sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
@@ -585,9 +583,9 @@ async fn test_sleet_tx_no_parents() {
 
 #[actix_rt::test]
 async fn test_sleet_tx_late_parents() {
-    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, _client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
-    let mut cell = genesis_tx.clone();
+    let cell = genesis_tx.clone();
 
     let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
     sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
@@ -618,9 +616,9 @@ async fn test_sleet_tx_late_parents() {
 
 #[actix_rt::test]
 async fn test_sleet_tx_two_late_parents() {
-    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, _client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
-    let mut cell = genesis_tx.clone();
+    let cell = genesis_tx.clone();
 
     let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
     sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
@@ -665,9 +663,9 @@ async fn test_sleet_tx_two_late_parents() {
 
 #[actix_rt::test]
 async fn test_sleet_tx_missing_parent() {
-    let (sleet1, sleet2, _client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, _client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
-    let mut cell = genesis_tx.clone();
+    let cell = genesis_tx.clone();
 
     let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
     sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
@@ -704,9 +702,9 @@ async fn test_sleet_tx_missing_parent() {
 
 #[actix_rt::test]
 async fn test_sleet_get_single_ancestor() {
-    let (sleet1, sleet2, client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
-    let mut cell = genesis_tx.clone();
+    let cell = genesis_tx.clone();
 
     let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
     sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
@@ -728,9 +726,9 @@ async fn test_sleet_get_single_ancestor() {
 
 #[actix_rt::test]
 async fn test_sleet_get_wrong_ancestor() {
-    let (sleet1, sleet2, client, hail, root_kp, genesis_tx) =
+    let (sleet1, sleet2, client, _hail, root_kp, genesis_tx) =
         start_test_env_with_two_sleet_actors().await;
-    let mut cell = genesis_tx.clone();
+    let cell = genesis_tx.clone();
 
     let cell1 = generate_transfer(&root_kp, cell.clone(), 1);
     sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();

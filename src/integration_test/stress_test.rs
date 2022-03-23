@@ -1,44 +1,51 @@
+use actix::{Actor, AsyncContext};
+use actix_rt::{Arbiter, System};
 use std::collections::HashSet;
 use std::future::Future;
 use std::net::SocketAddr;
-use std::thread::sleep;
-use std::time::Duration;
+use std::ops::Range;
+use std::sync::mpsc::RecvError;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::thread::{sleep, Thread};
+use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 
 use crate::cell::Cell;
 use futures_util::FutureExt;
+use rand::{thread_rng, Rng};
+use serde::de::Unexpected::Option;
+use tokio::runtime;
 use tokio::task::JoinHandle;
 use tokio::time::Timeout;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::cell::types::{Capacity, CellHash, FEE};
 use crate::integration_test::test_functions::*;
 use crate::integration_test::test_model::{IntegrationTestContext, TestNode, TestNodes};
+use crate::integration_test::test_node_chaos_manager::TestNodeChaosManager;
 use crate::Result;
 
 const ITERATION_LIMIT: u64 = 40;
 
+/// Run stress test by transferring valid cells among 3 nodes in parallel.
+///
+/// Verifies that all cells were transferred and stored in 'sleet'.
+/// Verifies transfer and remaining balance in all nodes.
+/// Verifies that blocks contains accepted cells in all 3 nodes are same and unique.
 pub async fn run_stress_test() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
+    let transfer_delay = Duration::from_millis(10);
 
     let mut nodes = TestNodes::new();
     nodes.start_all_and_wait().await?;
 
     let mut results_futures = vec![];
-    results_futures.push(send(0, 1));
-    results_futures.push(send(1, 2));
-    results_futures.push(send(2, 0));
+    results_futures.push(send(0, 1, transfer_delay));
+    results_futures.push(send(1, 2, transfer_delay));
+    results_futures.push(send(2, 0, transfer_delay));
 
-    let has_error = futures::future::join_all(results_futures)
-        .map(|results| {
-            let mut has_error = false;
-            for r in results.iter() {
-                if let Err(_) = r {
-                    has_error = true
-                }
-            }
-            has_error
-        })
-        .await;
+    let has_error = wait_for_future_response(results_futures).await;
 
     sleep(Duration::from_secs(5));
 
@@ -50,6 +57,62 @@ pub async fn run_stress_test() -> Result<()> {
     assert_eq!((nodes.nodes.len() * ITERATION_LIMIT as usize + 4), cell_hashes.len());
 
     validate_cell_hashes(&mut nodes, |addr| get_accepted_cell_hashes(addr)).await?;
+
+    assert!(!has_error, "Stress test failed as one of the thread got an error");
+
+    nodes.kill_all();
+
+    Result::Ok(())
+}
+
+/// Transfer valid cells from one node to another when a random node can stop/start periodically.
+/// The random node which stops must not affect the stability and reaching consensus for transactions.
+///
+/// Verifies that all cells were transferred successfully.
+pub async fn run_stress_test_with_chaos() -> Result<()> {
+    info!("Run stress test with chaos: Transfer balance n-times from all 3 nodes in parallel");
+
+    let mut nodes = TestNodes::new();
+    nodes.start_all_and_wait().await?;
+
+    let mut manager = TestNodeChaosManager::new(
+        Arc::new(Mutex::new(nodes)),
+        Duration::from_secs(420),
+        Range { start: 60, end: 90 },
+        Range { start: 4, end: 5 },
+    );
+    manager.run_chaos();
+
+    sleep(Duration::from_secs(20));
+
+    let mut results_futures = vec![];
+    results_futures.push(send(0, 1, Duration::from_secs(10)));
+
+    let has_error = wait_for_future_response(results_futures).await;
+
+    manager.stop();
+
+    assert!(!has_error, "Stress test failed as one of the thread got an error");
+
+    Result::Ok(())
+}
+
+/// Transfer valid and invalid cells in parallel from one node to another.
+///
+/// Validate that valid cells were transferred successfully and invalid cells are ignored.
+pub async fn run_stress_test_with_failed_transfers() -> Result<()> {
+    info!("Run stress test with failed transfers: Transfer valid and invalid cells n-times between 2 nodes in parallel");
+
+    let mut nodes = TestNodes::new();
+    nodes.start_all_and_wait().await?;
+
+    let mut results_futures = vec![];
+    // send traffic with valid and invalid transfers so they can intersect with each other
+    results_futures.push(send_from_accepted_cells(0, 1, Duration::from_millis(100)));
+    results_futures.push(send_from_invalid_cells(0, 1, Duration::from_millis(150)));
+    results_futures.push(send(0, 1, Duration::from_millis(300)));
+
+    let has_error = wait_for_future_response(results_futures).await;
 
     assert!(!has_error, "Stress test failed as one of the thread got an error");
 
@@ -107,7 +170,11 @@ async fn validate_blocks(nodes: &TestNodes) {
     // assert_eq!(total_cells_in_blocks, cells_in_blocks.len());
 }
 
-fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
+fn send(
+    from_node_id: usize,
+    to_node_id: usize,
+    transfer_delay: Duration,
+) -> JoinHandle<Result<()>> {
     const AMOUNT: Capacity = 1 as Capacity;
     const FULL_AMOUNT: u64 = AMOUNT + FEE;
 
@@ -138,7 +205,7 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
 
         // start sending cells
         let transfer_result =
-            spend_many(from, to, AMOUNT, iterations as usize, Duration::from_millis(10)).await?;
+            spend_many(from, to, AMOUNT, iterations as usize, transfer_delay).await?;
         sleep(Duration::from_secs(2));
 
         // validate the remaining balance and transferred cells
@@ -147,11 +214,15 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
         let mut transferred_balance = 0;
         let mut remaining_balance = 0;
         for cell_hash in transfer_result.0 {
-            let cell = get_cell_from_hash(cell_hash, from.address).await?.unwrap();
-            transferred_balance = transferred_balance
-                + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
+            let found_cell = get_cell_from_hash(cell_hash, from.address).await?;
+            if let Some(cell) = found_cell {
+                transferred_balance = transferred_balance
+                    + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
 
-            assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
+                assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
+            } else {
+                error!("Failed to find cell for hash {}", hex::encode(cell_hash));
+            }
         }
 
         for cell_hash in transfer_result.1 {
@@ -166,4 +237,61 @@ fn send(from_node_id: usize, to_node_id: usize) -> JoinHandle<Result<()>> {
         Ok(())
     });
     handle
+}
+
+/// Attempt to spend and send already accepted cells to generate a traffic of invalid cells.
+///
+/// For each transfer, validates that it was not successful
+fn send_from_accepted_cells(
+    from_node_id: usize,
+    to_node_id: usize,
+    transfer_delay: Duration,
+) -> JoinHandle<Result<()>> {
+    let handle = tokio::spawn(async move {
+        let test_nodes = TestNodes::new();
+        let from = test_nodes.get_node(from_node_id).unwrap();
+        let to = test_nodes.get_node(to_node_id).unwrap();
+
+        sleep(Duration::from_millis(1000)); // delay a bit until accepted cells appear
+
+        spend_many_from_accepted_cells(from, to, 30, transfer_delay).await?;
+
+        Ok(())
+    });
+    handle
+}
+
+/// Attempt to spend and send invalid cells.
+///
+/// For each transfer, validates that it was not successful
+fn send_from_invalid_cells(
+    from_node_id: usize,
+    to_node_id: usize,
+    transfer_delay: Duration,
+) -> JoinHandle<Result<()>> {
+    let handle = tokio::spawn(async move {
+        let test_nodes = TestNodes::new();
+        let from = test_nodes.get_node(from_node_id).unwrap();
+        let to = test_nodes.get_node(to_node_id).unwrap();
+
+        spend_many_from_invalid_cells(from, to, 40, transfer_delay).await?;
+
+        Ok(())
+    });
+    handle
+}
+
+async fn wait_for_future_response(mut results_futures: Vec<JoinHandle<Result<()>>>) -> bool {
+    let has_error = futures::future::join_all(results_futures)
+        .map(|results| {
+            let mut has_error = false;
+            for r in results.iter() {
+                if let Err(_) = r {
+                    has_error = true
+                }
+            }
+            has_error
+        })
+        .await;
+    has_error
 }

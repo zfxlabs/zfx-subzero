@@ -3,13 +3,9 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use crate::alpha::Alpha;
-use actix::{Actor, Arbiter};
-use ed25519_dalek::Keypair;
-use rand::rngs::OsRng;
-use tracing::info;
-
 use crate::client::Client;
 use crate::hail::Hail;
+use crate::ice::dissemination::DisseminationComponent;
 use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server, Settings};
 use crate::sleet::Sleet;
@@ -18,6 +14,10 @@ use crate::util;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
 use crate::Result;
+use actix::{Actor, Arbiter};
+use ed25519_dalek::Keypair;
+use rand::rngs::OsRng;
+use tracing::info;
 
 pub fn run(settings: Settings) -> Result<()> {
     let listener_ip: SocketAddr = settings.listener_ip.parse().unwrap();
@@ -67,9 +67,19 @@ pub fn run(settings: Settings) -> Result<()> {
         view.init(converted_bootstrap_peers);
         let view_addr = view.start();
 
+        // Create Dissemination Component
+        let dc = DisseminationComponent::new();
+        let dc_addr = dc.start();
+
         // Create the `ice` actor
         let reservoir = Reservoir::new();
-        let ice = Ice::new(client_addr.clone().recipient(), node_id, listener_ip, reservoir);
+        let ice = Ice::new(
+            client_addr.clone().recipient(),
+            node_id,
+            listener_ip,
+            reservoir,
+            dc_addr.clone().recipient(),
+        );
         let ice_addr = ice.start();
 
         // Create the `hail` actor
@@ -105,7 +115,7 @@ pub fn run(settings: Settings) -> Result<()> {
         let alpha_addr_clone = alpha_addr.clone();
 
         let bootstrap_execution = async move {
-            view::bootstrap(node_id, view_addr_clone.clone(), ice_addr_clone.clone()).await;
+            view::bootstrap(view_addr_clone.clone(), ice_addr_clone.clone()).await;
             let view_addr_clone = view_addr_clone.clone();
             let ice_addr_clone = ice_addr_clone.clone();
             let ice_execution = async move {
@@ -137,6 +147,7 @@ pub fn run(settings: Settings) -> Result<()> {
     Ok(())
 }
 
+#[allow(unused)] // TODO check if we need this after config is done
 fn read_or_generate_keypair(node_id: String) -> Result<Keypair> {
     let tmp_dir = vec!["/tmp/", &node_id].concat();
     std::fs::create_dir_all(&tmp_dir).expect(&format!("Couldn't create directory: {}", tmp_dir));

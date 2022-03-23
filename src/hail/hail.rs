@@ -1,9 +1,7 @@
 use crate::zfx_id::Id;
-use zfx_sortition::sortition;
 
 use crate::alpha::block::Block;
 use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
-use crate::alpha::AcceptedBlock;
 use crate::cell::Cell;
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
@@ -15,16 +13,15 @@ use crate::util;
 use super::block::HailBlock;
 use super::committee::Committee;
 use super::conflict_map::ConflictMap;
-use super::conflict_set::ConflictSet;
 use super::vertex::Vertex;
 use super::{Error, Result};
 
 use tracing::{debug, error, info};
 
-use actix::{Actor, AsyncContext, Context, Handler, Recipient, ResponseFuture};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
+use actix::{Actor, AsyncContext, Context, Handler, Recipient};
+use actix::{ActorFutureExt, ResponseActFuture};
 
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 
 // Safety parameters
@@ -146,7 +143,7 @@ impl Hail {
             }
         }
         if vxs.len() > 1 {
-            let mut hashes: Vec<Vertex> = vxs.clone();
+            let hashes: Vec<Vertex> = vxs.clone();
             let mut h = hashes[0].clone();
             for i in 1..hashes.len() {
                 let hi = hashes[i].clone();
@@ -265,7 +262,7 @@ impl Hail {
 impl Actor for Hail {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!(": started");
     }
 }
@@ -288,8 +285,8 @@ impl Handler<LiveCommittee> for Hail {
 
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received live committee at height = {:?}", "hail".blue(), msg.height);
-        let self_id = msg.self_id.clone();
-        let self_staking_capacity = msg.self_staking_capacity.clone();
+        let _self_id = msg.self_id.clone();
+        let _self_staking_capacity = msg.self_staking_capacity.clone();
 
         self.committee.next(msg.self_staking_capacity, msg.vrf_out, msg.validators);
 
@@ -321,7 +318,7 @@ pub struct QueryIncomplete {
 impl Handler<QueryIncomplete> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
         ()
     }
 }
@@ -400,7 +397,7 @@ pub struct Accepted {
 impl Handler<Accepted> for Hail {
     type Result = ();
 
-    fn handle(&mut self, msg: Accepted, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, _msg: Accepted, _ctx: &mut Context<Self>) -> Self::Result {
         // At this point we can be sure that the block is known
         // let (_, block) =
         //     block_storage::get_block(&self.known_blocks, msg.vertex.block_hash).unwrap();
@@ -439,7 +436,7 @@ impl Handler<FreshBlock> for Hail {
         // Wrap the future so that subsequent chained handlers can access te actor.
         let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-        let update_self = send_to_client.map(move |result, actor, ctx| {
+        let update_self = send_to_client.map(move |result, _actor, ctx| {
             match result {
                 Ok(ClientResponse::Fanout(acks)) => {
                     // If the length of responses is the same as the length of the sampled ips,

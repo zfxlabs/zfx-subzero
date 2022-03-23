@@ -1,8 +1,6 @@
-use super::inputs::{Input, Inputs};
+use super::inputs::Inputs;
 use super::outputs::{Output, Outputs};
 use super::types::*;
-
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Cell {

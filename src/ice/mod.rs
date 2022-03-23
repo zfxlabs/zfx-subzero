@@ -5,6 +5,8 @@ mod query;
 mod quorum;
 mod reservoir;
 
+pub mod dissemination;
+
 pub use choice::Choice;
 pub use constants::*;
 pub use ice::*;

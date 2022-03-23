@@ -246,7 +246,6 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
                 break;
             }
             parents = grandparents;
-            grandparents = vec![];
         }
         result.reverse();
         result
@@ -559,7 +558,7 @@ mod test {
     #[actix_rt::test]
     async fn test_get_ancestors() {
         #[rustfmt::skip]
-        let mut dag = make_dag(&[
+        let dag = make_dag(&[
             (0, &[]),
             (1, &[0]), (2, &[0]), (42, &[0,1]),
             (3, &[1]), (4, &[1]),
