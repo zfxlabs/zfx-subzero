@@ -266,7 +266,7 @@ impl Handler<GetAcceptedCells> for HailMock {
 
 async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Cell) {
     // Uncomment to see Sleet's logs
-    // tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
+    // let _ = tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
     let mut client = DummyClient::new();
     client.responses = vec![(mock_validator_id(), true)];
     let sender = client.start();
@@ -539,19 +539,30 @@ async fn test_sleet_many_conflicts() {
 
         spend_cell = cell;
     }
+    // let _ = sleet.send(DumpDAG).await.unwrap();
+
+    // Since confidence resets for ancestors when querying a conflicting child,
+    // we need more children for getting the first transaction finalised
+    for i in 0..N {
+        let cell = generate_transfer(&root_kp, spend_cell.clone(), 100 + 1 + i as u64);
+        sleet.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+        spend_cell = cell;
+    }
     let hashes = sleet.send(GetCellHashes).await.unwrap();
-    assert_eq!(hashes.ids.len(), N + 1);
+    assert_eq!(hashes.ids.len(), 2 * N + 1);
 
     // Wait a bit for 'Hail' to receive the message
     sleep_ms(10).await;
 
     let accepted = hail.send(GetAcceptedCells).await.unwrap();
     println!("Accepted: {}", accepted.len());
-    assert!(accepted.len() == 1);
+    assert!(accepted.len() >= 1);
     let SleetStatus { accepted_frontier, .. } = sleet.send(GetStatus).await.unwrap();
-    assert_eq!(accepted_frontier.len(), 1);
-    println!("Accepted: {:?}", accepted);
-    assert!(accepted == vec![cell0]);
+    println!("Accepted frontier: {}", accepted_frontier.len());
+    assert!(accepted_frontier.len() >= 1);
+    // println!("Accepted: {:?}", accepted);
+    assert!(accepted.contains(&cell0));
+    // let _ = sleet.send(DumpDAG).await.unwrap();
 }
 
 #[actix_rt::test]
