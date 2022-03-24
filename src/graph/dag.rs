@@ -434,6 +434,23 @@ mod test {
     }
 
     #[actix_rt::test]
+    async fn test_leaves() {
+        #[rustfmt::skip]
+        let dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]),
+            (2, &[1]),
+            (3, &[2]),
+            (4, &[3]),
+            (5, &[4]),
+            (6, &[5]),
+        ]);
+        let res: Vec<_> = dag.leaves();
+
+        assert_eq!(res, [6]);
+    }
+
+    #[actix_rt::test]
     async fn dfs_with_arrays() {
         let a0 = [0; 32];
         let a1 = [1; 32];
