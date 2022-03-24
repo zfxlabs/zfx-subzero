@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -ex
+#set -ex
 
 ZFX_ROOT="$(dirname $0)/../"
 
