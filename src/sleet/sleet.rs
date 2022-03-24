@@ -177,6 +177,20 @@ impl Sleet {
         // vertices to exclude from selection, because they are accessible from a parent
         let mut accessible = vec![];
         let leaves = self.dag.leaves();
+
+        // Prefer leaves when selecting parents
+        for leaf in leaves.clone() {
+            if parents.len() >= p {
+                // Found `p` preferred parents.
+                break;
+            }
+            if self.is_strongly_preferred(leaf.clone())? {
+                parents.push(leaf.clone());
+                accessible.extend(self.dag.dfs(&leaf));
+            }
+        }
+
+        // If there weren't enough preferred leaves, select parents from their ancestors
         'outer: for leaf in leaves {
             for elt in self.dag.dfs(&leaf) {
                 if parents.len() >= p {
