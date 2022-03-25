@@ -6,10 +6,13 @@ use crate::colored::Colorize;
 /// Status of the transaction
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TxStatus {
+    /// New transaction
     Pending,
     Queried,
     Accepted,
     Rejected,
+    /// Removed progeny of a rejected transaction
+    Removed,
 }
 
 /// The `Tx` is a consensus specific representation of a transaction, containing a
