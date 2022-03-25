@@ -8,8 +8,11 @@ use crate::colored::Colorize;
 pub enum TxStatus {
     /// New transaction
     Pending,
+    // Transaction was queried
     Queried,
+    // Transaction was accepted as fina;
     Accepted,
+    // Transaction rejected as it conflicted with an accepted transaction
     Rejected,
     /// Removed progeny of a rejected transaction
     Removed,
