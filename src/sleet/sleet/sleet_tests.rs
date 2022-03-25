@@ -305,6 +305,38 @@ async fn start_test_env_with_two_sleet_actors(
     (sleet_addr, sleet_addr2, client, hail, root_kp, genesis_tx)
 }
 
+async fn start_test_env_with_two_sleet_actors_and_two_cells(
+) -> (Addr<Sleet>, Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Keypair, Vec<Cell>) {
+    // Uncomment to see Sleet's logs
+    // let _ = tracing_subscriber::fmt().compact().with_max_level(tracing::Level::INFO).try_init();
+    let mut client = DummyClient::new();
+    client.responses = vec![(mock_validator_id(), true)];
+    let sender = client.start();
+
+    let hail_mock = HailMock::new();
+    let receiver = hail_mock.start();
+
+    let sleet =
+        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero(), mock_ip());
+    let sleet_addr = sleet.start();
+
+    let mut csprng = OsRng {};
+    let root_kp = Keypair::generate(&mut csprng);
+    let genesis_tx1 = generate_coinbase(&root_kp, 10000);
+    let genesis_tx2 = generate_coinbase(&root_kp, 20000);
+
+    let live_committee = make_live_committee(vec![genesis_tx1.clone(), genesis_tx2.clone()]);
+    sleet_addr.send(live_committee.clone()).await.unwrap();
+
+    let sleet2 =
+        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::one(), mock_ip());
+    let sleet_addr2 = sleet2.start();
+
+    sleet_addr2.send(live_committee).await.unwrap();
+
+    (sleet_addr, sleet_addr2, sender, receiver, root_kp, vec![genesis_tx1, genesis_tx2])
+}
+
 #[actix_rt::test]
 async fn smoke_test_sleet() {
     let (sleet, _client, hail, root_kp, genesis_tx) = start_test_env().await;
@@ -756,6 +788,79 @@ async fn test_sleet_get_wrong_ancestor() {
     let QueryTxAck { outcome, .. } =
         sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2 }).await.unwrap();
     assert!(!outcome);
+}
+
+#[actix_rt::test]
+async fn test_sleet_remove_children_of_rejected() {
+    let (sleet1, sleet2, client, _hail, root_kp, genesis_txs) =
+        start_test_env_with_two_sleet_actors_and_two_cells().await;
+
+    // Make sure that both `sleet1` and `sleet2` know about `cell1`
+    let cell1 = generate_transfer(&root_kp, genesis_txs[0].clone(), 1000);
+    sleet1.send(GenerateTx { cell: cell1.clone() }).await.unwrap();
+
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx1) = tx_storage::get_tx(&known_txs, cell1.hash()).unwrap();
+
+    let QueryTxAck { outcome, .. } =
+        sleet2.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx1 }).await.unwrap();
+    assert!(outcome);
+
+    // `cell2` and `cell2_rogue` conflict; `cell3` doesn't conflict
+    // with any other transaction, but it will be a child of `cell2_rogue` in `sleet2`
+    let cell2 = generate_transfer(&root_kp, cell1.clone(), 1);
+    sleet1.send(GenerateTx { cell: cell2.clone() }).await.unwrap();
+
+    let cell2_rogue = generate_transfer(&root_kp, cell1.clone(), 2);
+    let cell3 = generate_transfer(&root_kp, genesis_txs[1].clone(), 1);
+
+    sleet2.send(GenerateTx { cell: cell2_rogue.clone() }).await.unwrap();
+    sleet2.send(GenerateTx { cell: cell3.clone() }).await.unwrap();
+
+    let SleetStatus { known_txs, .. } = sleet2.send(GetStatus).await.unwrap();
+    let (_, tx2_rogue) = tx_storage::get_tx(&known_txs, cell2_rogue.hash()).unwrap();
+    let (_, tx3) = tx_storage::get_tx(&known_txs, cell3.hash()).unwrap();
+    assert!(tx3.parents.contains(&tx2_rogue.hash()));
+
+    // Add `tx2_rogue` and `tx3` to `sleet1`; neither will be preferred
+    set_validator_response(client.clone(), false).await;
+    let QueryTxAck { outcome, .. } =
+        sleet1.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx2_rogue }).await.unwrap();
+    assert!(!outcome);
+    let QueryTxAck { outcome, .. } =
+        sleet1.send(QueryTx { id: Id::zero(), ip: mock_ip(), tx: tx3 }).await.unwrap();
+    assert!(!outcome);
+    set_validator_response(client, true).await;
+
+    // let _ = sleet1.send(DumpDAG).await.unwrap();
+
+    // Send `BETA2` transactions to make `tx2` accepted
+    let mut spend_cell = cell2.clone();
+    const CHILDREN_NEEDED: usize = BETA2 as usize;
+    for i in 0..CHILDREN_NEEDED {
+        let cell = generate_transfer(&root_kp, spend_cell.clone(), 30 + i as u64);
+        sleet1.send(GenerateTx { cell: cell.clone() }).await.unwrap();
+        spend_cell = cell;
+    }
+
+    // let _ = sleet1.send(DumpDAG).await.unwrap();
+
+    let SleetStatus { known_txs, .. } = sleet1.send(GetStatus).await.unwrap();
+    let (_, tx2) = tx_storage::get_tx(&known_txs, cell2.hash()).unwrap();
+    let (_, tx2_rogue) = tx_storage::get_tx(&known_txs, cell2_rogue.hash()).unwrap();
+    let (_, tx3) = tx_storage::get_tx(&known_txs, cell3.hash()).unwrap();
+    assert!(tx3.parents.contains(&tx2_rogue.hash()));
+    assert!(tx2.status == TxStatus::Accepted);
+    assert!(tx2_rogue.status == TxStatus::Rejected);
+    assert!(tx3.status == TxStatus::Removed);
+
+    /* TODO: currently this fails with `Graph(DuplicateCell)`
+     // Re-try `tx3`
+     match sleet1.send(GenerateTx { cell: cell3.clone() }).await.unwrap() {
+        GenerateTxAck { cell_hash: Some(_) } => (),
+        GenerateTxAck { cell_hash: None } => panic!("re-issuing transaction failed"),
+     }
+    */
 }
 
 #[actix_rt::test]
