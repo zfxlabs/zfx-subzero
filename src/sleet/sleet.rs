@@ -24,7 +24,7 @@ use actix::{ActorFutureExt, ResponseActFuture, ResponseFuture};
 use tokio::sync::oneshot;
 use tokio::time::{self, Duration};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 
 // Parent selection
@@ -106,7 +106,12 @@ impl Sleet {
         if util::has_coinbase_output(&sleet_tx.cell) {
             return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
         }
-        if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
+
+        // Insert transaction if it is new, or it is a re-issued transaction that
+        // was removed due to conflicting ancestry
+        if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap()
+            || tx_storage::is_removed_tx(&self.known_txs, &sleet_tx.hash()).unwrap()
+        {
             if !self.has_parents(&sleet_tx) {
                 return Err(Error::MissingAncestry);
             }
@@ -284,9 +289,9 @@ impl Sleet {
 
     /// Clean up the conflict graph and the DAG
     /// Returns the children of rejected transactions
-    pub fn remove_conflicts(&mut self, tx: &Tx) -> Result<HashSet<CellHash>> {
+    pub fn remove_conflicts(&mut self, tx: &Tx) -> Result<()> {
         let rejected = self.conflict_graph.accept_cell(tx.cell.clone())?;
-        let mut children = HashSet::new();
+        let mut children: VecDeque<TxHash> = VecDeque::new();
         for hash in rejected {
             info!("Rejected {}", hex::encode(hash));
             let _ = self.rejected_txs.insert(hash.clone());
@@ -295,7 +300,17 @@ impl Sleet {
             children.extend(ch.iter());
         }
 
-        Ok(children)
+        // Remove the progeny of conflicting transactions
+        while let Some(hash) = children.pop_front() {
+            tx_storage::set_status(&self.known_txs, &hash, TxStatus::Removed)?;
+            // Ignore errors here, as they happen when `children` contains duplicates
+            match self.dag.remove_vx(&hash) {
+                Ok(ch) => children.extend(ch.iter()),
+                _ => (),
+            }
+        }
+
+        Ok(())
     }
 
     // Accepted Frontier
@@ -495,9 +510,13 @@ impl Handler<NewAccepted> for Sleet {
             // At this point we can be sure that the tx is known
             let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
 
-            // TODO we most likely will need to re-issue the children of rejected transactions
-            //      with better parents
-            let _children_of_rejected = self.remove_conflicts(&tx);
+            // Remove conflicting cells and their progeny from the DAG
+            match self.remove_conflicts(&tx) {
+                Ok(()) => (),
+                Err(e) => {
+                    info!("Error during removing conflicts: {}", e);
+                }
+            }
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
         }
