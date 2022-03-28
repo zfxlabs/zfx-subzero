@@ -8,11 +8,11 @@ use crate::colored::Colorize;
 pub enum TxStatus {
     /// New transaction
     Pending,
-    // Transaction was queried
+    /// Transaction was queried
     Queried,
-    // Transaction was accepted as fina;
+    /// Transaction was accepted as fina;
     Accepted,
-    // Transaction rejected as it conflicted with an accepted transaction
+    /// Transaction rejected as it conflicted with an accepted transaction
     Rejected,
     /// Removed progeny of a rejected transaction
     Removed,
@@ -49,6 +49,7 @@ impl std::fmt::Display for Tx {
             ps.push_str(&h);
         }
         let s = format!("{}[{}]{}\n", s, "parents".yellow(), ps);
+        let s = format!("{}[{}] {:?}\n", s, "status".yellow(), self.status);
         write!(f, "{}", s)
     }
 }
