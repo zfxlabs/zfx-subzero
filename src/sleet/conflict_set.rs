@@ -54,7 +54,6 @@ where
         self.conflicts = conflicts;
     }
 
-
     /// Remove an element from the conflict set.
     /// `pref` and `last need to be changed if they were the removed element.
     pub fn remove_from_conflict_set(&mut self, elt: &T) {

@@ -303,6 +303,8 @@ impl Sleet {
         // Remove the progeny of conflicting transactions
         while let Some(hash) = children.pop_front() {
             tx_storage::set_status(&self.known_txs, &hash, TxStatus::Removed)?;
+            let (_, tx) = tx_storage::get_tx(&self.known_txs, hash.clone())?;
+            self.conflict_graph.remove_cell(tx.cell)?;
             // Ignore errors here, as they happen when `children` contains duplicates
             match self.dag.remove_vx(&hash) {
                 Ok(ch) => children.extend(ch.iter()),
