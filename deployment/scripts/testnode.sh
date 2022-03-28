@@ -2,7 +2,7 @@
 
 set -ex
 
-ZFX_ROOT="$(dirname $0)/../"
+ZFX_ROOT="$(dirname $0)/../../"
 
 # Assume all operation happen in the repo root from now on
 cd "$ZFX_ROOT"
