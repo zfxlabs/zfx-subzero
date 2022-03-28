@@ -180,6 +180,38 @@ impl ConflictGraph {
         }
     }
 
+    /// Remove a cell from the conflict graph
+    pub fn remove_cell(&mut self, cell: Cell) -> Result<()> {
+        let cell_hash = cell.hash();
+        let cell_ids = CellIds::from_outputs(cell_hash, cell.outputs())?;
+        match self.conflicting_cells(&cell_hash).cloned() {
+            Some(conflict_set) => {
+                // First remove the cell from all other conflict sets
+                for conflicting_cell_hash in conflict_set.conflicts.iter() {
+                    if cell_hash.eq(conflicting_cell_hash) {
+                        continue;
+                    }
+                    let mut cset = self.cs.get(conflicting_cell_hash).unwrap().clone();
+                    cset.remove_from_conflict_set(&cell_hash);
+                    let _ = self.cs.insert(conflicting_cell_hash.clone(), cset);
+                }
+
+                // Remove the hyperarc
+                for (_, arcs) in self.dh.iter_mut() {
+                    arcs.retain(|arc| *arc != cell);
+                }
+
+                self.dh.remove(&cell_ids).unwrap();
+
+                // Remove the conflict set belonging to the cell
+                let _ = self.cs.remove(&cell_hash);
+
+                Ok(())
+            }
+            // If the transaction has no conflict set then it is invalid.
+            None => Err(Error::UndefinedCell),
+        }
+    }
     pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<&ConflictSet<CellHash>> {
         self.cs.get(cell_hash)
     }
