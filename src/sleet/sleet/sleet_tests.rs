@@ -854,13 +854,11 @@ async fn test_sleet_remove_children_of_rejected() {
     assert!(tx2_rogue.status == TxStatus::Rejected);
     assert!(tx3.status == TxStatus::Removed);
 
-    /* TODO: currently this fails with `Graph(DuplicateCell)`
-     // Re-try `tx3`
-     match sleet1.send(GenerateTx { cell: cell3.clone() }).await.unwrap() {
+    // Re-try `tx3`
+    match sleet1.send(GenerateTx { cell: cell3.clone() }).await.unwrap() {
         GenerateTxAck { cell_hash: Some(_) } => (),
         GenerateTxAck { cell_hash: None } => panic!("re-issuing transaction failed"),
-     }
-    */
+    }
 }
 
 #[actix_rt::test]
