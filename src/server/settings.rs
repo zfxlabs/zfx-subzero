@@ -31,12 +31,10 @@ pub struct Settings {
 }
 
 const CONFIG_NAME: &str = "config.json";
-const CONFIG_PREFIX: &str = "src/server/settings/";
 
 impl Settings {
-    pub fn new(home: Option<&str>) -> Result<Self, ConfigError> {
-        let home_dir = if let Some(hd) = home { hd } else { CONFIG_PREFIX };
-        let config_path = Path::new(&home_dir).join(CONFIG_NAME);
+    pub fn new(home: &Path) -> Result<Self, ConfigError> {
+        let config_path = home.join(CONFIG_NAME);
 
         let settings = Config::builder()
             .add_source(File::with_name(config_path.to_str().unwrap()))

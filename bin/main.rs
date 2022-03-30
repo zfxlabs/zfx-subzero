@@ -4,6 +4,7 @@ use tracing_subscriber;
 
 use clap::{value_t, values_t, App, Arg};
 
+use std::path::Path;
 use std::str::FromStr;
 use zfx_subzero::server::node;
 use zfx_subzero::server::settings::Settings;
@@ -64,13 +65,14 @@ fn main() -> Result<()> {
                 .requires("use-tls")
                 .takes_value(true),
         )
-        .arg(Arg::with_name("home").short("h").long("home").takes_value(true).required(false))
+        .arg(Arg::with_name("home").short("h").long("home").takes_value(true).required(true))
         // FIXME this is a temporary workaround for tcp nodes
         .arg(Arg::with_name("node-id").long("id").value_name("NODE-ID").takes_value(true))
         .get_matches();
 
     let home_dir = matches.value_of("home");
-    let mut settings = Settings::new(home_dir).expect("failed to load configuration.");
+    let mut settings =
+        Settings::new(Path::new(home_dir.unwrap())).expect("failed to load configuration.");
 
     if let Some(ip) = matches.value_of("listener-ip") {
         trace!("CLI arg for listener-ip provided: {}", ip);
@@ -103,7 +105,7 @@ fn main() -> Result<()> {
     };
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(settings).unwrap();
+        node::run(settings, Path::new(home_dir.unwrap())).unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;

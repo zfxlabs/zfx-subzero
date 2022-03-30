@@ -19,7 +19,7 @@ use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 use tracing::info;
 
-pub fn run(settings: Settings) -> Result<()> {
+pub fn run(settings: Settings, home_dir: &Path) -> Result<()> {
     let listener_ip: SocketAddr = settings.listener_ip.parse().unwrap();
     let converted_bootstrap_peers = settings
         .bootstrap_peers
@@ -30,8 +30,8 @@ pub fn run(settings: Settings) -> Result<()> {
     // This is temporary until we have TLS setup
     let (node_id, upgraders) = if settings.use_tls {
         let (cert, key) = tls::certificate::get_node_cert(
-            Path::new(&settings.certificate_file.unwrap()),
-            Path::new(&settings.private_key_file.unwrap()),
+            &home_dir.join(Path::new(&settings.certificate_file.unwrap())),
+            &home_dir.join(Path::new(&settings.private_key_file.unwrap())),
         )
         .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
@@ -49,13 +49,21 @@ pub fn run(settings: Settings) -> Result<()> {
 
     info!("Node {} is starting", node_id);
 
-    let dir_path = vec!["/tmp/", &node_id_str].concat();
-    let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
-    std::fs::create_dir_all(&dir_path).expect(&format!("Couldn't create directory: {}", dir_path));
+    let dir_path = &home_dir.join(Path::new(&node_id_str));
+    let file_path = &dir_path.join(node_id_str.to_owned() + ".keypair");
+    std::fs::create_dir_all(&dir_path)
+        .expect(&format!("Couldn't create directory: {}", dir_path.to_str().unwrap()));
     let mut file = std::fs::File::create(file_path).unwrap();
     file.write_all(settings.keypair.as_bytes()).unwrap();
     let keypair_bytes = hex::decode(settings.keypair).unwrap();
     Keypair::from_bytes(&keypair_bytes).unwrap();
+
+    let db_path = home_dir
+        .join(Path::new(&node_id_str))
+        .join("alpha.sled")
+        .into_os_string()
+        .into_string()
+        .unwrap();
 
     let execution = async move {
         // Create the 'client' actor
@@ -97,7 +105,6 @@ pub fn run(settings: Settings) -> Result<()> {
         let sleet_addr = sleet.start();
 
         // Create the `alpha` actor
-        let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
         let alpha = Alpha::create(
             client_addr.clone().recipient(),
             node_id,
