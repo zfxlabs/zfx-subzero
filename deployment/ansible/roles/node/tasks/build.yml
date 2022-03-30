@@ -1,0 +1,19 @@
+---
+
+- name: "Clone the zfx-subzero source code"
+  git:
+    repo: "{{ git_repo }}"
+    dest: "{{ source_dir }}"
+    clone: yes
+
+- name: Ensure remote URL does not contain credentials
+  git_config:
+    name: remote.origin.url
+    value: "{{ git_repo_no_auth }}"
+    scope: local
+    repo: /tmp/zfx-subzero
+
+- name: "Build zfx-subzero from source code"
+  shell:
+    cmd: cargo build --release
+    chdir: "{{ source_dir }}"
