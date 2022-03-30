@@ -1,4 +1,12 @@
-# Test scripts
+# Deployment of the zfx-subzero nodes
+
+## Docker
+_(tested only on amd64 Win10 and Ubuntu)_
+
+Run the script `startup-nodes.sh` or `startup-nodes.bat`. It will build the image and start up the nodes on docker containers.
+
+
+## Test scripts
 
 ## `testnode.sh`
 

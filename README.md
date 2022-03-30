@@ -13,7 +13,7 @@ The network is comprised of `cell` based transactions, which is an extension to 
 
 The `alpha` primitives are the only types of `cell` which must be executed as part of connsensus in order to determine whether validator staking times become invalid or when new validators begin staking on the network.
 
-There are three layers of consensus in `subzero`, each of which provide a vital role enabling the subsequent consensus mechanisms to operate. 
+There are three layers of consensus in `subzero`, each of which provide a vital role enabling the subsequent consensus mechanisms to operate.
 
 # ice
 
@@ -41,13 +41,13 @@ Please see the `hail` subdirectory for more information.
 
 # alpha
 
-`alpha` is the primary client chain of the `zfx` network. It defines the rules for executing the primitives of the network for staking and transferring capacity. 
+`alpha` is the primary client chain of the `zfx` network. It defines the rules for executing the primitives of the network for staking and transferring capacity.
 
 ## Unified Overview
 
 How the components fit together:
 1. Ice performs a safe bootstrap with trusted peers and establishes liveness based on reservoir sampling consensus.
-2. Once `ice` obtains sufficient live peers, the `alpha` chain state is bootstrapped and used to add sybil resistance to `ice` based on the latest validator set. 
+2. Once `ice` obtains sufficient live peers, the `alpha` chain state is bootstrapped and used to add sybil resistance to `ice` based on the latest validator set.
 3. `sleet` consensus (mempool) is initialised with the latest validator set in order to query peers about transactions. The `alpha` frontier of final transactions is sent to `sleet` in order to provision the roots of new transactions.
 4. Transactions are posted to `sleet` by the client in order to spend funds (e.g. sending from account A to B on the alpha chain). `sleet` resolves conflicts between these transactions, ensuring that only transactions which do not conflict (spend the same funds) eventually become final.
 5. `hail` is initialised with the latest validator set in the same way as `sleet`. Whenever the VRF based selection selects the validator running `hail`, final transactions in `sleet` are used to generate a new block. `hail` resolves conflicts between blocks, ensuring that whenever a block conflicts at the same height the block with the lowest hash is selected.
@@ -74,14 +74,14 @@ cargo t
 The local testnet is currently comprised of 3 nodes (for simplicity) which can be spawned by running the following commands run from the root of the Subzero repository:
 
 ```
-cargo run --bin node -- -a 127.0.0.1:1234 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --use-tls --cert-path test-certs/node0.crt -p test-certs/node0.key
+cargo run --bin node -- -a 127.0.0.1:1234 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416 --use-tls --cert-path deployment/test-certs/node0.crt -p deployment/test-certs/node0.key
 
-cargo run --bin node -- -a 127.0.0.1:1235 -b 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY@127.0.0.1:1234 --keypair 5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd --use-tls --cert-path test-certs/node1.crt -p test-certs/node1.key
+cargo run --bin node -- -a 127.0.0.1:1235 -b 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY@127.0.0.1:1234 --keypair 5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd --use-tls --cert-path deployment/test-certs/node1.crt -p deployment/test-certs/node1.key
 
- cargo run --bin node -- -a 127.0.0.1:1236 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b --use-tls --cert-path test-certs/node2.crt -p test-certs/node2.key
+ cargo run --bin node -- -a 127.0.0.1:1236 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b --use-tls --cert-path deployment/test-certs/node2.crt -p deployment/test-certs/node2.key
 ```
 
-There are scripts to simplify node startup in the [`./scripts/`](./scripts)  directory.
+There are scripts to simplify node startup in the [`./scripts/`](deployment/scripts) and [`./docker/`](deployment/docker) directories.
 
 ### Running the client test
 

@@ -3,17 +3,27 @@ use crate::cell::Cell;
 
 use crate::colored::Colorize;
 
+/// Status of the transaction
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum TxStatus {
+    Pending,
+    Queried,
+    Accepted,
+    Rejected,
+}
+
 /// The `Tx` is a consensus specific representation of a transaction, containing a
 /// chain specific transaction as its `cell` field.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
     pub parents: Vec<TxHash>,
     pub cell: Cell,
+    pub status: TxStatus,
 }
 
 impl Tx {
     pub fn new(parents: Vec<TxHash>, cell: Cell) -> Self {
-        Tx { parents, cell }
+        Tx { parents, cell, status: TxStatus::Pending }
     }
 
     /// Returns the hash of the inner cell.

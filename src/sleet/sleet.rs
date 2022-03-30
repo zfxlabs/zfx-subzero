@@ -12,7 +12,7 @@ use crate::protocol::{Request, Response};
 use crate::storage::tx as tx_storage;
 use crate::util;
 
-use super::tx::Tx;
+use super::tx::{Tx, TxStatus};
 use super::{Error, Result};
 
 use tracing::{debug, error, info};
@@ -55,8 +55,6 @@ pub struct Sleet {
     committee: HashMap<Id, (SocketAddr, Weight)>,
     /// The set of all known transactions in storage.
     known_txs: sled::Db,
-    /// The set of all queried transactions in storage.
-    queried_txs: sled::Db,
     /// The graph of conflicting transactions (potentially multi-input).
     conflict_graph: ConflictGraph,
     /// A mapping of a cell hashes to unspent cells.
@@ -64,12 +62,15 @@ pub struct Sleet {
     /// The map contains transactions already accepted
     accepted_txs: HashSet<TxHash>,
     /// The map contains transactions rejected because they conflict with an accepted transaction
-    /// Note: we rely heavily on the fact that transacrions have the same hash as the wrapped cell
+    /// Note: we rely heavily on the fact that transactions have the same hash as the wrapped cell
     rejected_txs: HashSet<TxHash>,
     /// Incoming queries pending that couldn't be processed because of missing ancestry
     pending_queries: Vec<(Tx, oneshot::Sender<bool>)>,
-    /// The consensus graph.
+    /// The consensus graph. Contains the accepted frontier and the undecided transactions
     dag: DAG<TxHash>,
+    /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
+    /// up to a vertices considered final, collecting all the final nodes.
+    accepted_frontier: HashSet<TxHash>,
 }
 
 impl Sleet {
@@ -87,13 +88,13 @@ impl Sleet {
             node_ip,
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
-            queried_txs: sled::Config::new().temporary(true).open().unwrap(),
             conflict_graph: ConflictGraph::new(CellIds::empty()),
             live_cells: HashMap::default(),
             accepted_txs: HashSet::new(),
             rejected_txs: HashSet::new(),
             pending_queries: vec![],
             dag: DAG::new(),
+            accepted_frontier: HashSet::new(),
         }
     }
 
@@ -102,11 +103,11 @@ impl Sleet {
     fn on_receive_tx(&mut self, sleet_tx: Tx) -> Result<bool> {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
-        if has_coinbase_output(&sleet_tx.cell) {
+        if util::has_coinbase_output(&sleet_tx.cell) {
             return Err(Error::InvalidCoinbaseTransaction(sleet_tx.cell));
         }
         if !tx_storage::is_known_tx(&self.known_txs, sleet_tx.hash()).unwrap() {
-            if !self.dag.has_vertices(sleet_tx.parents.clone()) {
+            if !self.has_parents(&sleet_tx) {
                 return Err(Error::MissingAncestry);
             }
             self.insert(sleet_tx.clone())?;
@@ -123,10 +124,32 @@ impl Sleet {
     pub fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
-        self.dag.insert_vx(tx.hash(), tx.parents.clone())?;
+        let parents = self.remove_accepted_parents(tx.parents.clone());
+        self.dag.insert_vx(tx.hash(), parents)?;
         Ok(())
     }
 
+    /// Check if Sleet has all the parents for a transaction
+    /// (otherwise the ancestry needs to be fetched
+    pub fn has_parents(&self, tx: &Tx) -> bool {
+        match self.dag.has_vertices(&tx.parents) {
+            Ok(()) => true,
+            Err(missing_parents) => missing_parents.iter().all(|p| {
+                self.accepted_txs.contains(p)
+                    || tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)
+            }),
+        }
+    }
+
+    /// Removes the transactions that already have been accepted, and might not be present
+    /// in the DAG at insertion time
+    pub fn remove_accepted_parents(&self, mut parents: Vec<TxHash>) -> Vec<TxHash> {
+        parents.retain(|p| {
+            !self.accepted_txs.contains(p)
+                && !tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)
+        });
+        parents
+    }
     // Branch preference
 
     /// Starts at some vertex and does a depth first search in order to compute whether
@@ -154,6 +177,20 @@ impl Sleet {
         // vertices to exclude from selection, because they are accessible from a parent
         let mut accessible = vec![];
         let leaves = self.dag.leaves();
+
+        // Prefer leaves when selecting parents
+        for leaf in leaves.clone() {
+            if parents.len() >= p {
+                // Found `p` preferred parents.
+                break;
+            }
+            if self.is_strongly_preferred(leaf.clone())? {
+                parents.push(leaf.clone());
+                accessible.extend(self.dag.dfs(&leaf));
+            }
+        }
+
+        // If there weren't enough preferred leaves, select parents from their ancestors
         'outer: for leaf in leaves {
             for elt in self.dag.dfs(&leaf) {
                 if parents.len() >= p {
@@ -190,11 +227,25 @@ impl Sleet {
         Ok(())
     }
 
+    /// Recursively reset the confidence counter for a transaction and its ancestry.
+    /// Called when a query didn't yield enough votes
+    pub fn reset_ancestor_confidence(&mut self, root_txhash: &TxHash) -> Result<()> {
+        for tx_hash in self.dag.dfs(root_txhash) {
+            self.conflict_graph.reset_count(&tx_hash)?;
+        }
+        Ok(())
+    }
+
     // Finality
 
     /// Checks whether the transaction `TxHash` is accepted as final.
     pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> bool {
         // It's a bug if we check a non-existent transaction
+        if self.accepted_txs.contains(tx_hash)
+            || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
+        {
+            return true;
+        }
         let confidence = match self.conflict_graph.get_confidence(tx_hash) {
             Ok(c) => c,
             Err(e) => panic!("{}", e),
@@ -237,7 +288,9 @@ impl Sleet {
         let rejected = self.conflict_graph.accept_cell(tx.cell.clone())?;
         let mut children = HashSet::new();
         for hash in rejected {
+            info!("Rejected {}", hex::encode(hash));
             let _ = self.rejected_txs.insert(hash.clone());
+            tx_storage::set_status(&self.known_txs, &hash, TxStatus::Rejected)?;
             let ch = self.dag.remove_vx(&hash)?;
             children.extend(ch.iter());
         }
@@ -249,10 +302,10 @@ impl Sleet {
 
     /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
     /// up to a vertices considered final, collecting all the final nodes.
-    pub fn get_accepted_frontier(&self) -> HashSet<TxHash> {
+    pub fn compute_accepted_frontier(&mut self) {
         let mut accepted_frontier = HashSet::new();
         if self.dag.is_empty() {
-            return accepted_frontier;
+            self.accepted_frontier = HashSet::new();
         }
         let mut above_frontier: HashSet<TxHash> = HashSet::new();
         let leaves = self.dag.leaves();
@@ -265,18 +318,18 @@ impl Sleet {
                 }
             }
         }
-        accepted_frontier
+        self.accepted_frontier = accepted_frontier;
     }
 
     /// Remove transactions from the dag above the accepted frontier
     pub fn prune_at_accepted_frontier(&mut self) {
-        let frontier = self.get_accepted_frontier();
+        self.compute_accepted_frontier();
         let mut to_be_pruned = HashSet::new();
-        for f in frontier.iter() {
+        for f in self.accepted_frontier.iter() {
             to_be_pruned.extend(self.dag.dfs(f));
         }
         for a in to_be_pruned.iter() {
-            if !frontier.contains(a) {
+            if !self.accepted_frontier.contains(a) {
                 info!("Pruned {}", hex::encode(a));
                 let _ = self.dag.remove_vx(a);
             }
@@ -291,6 +344,7 @@ impl Sleet {
             if !self.accepted_txs.contains(t) && self.is_accepted_memo(t, &mut memo) {
                 new.push(t.clone());
                 let _ = self.accepted_txs.insert(t.clone());
+                tx_storage::set_status(&self.known_txs, t, TxStatus::Accepted).unwrap();
             }
         }
         new
@@ -307,22 +361,16 @@ impl Sleet {
     }
 }
 
-// TODO: this function should probably moved elsewhere
-/// Check if a cell creates a coinbase output.
-pub fn has_coinbase_output(cell: &Cell) -> bool {
-    for o in cell.outputs().iter() {
-        if o.cell_type == crate::cell::CellType::Coinbase {
-            return true;
-        }
-    }
-    false
-}
-
 impl Actor for Sleet {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
         debug!("started sleet");
+    }
+
+    fn stopping(&mut self, _ctx: &mut Context<Self>) -> actix::Running {
+        let _ = self.known_txs.flush();
+        actix::Running::Stop
     }
 }
 
@@ -380,8 +428,10 @@ pub struct QueryIncomplete {
 impl Handler<QueryIncomplete> for Sleet {
     type Result = ();
 
-    fn handle(&mut self, _msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
-        ()
+    fn handle(&mut self, msg: QueryIncomplete, _ctx: &mut Context<Self>) -> Self::Result {
+        self.reset_ancestor_confidence(&msg.tx.hash()).unwrap();
+        // Mark as `Queried`, since the transaction won't be queried again
+        tx_storage::set_status(&self.known_txs, &msg.tx.hash(), TxStatus::Queried).unwrap();
     }
 }
 
@@ -422,9 +472,11 @@ impl Handler<QueryComplete> for Sleet {
             if !new_accepted.is_empty() {
                 ctx.notify(NewAccepted { tx_hashes: new_accepted });
             }
+        } else {
+            self.reset_ancestor_confidence(&msg.tx.hash()).unwrap();
         }
         //   if no:  set_chit(tx, 0) -- happens in `insert_vx`
-        tx_storage::insert_tx(&self.queried_txs, msg.tx.clone()).unwrap();
+        tx_storage::set_status(&self.known_txs, &msg.tx.hash(), TxStatus::Queried).unwrap();
     }
 }
 
@@ -439,8 +491,6 @@ impl Handler<NewAccepted> for Sleet {
     fn handle(&mut self, msg: NewAccepted, _ctx: &mut Context<Self>) -> Self::Result {
         let mut cells = vec![];
 
-        self.prune_at_accepted_frontier();
-
         for tx_hash in msg.tx_hashes.iter().cloned() {
             // At this point we can be sure that the tx is known
             let (_, tx) = tx_storage::get_tx(&self.known_txs, tx_hash).unwrap();
@@ -451,6 +501,9 @@ impl Handler<NewAccepted> for Sleet {
             info!("[{}] transaction is accepted\n{}", "sleet".cyan(), tx.clone());
             cells.push(tx.cell);
         }
+
+        self.prune_at_accepted_frontier();
+
         let _ = self.hail_recipient.do_send(AcceptedCells { cells });
     }
 }
@@ -504,27 +557,6 @@ impl Handler<FreshTx> for Sleet {
         });
 
         Box::pin(update_self)
-    }
-}
-
-// Allow clients to fetch transactions for testing.
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "CellAck")]
-pub struct GetCell {
-    pub cell_hash: CellHash,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct CellAck {
-    pub cell: Option<Cell>,
-}
-
-impl Handler<GetCell> for Sleet {
-    type Result = CellAck;
-
-    fn handle(&mut self, msg: GetCell, _ctx: &mut Context<Self>) -> Self::Result {
-        CellAck { cell: self.live_cells.get(&msg.cell_hash).map(|x| x.clone()) }
     }
 }
 
@@ -670,7 +702,7 @@ impl Handler<CheckPending> for Sleet {
     fn handle(&mut self, _msg: CheckPending, ctx: &mut Context<Self>) -> Self::Result {
         let mut remaining = vec![];
         while let Some((tx, sender)) = self.pending_queries.pop() {
-            if self.dag.has_vertices(tx.parents.clone()) {
+            if self.has_parents(&tx) {
                 match self.on_receive_tx(tx.clone()) {
                     Ok(is_new) => {
                         if is_new {
@@ -795,23 +827,10 @@ impl Handler<GetTxAncestors> for Sleet {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "CellHashes")]
-pub struct GetCellHashes;
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct CellHashes {
-    pub ids: Vec<CellHash>,
-}
-
-impl Handler<GetCellHashes> for Sleet {
-    type Result = CellHashes;
-
-    fn handle(&mut self, _msg: GetCellHashes, _ctx: &mut Context<Self>) -> Self::Result {
-        return CellHashes { ids: self.live_cells.keys().cloned().collect::<Vec<CellHash>>() };
-    }
-}
-
+// Message handlers used in testing
 pub mod sleet_cell_handlers;
+// Re-export message types
+pub use sleet_cell_handlers::*;
+
 #[cfg(test)]
 mod sleet_tests;

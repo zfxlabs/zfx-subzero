@@ -1,5 +1,5 @@
 use std::io::{BufReader, Read, Write};
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::Path;
 
 use crate::alpha::Alpha;
@@ -13,7 +13,7 @@ use crate::tls;
 use crate::util;
 use crate::view::{self, View};
 use crate::zfx_id::Id;
-use crate::Result;
+use crate::{Error, Result};
 use actix::{Actor, Arbiter};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
@@ -138,7 +138,11 @@ pub fn run(settings: Settings, home_dir: &Path) -> Result<()> {
             let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
             let router_addr = router.start();
             // Setup the server
-            let server = Server::new(listener_ip, router_addr, upgraders.server.clone());
+            let server = Server::new(
+                format!("0.0.0.0:{}", listener_ip.port()).parse().unwrap(),
+                router_addr,
+                upgraders.server.clone(),
+            );
             // Listen for incoming connections
             server.listen().await.unwrap()
         };

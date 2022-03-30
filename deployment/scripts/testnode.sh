@@ -2,7 +2,7 @@
 
 set -ex
 
-ZFX_ROOT="$(dirname $0)/../"
+ZFX_ROOT="$(dirname $0)/../../"
 
 # Assume all operation happen in the repo root from now on
 cd "$ZFX_ROOT"
@@ -26,7 +26,7 @@ node0() {
 
        cargo run --bin node -- -a $node0_ip -b $node1_id@$node1_ip \
            --keypair $keypair0 \
-           --use-tls --cert-path test-certs/node0.crt -p test-certs/node0.key
+           --use-tls --cert-path deployment/test-certs/node0.crt -p deployment/test-certs/node0.key
 
    else
 
@@ -42,7 +42,7 @@ node1() {
 
        cargo run --bin node -- -a $node1_ip -b $node0_id@$node0_ip \
            --keypair $keypair1 \
-           --use-tls --cert-path test-certs/node1.crt -p test-certs/node1.key
+           --use-tls --cert-path deployment/test-certs/node1.crt -p deployment/test-certs/node1.key
 
    else
 
@@ -58,7 +58,7 @@ node2() {
 
        cargo run --bin node -- -a $node2_ip -b $node1_id@$node1_ip \
            --keypair $keypair2 \
-           --use-tls --cert-path test-certs/node2.crt -p test-certs/node2.key
+           --use-tls --cert-path deployment/test-certs/node2.crt -p deployment/test-certs/node2.key
 
    else
 

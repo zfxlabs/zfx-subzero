@@ -1,9 +1,10 @@
 //! Utility functions for consensus algorithms
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use rand::seq::SliceRandom;
 
 use crate::alpha::types::Weight;
+use crate::cell::{Cell, CellType};
 use crate::zfx_id::Id;
 use crate::{Error, Result};
 
@@ -47,16 +48,28 @@ pub fn sample_weighted(
 pub fn parse_id_and_ip(s: &str) -> Result<(Id, SocketAddr)> {
     let parts: Vec<&str> = s.split('@').collect();
     if parts.len() == 1 {
-        let ip: SocketAddr = parts[0].parse().map_err(|_| Error::PeerParseError)?;
+        let ip: SocketAddr =
+            parts[0].to_socket_addrs().map_err(|_| Error::PeerParseError)?.next().unwrap();
         let id = Id::from_ip(&ip);
         Ok((id, ip))
     } else if parts.len() == 2 {
         let id: Id = parts[0].parse().map_err(|_| Error::PeerParseError)?;
-        let ip: SocketAddr = parts[1].parse().map_err(|_| Error::PeerParseError)?;
+        let ip: SocketAddr =
+            parts[1].to_socket_addrs().map_err(|_| Error::PeerParseError)?.next().unwrap();
         Ok((id, ip))
     } else {
         Err(Error::PeerParseError)
     }
+}
+
+/// Check if a cell creates a coinbase output.
+pub fn has_coinbase_output(cell: &Cell) -> bool {
+    for o in cell.outputs().iter() {
+        if o.cell_type == CellType::Coinbase {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
