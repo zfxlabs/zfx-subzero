@@ -8,19 +8,31 @@ use crate::sleet::BETA2;
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+/// Keeps track of conflicts between transactions.
+/// `ConflictGraph` is a hypergraph with the vertices being the spendable outputs,
+/// while cells form the hyperarcs.
+/// An individual conflict set is maintained for each cell, based on the hypergraph.
 pub struct ConflictGraph {
+    /// The spendable outputs in the system
     vertices: HashMap<CellId, VertexData>,
+    /// Cells are the arcs of the hypergraph
     cells: HashMap<CellHash, Cell>,
+    /// Individual conflict sets
     cs: HashMap<CellHash, ConflictSet<CellHash>>,
+    /// Vector to keep track of insertion order, used to select the `last` and `pref` fields for
+    /// new conflict sets
     insertion_order: Vec<CellHash>,
 }
 
+/// Data stored in the vertices
 struct VertexData {
-    // parent_cell: CellHash,
+    /// List of cells that try to spend this vertex's output
     spenders: HashSet<CellHash>,
+    /// Status of the given spendable output
     status: OutputStatus,
 }
 
+/// Status pf a output
 pub enum OutputStatus {
     Pending,
     Accepted,
@@ -48,16 +60,11 @@ impl ConflictGraph {
             None => (),
             Some(_cell) => return Err(Error::DuplicateCell),
         }
-        self.insertion_order.push(cell_hash);
 
+        let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
         let produced_cell_ids = CellIds::from_outputs(cell_hash, cell.outputs())?;
-        for cell_id in produced_cell_ids.iter() {
-            self.vertices
-                .insert(cell_id.clone(), VertexData { spenders: HashSet::new(), status: Pending });
-        }
 
         let mut conflicts = HashSet::new();
-        let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
         for cell_id in consumed_cell_ids.iter() {
             match self.vertices.entry(cell_id.clone()) {
                 Entry::Occupied(mut o) => {
@@ -69,9 +76,16 @@ impl ConflictGraph {
             }
         }
 
+        for cell_id in produced_cell_ids.iter() {
+            self.vertices
+                .insert(cell_id.clone(), VertexData { spenders: HashSet::new(), status: Pending });
+        }
+
+        self.insertion_order.push(cell_hash);
+
         let mut own_cset = ConflictSet::new(cell_hash);
+
         for conflict_hash in conflicts.iter() {
-            println!("conflict: {:?}", conflict_hash);
             let set = self.cs.get_mut(conflict_hash).unwrap();
             set.conflicts.insert(cell_hash);
             own_cset.conflicts.insert(*conflict_hash);
@@ -107,9 +121,7 @@ impl ConflictGraph {
                     if cell_hash.eq(conflict_hash) {
                         continue;
                     }
-                    self.remove_from_vertices(&cell_hash)?;
-                    self.cells.remove(conflict_hash);
-                    self.cs.remove(conflict_hash);
+                    self.remove_cell(conflict_hash)?;
                 }
 
                 // Retain the old confidence value for the new (singleton) conflict set
@@ -125,26 +137,30 @@ impl ConflictGraph {
     }
 
     /// Remove a cell from the conflict graph
-    pub fn remove_cell(&mut self, cell: Cell) -> Result<()> {
-        let cell_hash = cell.hash();
+    pub fn remove_cell(&mut self, cell_hash: &CellHash) -> Result<()> {
         match self.conflicting_cells(&cell_hash).cloned() {
             Some(conflict_set) => {
-                // First remove the cell from all other conflict sets
+                // Adjust data stored int the vertices
+                self.remove_from_vertices(&cell_hash)?;
+
+                // Remove the cell from all other conflict sets
                 for conflicting_cell_hash in conflict_set.conflicts.iter() {
                     if cell_hash.eq(conflicting_cell_hash) {
                         continue;
                     }
-                    let mut cset = self.cs.get(conflicting_cell_hash).unwrap().clone();
-                    cset.remove_from_conflict_set(&cell_hash);
+                    match self.cs.get_mut(conflicting_cell_hash) {
+                        Some(cset) => cset.remove_from_conflict_set(cell_hash),
+                        None => (),
+                    }
                 }
 
-                self.remove_from_vertices(&cell_hash)?;
-
-                // Remove the hyperarc
-                self.cells.remove(&cell_hash);
+                // Remove the hyperarc/cell
+                let _ = self.cells.remove(cell_hash);
 
                 // Remove the conflict set belonging to the cell
-                let _ = self.cs.remove(&cell_hash);
+                let _ = self.cs.remove(cell_hash);
+
+                self.insertion_order.retain(|h| h != cell_hash);
 
                 Ok(())
             }
@@ -153,29 +169,30 @@ impl ConflictGraph {
         }
     }
 
-    pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<&ConflictSet<CellHash>> {
-        self.cs.get(cell_hash)
-    }
-
+    // Adjust data stored int the vertices when removing a cell
     fn remove_from_vertices(&mut self, cell_hash: &CellHash) -> Result<()> {
         let cell = self.cells.get(cell_hash).unwrap().clone();
+
         let produced_cell_ids = CellIds::from_outputs(*cell_hash, cell.outputs())?;
+        let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
+
         for cell_id in produced_cell_ids.iter() {
             let data = self.vertices.get_mut(cell_id).unwrap();
             data.status = Rejected;
         }
-        let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
+
         for cell_id in consumed_cell_ids.iter() {
-            match self.vertices.entry(cell_id.clone()) {
-                Entry::Occupied(mut o) => {
-                    let data = o.get_mut();
-                    data.spenders.remove(cell_hash);
-                }
-                Entry::Vacant(_) => (),
-            }
+            let data = self.vertices.get_mut(cell_id).unwrap();
+            data.spenders.remove(cell_hash);
         }
+
         Ok(())
     }
+
+    pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<&ConflictSet<CellHash>> {
+        self.cs.get(cell_hash)
+    }
+
     pub fn is_singleton(&self, cell_hash: &CellHash) -> Result<bool> {
         match self.conflicting_cells(cell_hash) {
             Some(conflict_set) => Ok(conflict_set.is_singleton()),
