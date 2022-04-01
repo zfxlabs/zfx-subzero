@@ -5,7 +5,7 @@ use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 use crate::client::{ClientRequest, ClientResponse};
-use crate::graph::conflict_graph::ConflictGraph;
+use crate::graph::conflict_graph2::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
 use crate::protocol::{Request, Response};
@@ -251,6 +251,11 @@ impl Sleet {
         {
             return true;
         }
+        if self.rejected_txs.contains(tx_hash)
+        // || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
+        {
+            return false;
+        }
         let confidence = match self.conflict_graph.get_confidence(tx_hash) {
             Ok(c) => c,
             Err(e) => panic!("{}", e),
@@ -303,9 +308,9 @@ impl Sleet {
         // Remove the progeny of conflicting transactions
         while let Some(hash) = children.pop_front() {
             tx_storage::set_status(&self.known_txs, &hash, TxStatus::Removed)?;
-            let (_, tx) = tx_storage::get_tx(&self.known_txs, hash.clone())?;
-            self.conflict_graph.remove_cell(tx.cell)?;
+            self.conflict_graph.remove_cell(&hash)?;
             // Ignore errors here, as they happen when `children` contains duplicates
+            info!("Removed: {}", hex::encode(hash.clone()));
             match self.dag.remove_vx(&hash) {
                 Ok(ch) => children.extend(ch.iter()),
                 _ => (),
