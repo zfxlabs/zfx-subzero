@@ -10,6 +10,6 @@ pub struct PeerMetadata {
 
 impl PeerMetadata {
     pub fn new(id: Id, ip: SocketAddr) -> Self {
-	PeerMetadata { id, ip }
+        PeerMetadata { id, ip }
     }
 }

@@ -1,6 +1,7 @@
-pub mod peer_meta;
 pub mod connection;
-pub mod connector;
+pub mod connection_factory;
+pub mod peer_meta;
 pub mod sender;
-pub mod backoff;
-pub mod bootstrapper;
+
+pub mod linear_backoff;
+pub mod peer_bootstrapper;

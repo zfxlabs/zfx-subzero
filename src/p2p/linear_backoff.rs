@@ -7,7 +7,8 @@ use tracing::{error, info, warn};
 use tokio::time::Duration;
 
 // The purpose of a backoff function is to expand the time bound between protocol epochs such that a
-// point of synchrony is found between remote peers. 
+// point of synchrony is found between remote peers. This helps to find a suitable GST across nodes
+// to achieve `2f + 1`.
 //
 // The backoff actor sends `Execute` messages to actors at the start of some epoch. The actor handling
 // the `Execute` message should return `true` when the backoff should complete and `false` when it
@@ -15,7 +16,7 @@ use tokio::time::Duration;
 
 pub struct LinearBackoff {
     executor: Recipient<Execute>,
-    count: usize,
+    count: u32,
     delta: Duration,
 }
 
@@ -49,11 +50,11 @@ impl Handler<Start> for LinearBackoff {
         let send_to_executor = actix::fut::wrap_future::<_, Self>(send_to_executor);
         Box::pin(send_to_executor.map(move |done, actor, ctx| match done {
             Ok(done) => {
-		if !done {
+                if !done {
                     actor.count += 1;
-		    let delta = actor.delta.clone() * actor.count;
+                    let delta = actor.delta.clone() * actor.count;
                     ctx.notify_later(msg.clone(), delta);
-		}
+                }
             }
             Err(err) => {
                 error!("{:?}", err);
