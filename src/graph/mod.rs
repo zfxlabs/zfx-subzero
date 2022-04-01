@@ -1,6 +1,7 @@
 mod dag;
 
 pub mod conflict_graph;
+pub mod conflict_graph2;
 pub mod dependency_graph;
 
 pub use dag::*;
