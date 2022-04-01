@@ -134,6 +134,7 @@ pub struct TestNode {
     pub bootstrap_address: String,
     pub state: ProcessNodeState,
     pub id: String,
+    pub number: u32,
 }
 
 pub enum ProcessNodeState {
@@ -164,6 +165,7 @@ impl TestNode {
             address_as_str: address,
             bootstrap_address,
             state: ProcessNodeState::Stopped,
+            number: id
         }
     }
 
@@ -214,6 +216,8 @@ impl TestNode {
         command.arg(&self.keypair_as_str);
         command.arg("--id");
         command.arg(&self.id);
+        command.arg("--home");
+        command.arg(format!("{}{}", "src/server/settings/testnet/node", self.number));
         command
     }
 }

@@ -11,6 +11,8 @@ use zfx_subzero::server::settings::Settings;
 use zfx_subzero::zfx_id;
 use zfx_subzero::Result;
 
+const DEFAULT_HOME_DIR: &str = "src/server/settings";
+
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_level(false)
@@ -65,14 +67,13 @@ fn main() -> Result<()> {
                 .requires("use-tls")
                 .takes_value(true),
         )
-        .arg(Arg::with_name("home").short("h").long("home").takes_value(true).required(true))
+        .arg(Arg::with_name("home").short("h").long("home").takes_value(true).required(false))
         // FIXME this is a temporary workaround for tcp nodes
         .arg(Arg::with_name("node-id").long("id").value_name("NODE-ID").takes_value(true))
         .get_matches();
 
-    let home_dir = matches.value_of("home");
-    let mut settings =
-        Settings::new(Path::new(home_dir.unwrap())).expect("failed to load configuration.");
+    let home_dir = matches.value_of("home").unwrap_or(DEFAULT_HOME_DIR);
+    let mut settings = Settings::new(Path::new(home_dir)).expect("failed to load configuration.");
 
     if let Some(ip) = matches.value_of("listener-ip") {
         trace!("CLI arg for listener-ip provided: {}", ip);
@@ -105,7 +106,7 @@ fn main() -> Result<()> {
     };
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(settings, Path::new(home_dir.unwrap())).unwrap();
+        node::run(settings, Path::new(home_dir)).unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;
