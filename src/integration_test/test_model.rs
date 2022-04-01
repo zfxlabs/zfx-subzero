@@ -165,7 +165,7 @@ impl TestNode {
             address_as_str: address,
             bootstrap_address,
             state: ProcessNodeState::Stopped,
-            number: id
+            number: id,
         }
     }
 
