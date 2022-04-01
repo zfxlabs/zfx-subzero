@@ -5,7 +5,7 @@ use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 use crate::client::{ClientRequest, ClientResponse};
-use crate::graph::conflict_graph::ConflictGraph;
+use crate::graph::conflict_graph2::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
 use crate::protocol::{Request, Response};
@@ -245,6 +245,11 @@ impl Sleet {
             || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
         {
             return true;
+        }
+        if self.rejected_txs.contains(tx_hash)
+        // || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
+        {
+            return false;
         }
         let confidence = match self.conflict_graph.get_confidence(tx_hash) {
             Ok(c) => c,
