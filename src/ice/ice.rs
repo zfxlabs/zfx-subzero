@@ -426,7 +426,8 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
         let network_size = ice.send(ReservoirSize).await.unwrap();
 
         // Sample a random peer from the view
-        let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
+        let view::SampleResult { sample } =
+            view.send(view::SampleK { k: ping_size(network_size) }).await.unwrap();
 
         for (id, ip) in sample.iter().cloned() {
             // Sample up to `k` peers from the reservoir and collect ping queries
@@ -453,4 +454,8 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
         // Sleep for the protocol period duration.
         actix::clock::sleep(PROTOCOL_PERIOD).await;
     }
+}
+
+pub fn ping_size(network_size: usize) -> usize {
+    std::cmp::min(network_size, PING_MAX_SIZE)
 }
