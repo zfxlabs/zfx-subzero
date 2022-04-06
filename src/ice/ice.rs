@@ -23,7 +23,6 @@ use actix::{ActorFutureExt, ResponseActFuture};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use crate::sleet::{Sleet, ViewValidators};
 use actix::WrapFuture;
 
 pub struct Ice {
