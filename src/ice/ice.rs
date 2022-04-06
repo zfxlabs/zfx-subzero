@@ -23,6 +23,7 @@ use actix::{ActorFutureExt, ResponseActFuture};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
+use crate::sleet::{Sleet, ViewValidators};
 use actix::WrapFuture;
 
 pub struct Ice {
@@ -86,14 +87,14 @@ fn process_query(reservoir: &mut Reservoir, self_id: Id, query: Query) -> Outcom
             // priori and the choice is `Live`, then our choice becomes
             // `Live`.
             Choice::Live => {
-                let () = reservoir.set_choice(peer_id.clone(), Choice::Live);
+                let () = reservoir.set_choice(peer_id, Choice::Live);
                 Outcome::new(peer_id, choice)
             }
             // If we have not made a decision pertaining to this peer a
             // priori and the choice is `Faulty`, then our choice becomes
             // `Faulty` if an indirect ping request fails.
             Choice::Faulty => {
-                let () = reservoir.set_choice(peer_id.clone(), Choice::Faulty);
+                let () = reservoir.set_choice(peer_id, Choice::Faulty);
                 Outcome::new(peer_id, choice)
             }
         },
@@ -107,7 +108,7 @@ impl Handler<Ping> for Ice {
         // Processes incoming queries from the server
         let mut outcomes = vec![];
         for query in msg.queries.iter().cloned() {
-            info!("<- {:?}", query.clone());
+            info!("<- {:?}", query);
             let outcome = process_query(&mut self.reservoir, self.id.clone(), query);
             outcomes.push(outcome);
         }
@@ -193,9 +194,10 @@ impl Handler<PingSuccess> for Ice {
     // The peer responded successfully
     fn handle(&mut self, msg: PingSuccess, _ctx: &mut Context<Self>) -> Self::Result {
         let ack = msg.ack.clone();
-        if self.reservoir.fill(ack.id, ack.outcomes) {
+        let (is_bootstrapped, flipped) = self.reservoir.fill(ack.id, ack.outcomes);
+        if is_bootstrapped {
             if self.bootstrapped {
-                Switch { flipped: false, bootstrapped: true }
+                Switch { flipped, bootstrapped: true }
             } else {
                 self.bootstrapped = true;
                 Switch { flipped: true, bootstrapped: true }
