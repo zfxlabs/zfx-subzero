@@ -345,12 +345,7 @@ fn assert_cell(
     // assert_eq!(previous_len, spent_cell_inputs.len());
     let mut inputs_as_vec = spent_cell_inputs.inputs.iter().cloned().collect::<Vec<Input>>();
     inputs_as_vec.sort();
-    let mut i = 0;
     for input in inputs_as_vec {
-        assert_eq!(
-            i as u8, input.output_index.index,
-            "Cell input index must be always 0 as we have a single output to spend"
-        );
         assert_eq!(
             cell_hash, input.output_index.cell_hash,
             "Invalid source (parent) of cell from which we consume amount"
@@ -360,7 +355,6 @@ fn assert_cell(
             input.unlock.public_key.as_bytes(),
             "Invalid cell owner in the input"
         );
-        i += 1;
     }
 
     register_cell_in_test_context(
