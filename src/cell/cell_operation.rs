@@ -23,16 +23,19 @@ pub fn consume_from_cell(
     let pkh = blake3::hash(&encoded_public).as_bytes().clone();
 
     let mut owned_outputs = vec![];
+    let mut output_indices = vec![];
+    let mut output_index: u8 = 0;
     for output in cell.outputs().iter() {
         // Validate the output to make sure it has the right form.
         let () = output.validate_capacity()?;
         let () = validate_output(output.clone())?;
         if output.lock == pkh.clone() {
             owned_outputs.push(output.clone());
-        } else {
-            continue;
+            output_indices.push(output_index);
         }
+        output_index += 1;
     }
+
     validate_capacity(&owned_outputs, amount, FEE)?;
 
     // Consume outputs and construct inputs - the remaining inputs should be reflected in the
@@ -45,7 +48,7 @@ pub fn consume_from_cell(
     if owned_outputs.len() > 0 {
         for output in owned_outputs.iter() {
             if consumed < amount {
-                inputs.push(Input::new(owner_key, cell.hash(), i)?);
+                inputs.push(Input::new(owner_key, cell.hash(), output_indices[i])?);
                 if spending_capacity >= output.capacity {
                     spending_capacity -= output.capacity;
                     consumed += output.capacity;
