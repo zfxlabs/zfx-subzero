@@ -55,16 +55,7 @@ impl Reservoir {
     /// Fetches a live peers endpoint designated by `Id` or `None` if the peer is not
     /// `Live`.
     pub fn get_live_endpoint(&self, id: &Id) -> Option<SocketAddr> {
-        match self.decisions.get(id) {
-            Some((ip, choice, conviction)) => {
-                if *choice == Choice::Live && *conviction >= BETA1 {
-                    Some(ip.clone())
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
+        self.get_endpoint_having_strong_choice(id, Choice::Live)
     }
 
     /// Fetches all live peers.
@@ -95,7 +86,7 @@ impl Reservoir {
 
     /// Sets a peers choice with 0 conviction in the reservoir.
     pub fn set_choice(&mut self, peer_id: Id, new_choice: Choice) {
-        if let Entry::Occupied(mut o) = self.decisions.entry(peer_id.clone()) {
+        if let Entry::Occupied(mut o) = self.decisions.entry(peer_id) {
             let (_, choice, conviction) = o.get_mut();
             *choice = new_choice;
             *conviction = 0;
@@ -140,21 +131,21 @@ impl Reservoir {
 
     /// Samples up to `k` choices for querying.
     /// Sampling for querying is done over the decisions rather than the local network
-    /// connecions since otherwise querying would only involve `Live` peers.
-    pub fn sample(&mut self) -> Vec<(Id, (SocketAddr, Choice, usize))> {
+    /// connections since otherwise querying would only involve `Live` peers.
+    pub fn sample(&mut self) -> HashMap<Id, (SocketAddr, Choice, usize)> {
+        let mut samples = HashMap::new();
         if self.decisions.len() > 0 {
             // The current arity of the sample.
             let mut i = 0;
             // The current sample.
-            let mut s = vec![];
             // Accumulate elements into `s` until the sample is size `K`.
             loop {
                 if i >= K {
                     break;
                 } else {
                     if self.random_queue.len() > 0 {
-                        let entry = self.random_queue.pop().unwrap();
-                        s.push(entry);
+                        let (id, entry) = self.random_queue.pop().unwrap();
+                        samples.insert(id, entry);
                         i += 1;
                     } else {
                         if self.permute() {
@@ -165,10 +156,8 @@ impl Reservoir {
                     }
                 }
             }
-            s.clone()
-        } else {
-            vec![]
         }
+        samples
     }
 
     /// Resets the conviction of a `Faulty` decision and sets it to `Live`. This is
@@ -249,14 +238,17 @@ impl Reservoir {
         }
     }
 
-    /// Processes an outcome from the peer designated by `responder_id`.
+    /// Processes an outcome from the peer designated by `responder_id`
+    /// and return true/false whether the peer status has been changed.
+    /// If quorum not reached, then returns false
     ///
     /// Each outcome corresponds to the response to a query previously initiated by
     /// this peer and each `peer_id` mentioned in an `Outcome` corresponds to a
     /// consensus instance for a decision of `Live` or `Faulty`.
     ///
+    /// Returns true if reached the quorum and peers status has been changed from one state to another.
     /// TODO: match query to outcome.
-    fn process_outcome(&mut self, responder_id: Id, outcome: Outcome) {
+    fn process_outcome(&mut self, responder_id: Id, outcome: Outcome) -> bool {
         let peer_id = outcome.peer_id.clone();
         let choice = outcome.choice.clone();
 
@@ -264,26 +256,44 @@ impl Reservoir {
 
         // If the quorum length == `k` then the quorum is complete and a decision
         // has been made.
-        if q.len() >= K {
-            if self.process_decision(peer_id.clone(), q.clone()) {
-                info!("[{}] bootstrapped {}", "ice".magenta(), "✓".magenta());
-            }
+        if q.len() >= K && self.process_decision(peer_id.clone(), q.clone()) {
+            info!("[{}] bootstrapped {}", "ice".magenta(), "✓".magenta());
+            return self.get_endpoint_having_strong_choice(&peer_id, choice).is_some();
         }
+        return false;
     }
 
     /// Processes a series of outcomes which 'fill' the reservoir with choices concerning
     /// the peer designated in the outcome.
-    pub fn fill(&mut self, responder_id: Id, outcomes: Vec<Outcome>) -> bool {
+    ///
+    /// Returns a tuple where 1st item is a bootstrap status
+    /// and 2nd item is an indicator whether any peers status has been changed.
+    pub fn fill(&mut self, responder_id: Id, outcomes: Vec<Outcome>) -> (bool, bool) {
         // If a peer was pinged which was considered `Faulty` yet responded a set of
         // outcomes, the peers reservoir entry is reset in order to allow for
         // re-integration.
         self.reset_faulty_decision(responder_id.clone());
 
+        let mut peers_status_changed = false;
         for outcome in outcomes.iter() {
-            self.process_outcome(responder_id.clone(), outcome.clone());
+            peers_status_changed |= self.process_outcome(responder_id.clone(), outcome.clone());
         }
 
-        self.nbootstrapped >= K
+        (self.nbootstrapped >= K, peers_status_changed)
+    }
+
+    /// Return an endpoint matching id and choice with conviction >= BETA1
+    fn get_endpoint_having_strong_choice(&self, id: &Id, choice: Choice) -> Option<SocketAddr> {
+        match self.decisions.get(id) {
+            Some((ip, c, conviction)) => {
+                if *c == choice && *conviction >= BETA1 {
+                    Some(ip.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        }
     }
 
     /// Prints the reservoir in a human readable manner.

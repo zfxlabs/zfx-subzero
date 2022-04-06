@@ -137,18 +137,22 @@ impl Handler<QueryLastAccepted> for Alpha {
                     // If `k * alpha` peers agree to an accepted hash then return the last
                     // accepted hash.
                     let mut occurences: HashMap<BlockHash, usize> = HashMap::new();
+                    let mut already_applied: HashSet<BlockHash> = HashSet::new();
                     for last_accepted in v.iter() {
                         match occurences.entry(*last_accepted) {
                             Entry::Occupied(mut o) => {
-                                let count = o.get_mut();
-                                *count += 1;
-                                if *count >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
-                                    ctx.notify(ReceiveLastAccepted {
-                                        last_block_hash: last_accepted.clone(),
-                                        last_block: last_block.clone(),
-                                        last_vrf_output: last_block.vrf_out.clone(),
-                                        last_accepted: last_accepted.clone(),
-                                    })
+                                if !already_applied.contains(last_accepted) {
+                                    let count = o.get_mut();
+                                    *count += 1;
+                                    if *count >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
+                                        ctx.notify(ReceiveLastAccepted {
+                                            last_block_hash: last_accepted.clone(),
+                                            last_block: last_block.clone(),
+                                            last_vrf_output: last_block.vrf_out.clone(),
+                                            last_accepted: last_accepted.clone(),
+                                        });
+                                        already_applied.insert(last_accepted.clone());
+                                    }
                                 }
                             }
                             Entry::Vacant(v) => {
