@@ -5,7 +5,7 @@ use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 use crate::client::{ClientRequest, ClientResponse};
-use crate::graph::conflict_graph2::ConflictGraph;
+use crate::graph::conflict_graph::ConflictGraph;
 use crate::graph::DAG;
 use crate::hail::AcceptedCells;
 use crate::protocol::{Request, Response};
