@@ -55,29 +55,11 @@ where
     }
 
     /// Remove an element from the conflict set.
-    /// `pref` and `last need to be changed if they were the removed element.
+    /// Npte that `pref` and `last are left unchanged even if they were the removed element.
     pub fn remove_from_conflict_set(&mut self, elt: &T) {
         if self.conflicts.len() <= 1 {
             return;
         }
         let _ = self.conflicts.remove(elt);
-        let mut next = elt.clone();
-        for n in self.conflicts.iter() {
-            if n != elt {
-                next = n.clone();
-                break;
-            }
-        }
-
-        if self.pref == *elt {
-            self.pref = next.clone();
-            self.cnt = 0;
-        }
-
-        if self.last == *elt {
-            self.last = next.clone();
-            // not sure here
-            // self.cnt = 0;
-        }
     }
 }
