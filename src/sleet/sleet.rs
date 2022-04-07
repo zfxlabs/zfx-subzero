@@ -100,7 +100,7 @@ impl Sleet {
 
     /// Called for all newly discovered transactions.
     /// Returns `true` if the transaction haven't been encountered before
-    fn on_receive_tx(&mut self, sleet_tx: Tx) -> Result<bool> {
+    fn on_receive_tx(&mut self, mut sleet_tx: Tx) -> Result<bool> {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
         if util::has_coinbase_output(&sleet_tx.cell) {
@@ -115,6 +115,7 @@ impl Sleet {
             if !self.has_parents(&sleet_tx) {
                 return Err(Error::MissingAncestry);
             }
+            sleet_tx.status = TxStatus::Pending;
             self.insert(sleet_tx.clone())?;
             let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
             Ok(true)
@@ -252,7 +253,7 @@ impl Sleet {
             return true;
         }
         if self.rejected_txs.contains(tx_hash)
-        // || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
+            || tx_storage::cannot_be_accepted(&self.known_txs, tx_hash).unwrap()
         {
             return false;
         }

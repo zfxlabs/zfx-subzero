@@ -76,6 +76,19 @@ pub fn is_removed_tx(db: &sled::Db, tx_hash: &TxHash) -> Result<bool> {
     }
 }
 
+/// Checks if the transaction has a chance to be accepted
+pub fn cannot_be_accepted(db: &sled::Db, tx_hash: &TxHash) -> Result<bool> {
+    let key = Key::new(*tx_hash);
+    match db.get(key.as_bytes()) {
+        Ok(Some(v)) => {
+            let tx: Tx = bincode::deserialize(v.as_bytes())?;
+            Ok(tx.status == TxStatus::Removed || tx.status == TxStatus::Rejected)
+        }
+        Ok(None) => Err(Error::InvalidTx),
+        Err(err) => Err(Error::Sled(err)),
+    }
+}
+
 /// Fetch and update a transaction in the DB. Returns the new value.
 pub fn update_and_fetch<F>(db: &sled::Db, tx_hash: &TxHash, mut f: F) -> Result<Tx>
 where
