@@ -209,8 +209,8 @@ mod test {
         let state = State::new();
         let block = block::build_genesis().unwrap();
         let produced_state = state.apply(block).unwrap();
-        assert_eq!(produced_state.total_spending_capacity, 3000 - FEE * 3);
-        assert_eq!(produced_state.total_staking_capacity, 3000);
+        assert_eq!(produced_state.total_spending_capacity, 6000 - FEE * 6);
+        assert_eq!(produced_state.total_staking_capacity, 6000);
     }
 
     // Not sure if we'll need this
