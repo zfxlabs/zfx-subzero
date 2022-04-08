@@ -38,7 +38,7 @@ impl Actor for LinearBackoff {
     type Context = Context<Self>;
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("[backoff] stopped");
+        info!("stopped");
     }
 }
 

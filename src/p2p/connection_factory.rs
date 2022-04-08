@@ -1,31 +1,13 @@
-use crate::{Error, Result};
-
-use super::peer_meta::PeerMetadata;
-
-use crate::protocol::{Request, Response};
-
-use crate::zfx_id::Id;
-
-use crate::tls::connection_stream::ConnectionStream;
-use crate::tls::upgrader::Upgrader;
-
-use actix::{Actor, Handler, Recipient, ResponseFuture};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
-use actix::{AsyncContext, Context};
+use super::prelude::*;
 
 use tokio::net::TcpStream;
 use tokio::time::Duration;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
-use futures::FutureExt;
-
-use tracing::{info, warn};
-
-use super::connection::{
-    self, Connected, Connection, ConnectionHandler, ResponseHandler, Upgraded,
-};
+use super::connection::{self, Connected, Connection, Upgraded};
+use super::connection_handler::ConnectionHandler;
+use super::response_handler::ResponseHandler;
 
 pub struct ConnectionFactory {
     pub upgrader: Arc<dyn Upgrader>,
@@ -46,10 +28,6 @@ impl ConnectionFactory {
     }
 }
 
-// let response_handler = X::new();
-// let factory = ConnectionFactory::new(upgrader, request, handler).start();
-// factory.send(Connect { peer_meta })
-
 impl Actor for ConnectionFactory {
     type Context = Context<Self>;
 }
@@ -67,7 +45,7 @@ impl Handler<HandleConnection> for ConnectionFactory {
         let handler = self.handler.clone();
         let fut = handler.handle_connection(msg.connection);
         let fut_wrapped = actix::fut::wrap_future::<_, Self>(fut);
-        Box::pin(fut_wrapped.map(move |res, _act, ctx| res))
+        Box::pin(fut_wrapped.map(move |res, _act, _ctx| res))
     }
 }
 
@@ -87,7 +65,7 @@ impl Handler<UpgradeConnection> for ConnectionFactory {
         let fut_wrapped = actix::fut::wrap_future::<_, Self>(fut);
         Box::pin(fut_wrapped.map(move |res, _act, ctx| match res {
             Ok(connection_stream) => {
-                info!("[connection_factory] upgraded connection");
+                info!("upgraded connection");
                 let connection =
                     Connection { upgrader, state: Upgraded { peer_meta, connection_stream } };
                 ctx.notify(HandleConnection { connection });
@@ -121,7 +99,7 @@ impl Handler<Connect> for ConnectionFactory {
         Box::pin(fut_wrapped.map(move |rsp, _act, ctx| match rsp {
             Ok(res) => match res {
                 Ok(connected) => {
-                    info!("[connection_factory] connected");
+                    info!("connected");
                     ctx.notify(UpgradeConnection { connection: connected });
                     Ok(())
                 }
