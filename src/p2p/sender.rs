@@ -1,29 +1,22 @@
 use crate::{Error, Result};
 
-use super::peer_meta::PeerMetadata;
+use super::prelude::*;
 
-use super::connection::{self, ConnectionHandler, ResponseHandler, Upgraded};
+use super::connection::{self, Upgraded};
 use super::connection_factory::{Connect, ConnectionFactory};
+use super::connection_handler::ConnectionHandler;
+use super::response_handler::ResponseHandler;
 
 use crate::channel::Channel;
-use crate::protocol::{Request, Response};
-use crate::tls::connection_stream::ConnectionStream;
-use crate::tls::upgrader::Upgrader;
-
-use actix::{Actor, Addr, Context, Handler, Recipient, ResponseFuture};
-
-use tokio::time::{timeout, Duration};
 
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::sync::Arc;
 
-use futures::Future;
-
-use tracing::{error, info};
-
+/// A sender is responsible for handling requests from other actors to `Send` a message to a peer
+/// or `Multicast` a message to many peers.
 pub struct Sender {
+    /// Upgrades the connection to TLS or plain TCP according to configuration.
     upgrader: Arc<dyn Upgrader>,
+    /// Handles a response from a peer after processing a `Send` request.
     response_handler: Arc<dyn ResponseHandler>,
 }
 
@@ -37,7 +30,7 @@ impl Actor for Sender {
     type Context = Context<Self>;
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("[sender] stopped");
+        info!("actor stopped");
     }
 }
 
@@ -65,6 +58,7 @@ impl Handler<Send> for Sender {
             let factory_address =
                 ConnectionFactory::new(upgrader, msg.request, response_handler).start();
             let connect = Connect::new(msg.peer_meta);
+            info!("sending {:?} to connection factory", connect.clone());
             factory_address.send(connect).await.unwrap()
         };
         Box::pin(execution)
