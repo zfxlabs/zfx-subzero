@@ -1,36 +1,27 @@
-use crate::colored::Colorize;
-use crate::protocol::{Request, Response};
-use crate::version::Version;
-use crate::{Error, Result};
+use super::prelude::*;
+
+use crate::version::{self, Version};
 
 use super::linear_backoff::Execute;
-use super::peer_meta::PeerMetadata;
 use super::sender::{multicast, Sender};
 
-use crate::p2p::connection::ResponseHandler;
-use crate::tls::upgrader::Upgrader;
+use super::response_handler::ResponseHandler;
 
-use actix::{Actor, Handler, Recipient, ResponseFuture};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
-use actix::{AsyncContext, Context};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use futures::Future;
-
-use tokio::time::{timeout, Duration};
-
-use std::pin::Pin;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
-
-use tracing::{debug, error, info, warn};
+const MAX_PEER_LIST: usize = 124;
 
 pub struct PeerBootstrapper {
     upgrader: Arc<dyn Upgrader>,
     local_peer_meta: PeerMetadata,
     remote_peer_metas: Vec<PeerMetadata>,
+    peer_group_recipient: Recipient<ReceivePeerGroup>,
+    peer_group_size: usize,
+    peer_group_limit: usize,
+    current_peer_group: Vec<PeerMetadata>,
     delta: Duration,
-    n_required_responses: usize,
-    bootstrapped: AtomicBool,
+    sent_peer_groups: Arc<AtomicUsize>,
+    bootstrapped: Arc<AtomicBool>,
 }
 
 impl PeerBootstrapper {
@@ -38,16 +29,22 @@ impl PeerBootstrapper {
         upgrader: Arc<dyn Upgrader>,
         local_peer_meta: PeerMetadata,
         remote_peer_metas: Vec<PeerMetadata>,
+        peer_group_recipient: Recipient<ReceivePeerGroup>,
+        peer_group_size: usize,
+        peer_group_limit: usize,
         delta: Duration,
-        n_required_responses: usize,
     ) -> Self {
         PeerBootstrapper {
             upgrader,
             local_peer_meta,
             remote_peer_metas,
+            peer_group_recipient,
+            peer_group_size,
+            peer_group_limit,
+            current_peer_group: vec![],
             delta,
-            n_required_responses,
-            bootstrapped: AtomicBool::new(false),
+            sent_peer_groups: Arc::new(AtomicUsize::new(0)),
+            bootstrapped: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -56,7 +53,7 @@ impl Actor for PeerBootstrapper {
     type Context = Context<Self>;
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("[bootstrapper] stopped");
+        info!("stopped");
     }
 }
 
@@ -64,6 +61,8 @@ impl Handler<Execute> for PeerBootstrapper {
     type Result = ResponseActFuture<Self, bool>;
 
     fn handle(&mut self, msg: Execute, ctx: &mut Context<Self>) -> Self::Result {
+        info!("received execute");
+        // The peer handler uses this actor and sends `ReceivePeer` to it once a peer has been handled.
         let self_recipient = ctx.address().recipient().clone();
         let peer_handler = PeerHandler::new(self_recipient);
         let sender_address = Sender::new(self.upgrader.clone(), peer_handler).start();
@@ -71,34 +70,51 @@ impl Handler<Execute> for PeerBootstrapper {
         let multicast_fut =
             multicast(sender_address, self.remote_peer_metas.clone(), request, self.delta.clone());
         let multicast_wrapped = actix::fut::wrap_future::<_, Self>(multicast_fut);
-        let n_required_responses = self.n_required_responses.clone();
-        Box::pin(multicast_wrapped.map(move |responses, _actor, ctx| {
-            true
-            // if responses.len() >= n_required_responses {
-            //     // check version compatibility
-            //     info!(
-            //         "[{}] obtained bootstrap quorum {}",
-            //         "peer_bootstrapper".green(),
-            //         "✓".green()
-            //     );
-            //     true
-            // } else {
-            //     false
-            // }
-        }))
+        Box::pin(
+            multicast_wrapped
+                .map(move |responses, actor, ctx| actor.bootstrapped.load(Ordering::Relaxed)),
+        )
     }
-}
-
-impl Handler<ReceivePeer> for PeerBootstrapper {
-    type Result = ();
-
-    fn handle(&mut self, msg: ReceivePeer, ctx: &mut Context<Self>) -> Self::Result {}
 }
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
 pub struct ReceivePeer {
-    pub peer: Response,
+    pub peer_meta: PeerMetadata,
+    pub peer_list: Vec<PeerMetadata>,
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct ReceivePeerGroup {
+    pub group: Vec<PeerMetadata>,
+}
+
+impl Handler<ReceivePeer> for PeerBootstrapper {
+    type Result = ResponseFuture<()>;
+
+    fn handle(&mut self, msg: ReceivePeer, ctx: &mut Context<Self>) -> Self::Result {
+        info!("received peer");
+        // TODO: check the peer metadata more thoroughly
+        if self.current_peer_group.len() >= self.peer_group_size {
+            let group = self.current_peer_group.clone();
+            self.current_peer_group = vec![];
+            let peer_group_limit = self.peer_group_limit.clone();
+            let peer_group_recipient = self.peer_group_recipient.clone();
+            let sent_peer_groups = self.sent_peer_groups.clone();
+            let bootstrapped = self.bootstrapped.clone();
+            Box::pin(async move {
+                peer_group_recipient.send(ReceivePeerGroup { group }).await;
+                let n_sent_peer_groups = sent_peer_groups.load(Ordering::Relaxed);
+                sent_peer_groups.store(n_sent_peer_groups + 1, Ordering::Relaxed);
+                if n_sent_peer_groups + 1 >= peer_group_limit {
+                    bootstrapped.store(true, Ordering::Relaxed);
+                }
+            })
+        } else {
+            Box::pin(async {})
+        }
+    }
 }
 
 pub struct PeerHandler {
@@ -114,6 +130,27 @@ impl PeerHandler {
 
 impl ResponseHandler for PeerHandler {
     fn handle_response(&self, response: Response) -> Pin<Box<dyn Future<Output = Result<()>>>> {
-        Box::pin(async { Ok(()) })
+        info!("received peer bootstrap response");
+        let recipient = self.recipient.clone();
+        match response {
+            Response::VersionAck(version_ack) => Box::pin(async move {
+                if version_ack.version == version::CURRENT_VERSION {
+                    if version_ack.peer_list.len() > MAX_PEER_LIST {
+                        Err(Error::PeerListOverflow)
+                    } else {
+                        recipient
+                            .send(ReceivePeer {
+                                peer_meta: version_ack.remote_peer_meta,
+                                peer_list: version_ack.peer_list.clone(),
+                            })
+                            .await
+                            .map_err(|err| err.into())
+                    }
+                } else {
+                    Err(Error::IncompatibleVersion)
+                }
+            }),
+            _ => Box::pin(async { Err(Error::InvalidResponse) }),
+        }
     }
 }
