@@ -17,7 +17,7 @@ pub async fn run_cell_transfer_benchmark_test() -> Result<()> {
     info!("Run benchmark test for transfer cells: Transfer balance n-times from all 3 nodes in parallel");
 
     let mut nodes = TestNodes::new();
-    nodes.start_all_and_wait().await?;
+    nodes.start_minimal_and_wait().await?;
 
     run_cell_transfer_benchmark().await?;
 

@@ -3,7 +3,7 @@ use crate::zfx_id::Id;
 use super::choice::Choice;
 use super::constants::*;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// A quorum is a list of choices which can be decided when `i == k`
 #[derive(Debug, Clone)]

@@ -1,3 +1,5 @@
+pub mod status_handler;
+
 use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
@@ -8,9 +10,8 @@ use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
 use crate::server::{InitRouter, Router, ValidatorSet};
 use crate::sleet::{self, Sleet};
-use crate::{ice, ice::Ice};
-
 use crate::storage::block;
+use crate::{ice, ice::Ice};
 
 use super::block::{build_genesis, Block};
 use super::state::State;
@@ -33,15 +34,15 @@ pub struct Alpha {
     /// The database root.
     tree: sled::Db,
     /// The address of the `Ice` actor.
-    ice: Addr<Ice>,
+    pub ice: Addr<Ice>,
     /// The address of the `Sleet` actor.
-    sleet: Addr<Sleet>,
+    pub sleet: Addr<Sleet>,
     /// The address of the `Hail` actor.
-    hail: Addr<Hail>,
+    pub hail: Addr<Hail>,
     /// The address of the `Router` actor.
     router: Option<Addr<Router>>,
     /// The `alpha` chain state.
-    state: State,
+    pub state: State,
 }
 
 impl Alpha {

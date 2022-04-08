@@ -38,7 +38,7 @@ pub async fn run_stress_test() -> Result<()> {
     let transfer_delay = Duration::from_millis(10);
 
     let mut nodes = TestNodes::new();
-    nodes.start_all_and_wait().await?;
+    nodes.start_minimal_and_wait().await?;
 
     let mut results_futures = vec![];
     results_futures.push(send(0, 1, transfer_delay));
@@ -54,13 +54,40 @@ pub async fn run_stress_test() -> Result<()> {
     validate_blocks(&nodes).await;
 
     let cell_hashes = validate_cell_hashes(&mut nodes, |addr| get_cell_hashes(addr)).await?;
-    assert_eq!((nodes.nodes.len() * ITERATION_LIMIT as usize + 4), cell_hashes.len());
+    assert_eq!((nodes.get_running_nodes().len() * ITERATION_LIMIT as usize + 4), cell_hashes.len());
 
     validate_cell_hashes(&mut nodes, |addr| get_accepted_cell_hashes(addr)).await?;
 
     assert!(!has_error, "Stress test failed as one of the thread got an error");
 
     nodes.kill_all();
+
+    Result::Ok(())
+}
+
+/// Run or stop n-number of nodes periodically for some time and
+/// verify the status of each node - number of peers, validators and its weight
+pub async fn run_node_communication_stress_test() -> Result<()> {
+    info!("Run stress for node communication: Start and stop some nodes and check their status");
+
+    let mut nodes = TestNodes::new();
+    nodes.start_minimal_and_wait().await?;
+
+    apply_node_actions(
+        &mut nodes,
+        vec![(3, true, 15), (1, false, 20), (1, true, 5), (4, true, 45)],
+    );
+
+    for node in &nodes.get_running_nodes() {
+        let status = get_node_status(node.address).await?.unwrap();
+        assert_eq!(4, status.peers.len());
+        assert_eq!(4, status.validators.len());
+        for validator in status.validators {
+            // The weight will depend on stake of validators and currently is hardcoded to 2000 each
+            // For total of 5 nodes with same stake, each validator should have 20% weight
+            assert_eq!(0.2, validator.2);
+        }
+    }
 
     Result::Ok(())
 }
@@ -73,7 +100,7 @@ pub async fn run_stress_test_with_chaos() -> Result<()> {
     info!("Run stress test with chaos: Transfer balance n-times from all 3 nodes in parallel");
 
     let mut nodes = TestNodes::new();
-    nodes.start_all_and_wait().await?;
+    nodes.start_minimal_and_wait().await?;
 
     let mut manager = TestNodeChaosManager::new(
         Arc::new(Mutex::new(nodes)),
@@ -104,7 +131,7 @@ pub async fn run_stress_test_with_failed_transfers() -> Result<()> {
     info!("Run stress test with failed transfers: Transfer valid and invalid cells n-times between 2 nodes in parallel");
 
     let mut nodes = TestNodes::new();
-    nodes.start_all_and_wait().await?;
+    nodes.start_minimal_and_wait().await?;
 
     let mut results_futures = vec![];
     // send traffic with valid and invalid transfers so they can intersect with each other
@@ -131,7 +158,7 @@ where
 {
     let mut unique_cell_hashes = HashSet::new();
     let mut total_cell_hashes_numbers = HashSet::new();
-    for n in &nodes.nodes {
+    for n in &nodes.get_running_nodes() {
         let cell_hashes = get_cell_hashes(n.address).await.unwrap();
         total_cell_hashes_numbers.insert(cell_hashes.len());
         cell_hashes.iter().for_each(|h| {
@@ -149,7 +176,7 @@ async fn validate_blocks(nodes: &TestNodes) {
     info!("Validate blocks after stress test");
 
     let mut cells_in_blocks = vec![];
-    for n in &nodes.nodes {
+    for n in &nodes.get_running_nodes() {
         let mut total_blocks = 1;
         let mut total_cells_in_blocks = 0;
         let mut cells_in_block = Vec::new();
@@ -279,6 +306,17 @@ fn send_from_invalid_cells(
         Ok(())
     });
     handle
+}
+
+fn apply_node_actions(nodes: &mut TestNodes, node_actions: Vec<(usize, bool, u64)>) {
+    for (id, is_start, delay) in node_actions {
+        if is_start {
+            nodes.start_node(id);
+        } else {
+            nodes.kill_node(id);
+        }
+        sleep(Duration::from_secs(delay));
+    }
 }
 
 async fn wait_for_future_response(mut results_futures: Vec<JoinHandle<Result<()>>>) -> bool {

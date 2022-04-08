@@ -407,8 +407,8 @@ impl Handler<LiveCommittee> for Sleet {
         self.conflict_graph = ConflictGraph::new(cell_ids_set);
 
         let mut s: String = format!("<<{}>>\n", "sleet".cyan());
-        for (id, (_, w)) in msg.validators.clone() {
-            let id_s = format!("{:?}", id).yellow();
+        for (id, (ip, w)) in msg.validators.clone() {
+            let id_s = format!("{:?}@{}", id, ip).yellow();
             let w_s = format!("{:?}", w).cyan();
             s = format!("{} ν = {} {} | {} {}\n", s, "⦑".magenta(), id_s, w_s, "⦒".magenta());
         }
@@ -829,6 +829,8 @@ impl Handler<GetTxAncestors> for Sleet {
 
 // Message handlers used in testing
 pub mod sleet_cell_handlers;
+pub mod sleet_status_handler;
+
 // Re-export message types
 pub use sleet_cell_handlers::*;
 

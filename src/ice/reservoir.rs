@@ -45,11 +45,13 @@ impl Reservoir {
     }
 
     /// Fetches all decisions.
-    pub fn get_decisions(&self) -> Vec<(SocketAddr, Choice, usize)> {
+    pub fn get_decisions(&self) -> Vec<(Id, SocketAddr, Choice, usize)> {
         self.decisions
             .iter()
-            .map(|(_, (ip, choice, conviction))| (ip.clone(), choice.clone(), conviction.clone()))
-            .collect::<Vec<(SocketAddr, Choice, usize)>>()
+            .map(|(id, (ip, choice, conviction))| {
+                (id.clone(), ip.clone(), choice.clone(), conviction.clone())
+            })
+            .collect::<Vec<(Id, SocketAddr, Choice, usize)>>()
     }
 
     /// Fetches a live peers endpoint designated by `Id` or `None` if the peer is not
@@ -216,7 +218,7 @@ impl Reservoir {
                     *c = 0;
                 } else {
                     *c += 1;
-                    if *d == Choice::Faulty && *c >= BETA1 {
+                    if self.nbootstrapped > 0 && *d == Choice::Faulty && *c >= BETA1 {
                         info!("[peer] {} confirmed: {}", id.clone(), "Faulty".red());
                         self.nbootstrapped -= 1;
                     } else if *d == Choice::Live && *c >= BETA1 {
@@ -337,8 +339,10 @@ mod tests {
 
         let p1 = reservoir.get_decision(&id1).unwrap();
         let p2 = reservoir.get_decision(&id2).unwrap();
-        assert_eq!(p1.clone(), (ip1.clone(), Choice::Live, 0));
-        assert_eq!(p2.clone(), (ip2.clone(), Choice::Live, 0));
+        let p1 = (id1, p1.0, p1.1, p1.2);
+        let p2 = (id2, p2.0, p2.1, p2.2);
+        assert_eq!(p1.clone(), (id1.clone(), ip1.clone(), Choice::Live, 0));
+        assert_eq!(p2.clone(), (id2.clone(), ip2.clone(), Choice::Live, 0));
 
         let decisions = reservoir.get_decisions();
         if decisions.clone() != vec![p1.clone(), p2.clone()] {
@@ -428,6 +432,29 @@ mod tests {
         reservoir.process_decision(id1.clone(), q3.clone());
         let d3 = reservoir.get_decision(&id1).unwrap();
         assert_eq!(d3, (ip1.clone(), Choice::Live, 0));
+    }
+
+    #[actix_rt::test]
+    async fn test_decide_when_faulty_and_bootstrap_is_zero() {
+        let mut reservoir = Reservoir::new();
+        let mut quorum = Quorum::new();
+        let mut id = Default::default();
+        for i in 0..K + 1 {
+            let ip = format!("127.0.0.1:123{}", i).parse().unwrap();
+            id = Id::from_ip(&ip);
+            reservoir.insert(id.clone(), ip, Choice::Faulty, 0);
+            quorum.insert(id.clone(), Choice::Faulty);
+        }
+
+        // process decisions K-times
+        // so it can try to decrease nbootstrap flag from 0 to -1
+        // let last_id = reservoir.decisions.iter().last().unwrap().0;
+        for _ in 0..K + 1 {
+            reservoir.process_decision(id.clone(), quorum.clone());
+        }
+
+        assert_eq!(3, reservoir.get_decision(&id).unwrap().2);
+        assert_eq!(0, reservoir.nbootstrapped);
     }
 
     #[actix_rt::test]

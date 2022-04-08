@@ -18,7 +18,7 @@ const TRANSFER_RUN_TIMES: usize = 5;
 pub async fn run_all_integration_tests() -> Result<()> {
     let mut context = IntegrationTestContext::new();
     let mut nodes = TestNodes::new();
-    nodes.start_all_and_wait().await?;
+    nodes.start_minimal_and_wait().await?;
 
     for _ in 0..TRANSFER_RUN_TIMES {
         test_send_cell(&nodes, &mut context).await?;
