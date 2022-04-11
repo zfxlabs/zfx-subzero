@@ -27,6 +27,9 @@ use tokio::time::{self, Duration};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 
+use self::sleet_utils::{BoundedHashMap, BoundedHashSet};
+mod sleet_utils;
+
 // Parent selection
 
 const NPARENTS: usize = 3;
@@ -58,9 +61,9 @@ pub struct Sleet {
     /// The graph of conflicting transactions (potentially multi-input).
     conflict_graph: ConflictGraph,
     /// A mapping of a cell hashes to unspent cells.
-    live_cells: HashMap<CellHash, Cell>,
+    live_cells: BoundedHashMap<CellHash, Cell>,
     /// The map contains transactions already accepted, used by the integration tests
-    accepted_txs: HashSet<TxHash>,
+    accepted_txs: BoundedHashSet<TxHash>,
     /// Incoming queries pending that couldn't be processed because of missing ancestry
     pending_queries: Vec<(Tx, oneshot::Sender<bool>)>,
     /// The consensus graph. Contains the accepted frontier and the undecided transactions
@@ -86,8 +89,8 @@ impl Sleet {
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
             conflict_graph: ConflictGraph::new(CellIds::empty()),
-            live_cells: HashMap::default(),
-            accepted_txs: HashSet::new(),
+            live_cells: BoundedHashMap::new(1000),
+            accepted_txs: BoundedHashSet::new(1000),
             pending_queries: vec![],
             dag: DAG::new(),
             accepted_frontier: HashSet::new(),
@@ -355,7 +358,7 @@ impl Sleet {
                 && self.is_accepted_memo(t, &mut memo)
             {
                 new.push(t.clone());
-                let _ = self.accepted_txs.insert(t.clone());
+                let () = self.accepted_txs.insert(t.clone());
                 tx_storage::set_status(&self.known_txs, t, TxStatus::Accepted).unwrap();
             }
         }
@@ -415,7 +418,10 @@ impl Handler<LiveCommittee> for Sleet {
             cell_ids_set = cell_ids_set.union(&cell_ids).cloned().collect();
         }
         info!("");
-        self.live_cells = msg.live_cells.clone();
+        self.live_cells = BoundedHashMap::new(1000);
+        for (k, v) in msg.live_cells.iter() {
+            self.live_cells.insert(k.clone(), v.clone());
+        }
         self.conflict_graph = ConflictGraph::new(cell_ids_set);
 
         let mut s: String = format!("<<{}>>\n", "sleet".cyan());
@@ -476,7 +482,7 @@ impl Handler<QueryComplete> for Sleet {
             self.update_ancestral_preference(msg.tx.hash()).unwrap();
             info!("[{}] query complete, chit = 1", "sleet".cyan());
             // Let `sleet` know that you can now build on this tx
-            let _ = self.live_cells.insert(msg.tx.cell.hash(), msg.tx.cell.clone());
+            let () = self.live_cells.insert(msg.tx.cell.hash(), msg.tx.cell.clone());
 
             // The transaction or some of its ancestors may have become
             // accepted. Check this.
