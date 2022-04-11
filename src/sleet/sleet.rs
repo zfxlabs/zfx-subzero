@@ -61,9 +61,6 @@ pub struct Sleet {
     live_cells: HashMap<CellHash, Cell>,
     /// The map contains transactions already accepted
     accepted_txs: HashSet<TxHash>,
-    /// The map contains transactions rejected because they conflict with an accepted transaction
-    /// Note: we rely heavily on the fact that transactions have the same hash as the wrapped cell
-    rejected_txs: HashSet<TxHash>,
     /// Incoming queries pending that couldn't be processed because of missing ancestry
     pending_queries: Vec<(Tx, oneshot::Sender<bool>)>,
     /// The consensus graph. Contains the accepted frontier and the undecided transactions
@@ -91,7 +88,6 @@ impl Sleet {
             conflict_graph: ConflictGraph::new(CellIds::empty()),
             live_cells: HashMap::default(),
             accepted_txs: HashSet::new(),
-            rejected_txs: HashSet::new(),
             pending_queries: vec![],
             dag: DAG::new(),
             accepted_frontier: HashSet::new(),
@@ -248,13 +244,11 @@ impl Sleet {
     pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> bool {
         // It's a bug if we check a non-existent transaction
         if self.accepted_txs.contains(tx_hash)
-            || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap()
+            || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap_or(false)
         {
             return true;
         }
-        if self.rejected_txs.contains(tx_hash)
-            || tx_storage::cannot_be_accepted(&self.known_txs, tx_hash).unwrap()
-        {
+        if tx_storage::cannot_be_accepted(&self.known_txs, tx_hash).unwrap_or(false) {
             return false;
         }
         let confidence = match self.conflict_graph.get_confidence(tx_hash) {
@@ -300,7 +294,6 @@ impl Sleet {
         let mut children: VecDeque<TxHash> = VecDeque::new();
         for hash in rejected {
             info!("Rejected {}", hex::encode(hash));
-            let _ = self.rejected_txs.insert(hash.clone());
             tx_storage::set_status(&self.known_txs, &hash, TxStatus::Rejected)?;
             let ch = self.dag.remove_vx(&hash)?;
             children.extend(ch.iter());
@@ -667,10 +660,10 @@ impl Handler<QueryTx> for Sleet {
                 };
 
                 // We may have accepted or rejected the transaction already when the query comes in
-                if self.accepted_txs.contains(&tx_hash) {
+                if tx_storage::is_accepted_tx(&self.known_txs, &tx_hash).unwrap_or(false) {
                     return Box::pin(async move { QueryTxAck { id, tx_hash, outcome: true } });
                 }
-                if self.rejected_txs.contains(&tx_hash) {
+                if tx_storage::cannot_be_accepted(&self.known_txs, &tx_hash).unwrap_or(false) {
                     return Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } });
                 }
 
