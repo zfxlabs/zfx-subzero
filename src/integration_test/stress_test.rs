@@ -56,7 +56,10 @@ pub async fn run_stress_test() -> Result<()> {
     // validate_blocks(&nodes).await;
 
     let cell_hashes = validate_cell_hashes(&mut nodes, |addr| get_cell_hashes(addr)).await?;
-    assert_eq!((nodes.get_running_nodes().len() * ITERATION_LIMIT as usize + initial_cells_size), cell_hashes.len());
+    assert_eq!(
+        (nodes.get_running_nodes().len() * ITERATION_LIMIT as usize + initial_cells_size),
+        cell_hashes.len()
+    );
 
     validate_cell_hashes(&mut nodes, |addr| get_accepted_cell_hashes(addr)).await?;
 
