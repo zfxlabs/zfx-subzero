@@ -59,7 +59,7 @@ pub struct Sleet {
     conflict_graph: ConflictGraph,
     /// A mapping of a cell hashes to unspent cells.
     live_cells: HashMap<CellHash, Cell>,
-    /// The map contains transactions already accepted
+    /// The map contains transactions already accepted, used by the integration tests
     accepted_txs: HashSet<TxHash>,
     /// Incoming queries pending that couldn't be processed because of missing ancestry
     pending_queries: Vec<(Tx, oneshot::Sender<bool>)>,
@@ -136,20 +136,16 @@ impl Sleet {
     pub fn has_parents(&self, tx: &Tx) -> bool {
         match self.dag.has_vertices(&tx.parents) {
             Ok(()) => true,
-            Err(missing_parents) => missing_parents.iter().all(|p| {
-                self.accepted_txs.contains(p)
-                    || tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)
-            }),
+            Err(missing_parents) => missing_parents
+                .iter()
+                .all(|p| tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)),
         }
     }
 
     /// Removes the transactions that already have been accepted, and might not be present
     /// in the DAG at insertion time
     pub fn remove_accepted_parents(&self, mut parents: Vec<TxHash>) -> Vec<TxHash> {
-        parents.retain(|p| {
-            !self.accepted_txs.contains(p)
-                && !tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false)
-        });
+        parents.retain(|p| !tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false));
         parents
     }
     // Branch preference
@@ -243,9 +239,7 @@ impl Sleet {
     /// Checks whether the transaction `TxHash` is accepted as final.
     pub fn is_accepted_tx(&self, tx_hash: &TxHash) -> bool {
         // It's a bug if we check a non-existent transaction
-        if self.accepted_txs.contains(tx_hash)
-            || tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap_or(false)
-        {
+        if tx_storage::is_accepted_tx(&self.known_txs, tx_hash).unwrap_or(false) {
             return true;
         }
         if tx_storage::cannot_be_accepted(&self.known_txs, tx_hash).unwrap_or(false) {
@@ -357,7 +351,9 @@ impl Sleet {
         let mut new = vec![];
         let mut memo = HashMap::new();
         for t in self.dag.dfs(tx_hash) {
-            if !self.accepted_txs.contains(t) && self.is_accepted_memo(t, &mut memo) {
+            if !tx_storage::is_accepted_tx(&self.known_txs, t).unwrap_or(false)
+                && self.is_accepted_memo(t, &mut memo)
+            {
                 new.push(t.clone());
                 let _ = self.accepted_txs.insert(t.clone());
                 tx_storage::set_status(&self.known_txs, t, TxStatus::Accepted).unwrap();

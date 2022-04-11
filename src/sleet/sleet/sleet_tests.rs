@@ -455,6 +455,7 @@ async fn test_sleet_accept_many() {
     // let _ = sleet.send(DumpDAG).await.unwrap();
 
     let accepted = hail.send(GetAcceptedCells).await.unwrap();
+    println!("Accepted {}", accepted.len());
     assert!(accepted.len() == N + 1 - BETA1 as usize);
 
     let SleetStatus { dag_len, conflict_graph_len, accepted_frontier, .. } =
