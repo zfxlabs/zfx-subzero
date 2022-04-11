@@ -92,23 +92,27 @@ impl Hail {
     pub fn insert(&mut self, block: HailBlock) -> Result<()> {
         let inner_block = block.inner();
         let vertex = block.vertex().unwrap();
-        match block.parent() {
-            Some(parent) => {
-                self.conflict_map.insert_block(inner_block.clone())?;
-                self.dag.insert_vx(vertex, vec![parent])?;
-                Ok(())
-            }
-            None => {
-                // FIXME: Verify that this is the genesis hash (vertex.block_hash)
-                if vertex.height == 0 {
+        return if !self.dag.contains_key(&vertex) {
+            match block.parent() {
+                Some(parent) => {
                     self.conflict_map.insert_block(inner_block.clone())?;
-                    self.dag.insert_vx(vertex, vec![])?;
+                    self.dag.insert_vx(vertex, vec![parent])?;
                     Ok(())
-                } else {
-                    Err(Error::InvalidBlock(block.inner()))
+                }
+                None => {
+                    // FIXME: Verify that this is the genesis hash (vertex.block_hash)
+                    if vertex.height == 0 {
+                        self.conflict_map.insert_block(inner_block.clone())?;
+                        self.dag.insert_vx(vertex, vec![])?;
+                        Ok(())
+                    } else {
+                        Err(Error::InvalidBlock(block.inner()))
+                    }
                 }
             }
-        }
+        } else {
+            Ok(())
+        };
     }
 
     // Branch preference

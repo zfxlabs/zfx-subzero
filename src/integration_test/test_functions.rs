@@ -9,6 +9,7 @@ use tokio::time::timeout;
 use tracing::debug;
 
 use crate::alpha::block::Block;
+use crate::alpha::status_handler::NodeStatus;
 use crate::alpha::transfer::TransferOperation;
 use crate::alpha::types::BlockHeight;
 use crate::cell::inputs::Inputs;
@@ -558,14 +559,14 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
     let mut timer = 0;
     let timeout = 120;
     let delay = 2;
-    let nodes_size = nodes.nodes.len();
+    let nodes_size = nodes.get_running_nodes().len();
 
     while live_nodes.len() < nodes_size && timer <= timeout {
         sleep(Duration::from_secs(delay));
         timer += delay;
         // mark a node as 'live' if its bootstrapped status is true
-        for node in &nodes.nodes {
-            match check_node_status(node.address).await? {
+        for node in &nodes.get_running_nodes() {
+            match get_node_status(node.address).await? {
                 Some(s) => {
                     if s.bootstrapped {
                         debug!("Node {} has been bootstrapped", &node.address);
@@ -582,12 +583,12 @@ pub async fn wait_until_nodes_start(nodes: &TestNodes) -> Result<()> {
     Ok(())
 }
 
-async fn check_node_status(node_address: SocketAddr) -> Result<Option<Status>> {
-    match timeout(Duration::from_secs(1), client::oneshot_tcp(node_address, Request::CheckStatus))
+pub async fn get_node_status(node_address: SocketAddr) -> Result<Option<NodeStatus>> {
+    match timeout(Duration::from_secs(1), client::oneshot_tcp(node_address, Request::GetNodeStatus))
         .await
     {
         Ok(Ok(r)) => {
-            if let Some(Response::Status(status)) = r {
+            if let Some(Response::NodeStatus(status)) = r {
                 Result::Ok(Some(status))
             } else {
                 Result::Ok(None)

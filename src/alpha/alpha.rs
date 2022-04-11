@@ -1,3 +1,5 @@
+pub mod status_handler;
+
 use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
@@ -8,9 +10,8 @@ use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
 use crate::server::{InitRouter, Router, ValidatorSet};
 use crate::sleet::{self, Sleet};
-use crate::{ice, ice::Ice};
-
 use crate::storage::block;
+use crate::{ice, ice::Ice};
 
 use super::block::{build_genesis, Block};
 use super::state::State;
@@ -33,15 +34,15 @@ pub struct Alpha {
     /// The database root.
     tree: sled::Db,
     /// The address of the `Ice` actor.
-    ice: Addr<Ice>,
+    pub ice: Addr<Ice>,
     /// The address of the `Sleet` actor.
-    sleet: Addr<Sleet>,
+    pub sleet: Addr<Sleet>,
     /// The address of the `Hail` actor.
-    hail: Addr<Hail>,
+    pub hail: Addr<Hail>,
     /// The address of the `Router` actor.
     router: Option<Addr<Router>>,
     /// The `alpha` chain state.
-    state: State,
+    pub state: State,
 }
 
 impl Alpha {
@@ -137,18 +138,22 @@ impl Handler<QueryLastAccepted> for Alpha {
                     // If `k * alpha` peers agree to an accepted hash then return the last
                     // accepted hash.
                     let mut occurences: HashMap<BlockHash, usize> = HashMap::new();
+                    let mut already_applied: HashSet<BlockHash> = HashSet::new();
                     for last_accepted in v.iter() {
                         match occurences.entry(*last_accepted) {
                             Entry::Occupied(mut o) => {
-                                let count = o.get_mut();
-                                *count += 1;
-                                if *count >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
-                                    ctx.notify(ReceiveLastAccepted {
-                                        last_block_hash: last_accepted.clone(),
-                                        last_block: last_block.clone(),
-                                        last_vrf_output: last_block.vrf_out.clone(),
-                                        last_accepted: last_accepted.clone(),
-                                    })
+                                if !already_applied.contains(last_accepted) {
+                                    let count = o.get_mut();
+                                    *count += 1;
+                                    if *count >= (ice::K as f64 * ice::ALPHA).ceil() as usize {
+                                        ctx.notify(ReceiveLastAccepted {
+                                            last_block_hash: last_accepted.clone(),
+                                            last_block: last_block.clone(),
+                                            last_vrf_output: last_block.vrf_out.clone(),
+                                            last_accepted: last_accepted.clone(),
+                                        });
+                                        already_applied.insert(last_accepted.clone());
+                                    }
                                 }
                             }
                             Entry::Vacant(v) => {

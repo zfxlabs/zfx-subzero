@@ -15,9 +15,18 @@ use x509_parser::nom::AsBytes;
 pub const KEYPAIR_NODE_0 : &str = "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416";
 pub const KEYPAIR_NODE_1 : &str = "5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd";
 pub const KEYPAIR_NODE_2 : &str = "6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b";
+pub const KEYPAIR_NODE_3 : &str = "3ae38eec96146c241f6cadf01995af14f027b23b8fecbc77dbc2e3ed5fec6fc3fb4fe5534f7affc9a8f1d99e290fdb91cc26777edd6fae480cad9f735d1b3680";
+pub const KEYPAIR_NODE_4 : &str = "aae4e1343eb40e217a60fc61e22b86925686e664d7663c09d0042eb049600e187a2049a994e5b7a3e2baa9341c697029550ee0782d83ba31fe10fa0fefd6cc52";
+pub const KEYPAIR_NODE_5 : &str = "8c739c713aeb69e21a37bc2aab2ab314d08627d5435754b0418a71529c3614bccdfa638fa8da6d06e98a374c1df48e3a3d2563a4c7d78d0e7589f6706a8ed0d8";
+pub const KEYPAIR_NODE_6 : &str = "2d2ca57915c481e043744f265397fbec35c8c259c909c3ad365603b243db6de086eb292e6e4f65d14e7b35e3882af5f778924ff1fb95e815473d1eac583df1be";
+pub const KEYPAIR_NODE_7 : &str = "845821ffb4a9c6f4a4dbdc63d3d6e2e3ac1ca3a78950d9f4240092ffff9a24f8ad42f4caf9cfa37b77cddd899c692e0fa5df3dbcd206685e367649ffe6834de4";
+pub const KEYPAIR_NODE_8 : &str = "bffaff3355751ff98beea80841c90f79b6bf256268b83c13d2b68ab2ea168bf02eb8d83c4998f012b65d8b54d1ee3c2db2649495f92ed20881f34720c4a73755";
 pub const NODE_ID_0: &str = "12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY";
 pub const NODE_ID_1: &str = "19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf";
 pub const NODE_ID_2: &str = "1A2iUK1VQWMfvtmrBpXXkVJjM5eMWmTfMEcBx4TatSJeuoSH7n";
+pub const NODE_ID_3: &str = "12StzamTJk2jBxbdqGmT6gLfpctv9f39CmBXTsm8sBG2n6AdPxx";
+pub const NODE_ID_4: &str = "1tJB1qNY6R4nPGQN83hmX8bviD6dbEMXkGjfByrCVYZsNnrJSk";
+pub const NODE_ID_5: &str = "12KyV3nz5wJhqFSfEFsKAhEqMGaPD88JeeS7LA4Qsjbyf2Yqp87";
 pub const NON_EXISTING_NODE : &str = "9f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b";
 pub const NODE_ADDRESS: &str = "127.0.0.1:123";
 
@@ -71,6 +80,9 @@ impl TestNodes {
         nodes.push(TestNode::new(0, 1, NODE_ID_1, KEYPAIR_NODE_0, NODE_ID_0));
         nodes.push(TestNode::new(1, 0, NODE_ID_0, KEYPAIR_NODE_1, NODE_ID_1));
         nodes.push(TestNode::new(2, 1, NODE_ID_1, KEYPAIR_NODE_2, NODE_ID_2));
+        nodes.push(TestNode::new(3, 2, NODE_ID_2, KEYPAIR_NODE_3, NODE_ID_3));
+        nodes.push(TestNode::new(4, 3, NODE_ID_3, KEYPAIR_NODE_4, NODE_ID_4));
+        nodes.push(TestNode::new(5, 4, NODE_ID_4, KEYPAIR_NODE_5, NODE_ID_5));
 
         TestNodes { nodes }
     }
@@ -107,14 +119,16 @@ impl TestNodes {
         }
     }
 
-    pub fn start_all(&mut self) {
+    fn start_all(&mut self, node_ids: Vec<&str>) {
         for node in &mut self.nodes {
-            node.start();
+            if node_ids.contains(&node.id.as_str()) {
+                node.start();
+            }
         }
     }
 
-    pub async fn start_all_and_wait(&mut self) -> std::result::Result<(), Error> {
-        self.start_all();
+    pub async fn start_minimal_and_wait(&mut self) -> std::result::Result<(), Error> {
+        self.start_all(vec![NODE_ID_0, NODE_ID_1, NODE_ID_2]);
         wait_until_nodes_start(self).await
     }
 }

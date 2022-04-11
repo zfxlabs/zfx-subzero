@@ -86,14 +86,14 @@ fn process_query(reservoir: &mut Reservoir, self_id: Id, query: Query) -> Outcom
             // priori and the choice is `Live`, then our choice becomes
             // `Live`.
             Choice::Live => {
-                let () = reservoir.set_choice(peer_id.clone(), Choice::Live);
+                let () = reservoir.set_choice(peer_id, Choice::Live);
                 Outcome::new(peer_id, choice)
             }
             // If we have not made a decision pertaining to this peer a
             // priori and the choice is `Faulty`, then our choice becomes
             // `Faulty` if an indirect ping request fails.
             Choice::Faulty => {
-                let () = reservoir.set_choice(peer_id.clone(), Choice::Faulty);
+                let () = reservoir.set_choice(peer_id, Choice::Faulty);
                 Outcome::new(peer_id, choice)
             }
         },
@@ -107,7 +107,7 @@ impl Handler<Ping> for Ice {
         // Processes incoming queries from the server
         let mut outcomes = vec![];
         for query in msg.queries.iter().cloned() {
-            info!("<- {:?}", query.clone());
+            info!("<- {:?}", query);
             let outcome = process_query(&mut self.reservoir, self.id.clone(), query);
             outcomes.push(outcome);
         }
@@ -193,9 +193,10 @@ impl Handler<PingSuccess> for Ice {
     // The peer responded successfully
     fn handle(&mut self, msg: PingSuccess, _ctx: &mut Context<Self>) -> Self::Result {
         let ack = msg.ack.clone();
-        if self.reservoir.fill(ack.id, ack.outcomes) {
+        let (is_bootstrapped, flipped) = self.reservoir.fill(ack.id, ack.outcomes);
+        if is_bootstrapped {
             if self.bootstrapped {
-                Switch { flipped: false, bootstrapped: true }
+                Switch { flipped, bootstrapped: true }
             } else {
                 self.bootstrapped = true;
                 Switch { flipped: true, bootstrapped: true }
@@ -277,24 +278,36 @@ impl Handler<LiveCommittee> for Ice {
     // endpoints, such that subsequent consensus algorithms can probe the peers.
     fn handle(&mut self, msg: LiveCommittee, _ctx: &mut Context<Self>) -> Self::Result {
         info!("[{}] received live committee", "ice".to_owned().magenta());
-        let mut sleet_validators = HashMap::default();
+
         let mut hail_validators = HashMap::default();
         info!("[{}] live committee size = {}", "ice".magenta(), msg.validators.len());
         let mut self_staking_capacity = None;
+        let mut total_staking_capacity = 0; // total stake of the node + other Live validators of the node
         for (id, amount) in msg.validators.iter() {
-            if id.clone() == self.id {
+            if *id == self.id {
+                total_staking_capacity += *amount;
                 self_staking_capacity = Some(*amount);
-            } else {
-                match self.reservoir.get_live_endpoint(id) {
-                    Some(ip) => {
-                        let w = util::percent_of(*amount, msg.total_staking_capacity);
-                        let _ = sleet_validators.insert(id.clone(), (ip.clone(), w));
-                        let _ = hail_validators.insert(id.clone(), (ip.clone(), *amount));
-                    }
-                    None => (),
-                }
+            } else if let Some(ip) = self.reservoir.get_live_endpoint(id) {
+                total_staking_capacity += *amount;
+                let _ = hail_validators.insert(id.clone(), (ip.clone(), *amount));
             }
         }
+
+        let sleet_validators = msg
+            .validators
+            .iter()
+            .filter(|(id, _)| *id != self.id)
+            .filter_map(|(id, amount)| {
+                // if validator is Live then re-calculate it's weight based on
+                // total stake of other Live validators
+                if let Some(ip) = self.reservoir.get_live_endpoint(id) {
+                    let w = util::percent_of(*amount, total_staking_capacity);
+                    return Some((id.clone(), ((ip.clone(), w))));
+                }
+                return None;
+            })
+            .collect();
+
         let self_staking_capacity = if let Some(self_staking_capacity) = self_staking_capacity {
             self_staking_capacity
         } else {
@@ -388,13 +401,19 @@ pub struct CheckStatus;
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Status {
     pub bootstrapped: bool,
+    pub peers: Vec<(Id, SocketAddr, Choice)>,
 }
 
 impl Handler<CheckStatus> for Ice {
     type Result = Status;
 
     fn handle(&mut self, _msg: CheckStatus, _ctx: &mut Context<Self>) -> Self::Result {
-        Status { bootstrapped: self.bootstrapped }
+        let mut validators: Vec<(Id, SocketAddr, Choice)> = vec![];
+        for (id, addr, choice, _) in self.reservoir.get_decisions() {
+            validators.push((id, addr, choice));
+        }
+
+        Status { bootstrapped: self.bootstrapped, peers: validators }
     }
 }
 

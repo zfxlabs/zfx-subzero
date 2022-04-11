@@ -52,5 +52,23 @@ pub fn genesis_stakers() -> Vec<InitialStaker> {
 		2000,
 		1000,
 	    ).unwrap(),
+        InitialStaker::from_hex(
+        "3ae38eec96146c241f6cadf01995af14f027b23b8fecbc77dbc2e3ed5fec6fc3fb4fe5534f7affc9a8f1d99e290fdb91cc26777edd6fae480cad9f735d1b3680".to_owned(),
+        Id::from_str("12StzamTJk2jBxbdqGmT6gLfpctv9f39CmBXTsm8sBG2n6AdPxx").unwrap(),
+        2000,
+        1000,
+        ).unwrap(),
+        InitialStaker::from_hex(
+        "aae4e1343eb40e217a60fc61e22b86925686e664d7663c09d0042eb049600e187a2049a994e5b7a3e2baa9341c697029550ee0782d83ba31fe10fa0fefd6cc52".to_owned(),
+        Id::from_str("1tJB1qNY6R4nPGQN83hmX8bviD6dbEMXkGjfByrCVYZsNnrJSk").unwrap(),
+        2000,
+        1000,
+        ).unwrap(),
+        InitialStaker::from_hex(
+        "8c739c713aeb69e21a37bc2aab2ab314d08627d5435754b0418a71529c3614bccdfa638fa8da6d06e98a374c1df48e3a3d2563a4c7d78d0e7589f6706a8ed0d8".to_owned(),
+        Id::from_str("12KyV3nz5wJhqFSfEFsKAhEqMGaPD88JeeS7LA4Qsjbyf2Yqp87").unwrap(),
+        2000,
+        1000,
+        ).unwrap(),
     ]
 }

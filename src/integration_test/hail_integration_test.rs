@@ -15,7 +15,7 @@ use tracing::info;
 pub async fn run_hail_integration_test() -> Result<()> {
     let mut nodes = TestNodes::new();
 
-    nodes.start_all_and_wait().await?;
+    nodes.start_minimal_and_wait().await?;
 
     let last_block_height = test_successful_block_generation(&nodes).await?;
     test_transfer_failure_and_check_block_not_generated(&nodes, last_block_height).await?;
@@ -114,7 +114,7 @@ async fn test_transfer_failure_and_check_block_not_generated(
 
 fn get_expected_vrfs(nodes: &TestNodes, block_ref: &Block) -> Vec<VrfOutput> {
     nodes
-        .nodes
+        .get_running_nodes()
         .iter()
         .map(|n| {
             let node_id = Id::from_ip(&n.address);
