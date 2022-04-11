@@ -27,7 +27,6 @@ impl Connection<Start> {
 
 impl Connection<Connected> {
     pub async fn upgrade(self, upgrader: Arc<dyn Upgrader>) -> Result<ConnectionStream> {
-        info!("upgrading connection ...");
         let stream = upgrader.upgrade(self.state.tcp_stream).await.map_err(Error::IO)?;
         if stream.is_tls() {
             if self.state.peer_meta.id != stream.get_id().map_err(|_| Error::UnexpectedPeer)? {
@@ -58,7 +57,6 @@ impl Handler<Connect> for Connection<Start> {
     type Result = ResponseActFuture<Self, Result<Connection<Connected>>>;
 
     fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> Self::Result {
-        info!("handling connect ...");
         let peer_meta = msg.peer_meta.clone();
         let upgrader = self.upgrader.clone();
         let fut = TcpStream::connect(msg.peer_meta.ip);
@@ -68,7 +66,7 @@ impl Handler<Connect> for Connection<Start> {
                 Ok(Connection { upgrader, state: Connected { peer_meta, tcp_stream } })
             }
             Err(err) => {
-                error!("[connection] {:?}", err);
+                error!("{:?}", err);
                 Err(err.into())
             }
         }))

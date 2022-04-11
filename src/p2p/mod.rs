@@ -11,12 +11,11 @@ pub mod linear_backoff;
 // peer bootstrapper sends `ReceivePeerGroup` to the network bootstrapper.
 pub mod peer_bootstrapper;
 // network bootstrapper sorts peers by chain and sends accumulated bootstrap peers via the
-// `ReceiveBootstrapQuorum` message to a `chain_bootstrapper`.
+// a `chain_bootstrapper`.
 pub mod network_bootstrapper;
-
 // chain bootstrapper sends `ReceiveBootstrapQuorum` to `ice`
+pub mod chain_bootstrapper;
 
-//pub mod chain_bootstrapper;
 // `ice` sends `LivePeers` to consensus
 // consensus:
 //   * requests transactions from `sleet` to build and propose blocks

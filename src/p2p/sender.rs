@@ -30,7 +30,7 @@ impl Actor for Sender {
     type Context = Context<Self>;
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("actor stopped");
+        debug!("stopped");
     }
 }
 

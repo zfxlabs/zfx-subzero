@@ -2,7 +2,7 @@ use crate::zfx_id::Id;
 
 use std::net::SocketAddr;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct PeerMetadata {
     pub id: Id,
     pub ip: SocketAddr,

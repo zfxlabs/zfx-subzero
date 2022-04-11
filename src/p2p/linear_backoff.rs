@@ -1,18 +1,12 @@
-use actix::{Actor, Handler, Recipient, ResponseFuture};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
-use actix::{AsyncContext, Context};
+use super::prelude::*;
 
-use tracing::{error, info, warn};
-
-use tokio::time::Duration;
-
-// The purpose of a backoff function is to expand the time bound between protocol epochs such that a
-// point of synchrony is found between remote peers. This helps to find a suitable GST across nodes
-// to achieve `2f + 1`.
+// The purpose of a backoff function is to expand the time bound between protocol epochs such that
+// a point of synchrony is found between remote peers. This helps to find a suitable GST across
+// nodes to achieve `2f + 1`.
 //
-// The backoff actor sends `Execute` messages to actors at the start of some epoch. The actor handling
-// the `Execute` message should return `true` when the backoff should complete and `false` when it
-// should be repeated.
+// The backoff actor sends `Execute` messages to actors at the start of some epoch. The actor
+// handling the `Execute` message should return `true` when the backoff should complete and
+// `false` when it should be repeated.
 
 pub struct LinearBackoff {
     executor: Recipient<Execute>,
@@ -38,7 +32,7 @@ impl Actor for LinearBackoff {
     type Context = Context<Self>;
 
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("stopped");
+        debug!("stopped");
     }
 }
 

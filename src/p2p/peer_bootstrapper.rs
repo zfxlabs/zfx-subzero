@@ -61,7 +61,6 @@ impl Handler<Execute> for PeerBootstrapper {
     type Result = ResponseActFuture<Self, bool>;
 
     fn handle(&mut self, msg: Execute, ctx: &mut Context<Self>) -> Self::Result {
-        info!("received execute");
         // The peer handler uses this actor and sends `ReceivePeer` to it once a peer has been handled.
         let self_recipient = ctx.address().recipient().clone();
         let peer_handler = PeerHandler::new(self_recipient);
@@ -94,8 +93,8 @@ impl Handler<ReceivePeer> for PeerBootstrapper {
     type Result = ResponseFuture<()>;
 
     fn handle(&mut self, msg: ReceivePeer, ctx: &mut Context<Self>) -> Self::Result {
-        info!("received peer");
         // TODO: check the peer metadata more thoroughly
+        info!("current_peer_group.len() = {}", self.current_peer_group.len());
         if self.current_peer_group.len() >= self.peer_group_size {
             let group = self.current_peer_group.clone();
             self.current_peer_group = vec![];
@@ -108,10 +107,12 @@ impl Handler<ReceivePeer> for PeerBootstrapper {
                 let n_sent_peer_groups = sent_peer_groups.load(Ordering::Relaxed);
                 sent_peer_groups.store(n_sent_peer_groups + 1, Ordering::Relaxed);
                 if n_sent_peer_groups + 1 >= peer_group_limit {
+                    info!("bootstrapped");
                     bootstrapped.store(true, Ordering::Relaxed);
                 }
             })
         } else {
+            self.current_peer_group.push(msg.peer_meta);
             Box::pin(async {})
         }
     }
@@ -130,7 +131,6 @@ impl PeerHandler {
 
 impl ResponseHandler for PeerHandler {
     fn handle_response(&self, response: Response) -> Pin<Box<dyn Future<Output = Result<()>>>> {
-        info!("received peer bootstrap response");
         let recipient = self.recipient.clone();
         match response {
             Response::VersionAck(version_ack) => Box::pin(async move {

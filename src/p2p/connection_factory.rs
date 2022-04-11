@@ -65,7 +65,6 @@ impl Handler<UpgradeConnection> for ConnectionFactory {
         let fut_wrapped = actix::fut::wrap_future::<_, Self>(fut);
         Box::pin(fut_wrapped.map(move |res, _act, ctx| match res {
             Ok(connection_stream) => {
-                info!("upgraded connection");
                 let connection =
                     Connection { upgrader, state: Upgraded { peer_meta, connection_stream } };
                 ctx.notify(HandleConnection { connection });
@@ -99,7 +98,6 @@ impl Handler<Connect> for ConnectionFactory {
         Box::pin(fut_wrapped.map(move |rsp, _act, ctx| match rsp {
             Ok(res) => match res {
                 Ok(connected) => {
-                    info!("connected");
                     ctx.notify(UpgradeConnection { connection: connected });
                     Ok(())
                 }
