@@ -87,7 +87,6 @@ pub struct SleetStatus {
     conflict_graph_len: usize,
     live_cells: HashMap<CellHash, Cell>,
     accepted_txs: HashSet<TxHash>,
-    rejected_txs: HashSet<TxHash>,
     dag_len: usize,
     accepted_frontier: HashSet<TxHash>,
 }
@@ -100,7 +99,6 @@ impl Handler<GetStatus> for Sleet {
             conflict_graph_len: self.conflict_graph.len(),
             live_cells: self.live_cells.clone(),
             accepted_txs: self.accepted_txs.clone(),
-            rejected_txs: self.rejected_txs.clone(),
             dag_len: self.dag.len(),
             accepted_frontier: self.accepted_frontier.clone(),
         }
@@ -459,12 +457,11 @@ async fn test_sleet_accept_many() {
     let accepted = hail.send(GetAcceptedCells).await.unwrap();
     assert!(accepted.len() == N + 1 - BETA1 as usize);
 
-    let SleetStatus { dag_len, conflict_graph_len, rejected_txs, accepted_frontier, .. } =
+    let SleetStatus { dag_len, conflict_graph_len, accepted_frontier, .. } =
         sleet.send(GetStatus).await.unwrap();
     assert_eq!(accepted_frontier.len(), 1);
     assert_eq!(dag_len, BETA1 as usize);
     assert_eq!(conflict_graph_len, 500);
-    assert_eq!(rejected_txs.len(), 0);
 }
 
 #[actix_rt::test]
