@@ -136,9 +136,9 @@ impl TestNodes {
         match self.get_node(node_id) {
             Some(n) => match n.state {
                 ProcessNodeState::Stopped => false,
-                ProcessNodeState::Running(_) => true
-            }
-            None => false
+                ProcessNodeState::Running(_) => true,
+            },
+            None => false,
         }
     }
 }

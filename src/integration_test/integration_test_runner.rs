@@ -4,7 +4,10 @@ mod integration_test {
     use crate::integration_test::cell_transfer_benchmark::run_cell_transfer_benchmark_test;
     use crate::integration_test::hail_integration_test::run_hail_integration_test;
     use crate::integration_test::sleet_integration_test::run_all_integration_tests;
-    use crate::integration_test::stress_test::{run_node_communication_stress_test, run_stress_test, run_stress_test_with_chaos, run_stress_test_with_failed_transfers};
+    use crate::integration_test::stress_test::{
+        run_node_communication_stress_test, run_stress_test, run_stress_test_with_chaos,
+        run_stress_test_with_failed_transfers,
+    };
     use crate::integration_test::test_model::{TestNode, TestNodes};
     use crate::Result;
     use std::thread::sleep;

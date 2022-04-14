@@ -57,7 +57,13 @@ pub async fn spend_cell(
     amount: u64,
 ) -> Result<Option<CellHash>> {
     let cell_hash = cell.hash();
-    debug!("Sending a cell {}:{}, from = {}, to: {}", hex::encode(cell_hash), cell, from.address_as_str, to.address_as_str);
+    debug!(
+        "Sending a cell {}:{}, from = {}, to: {}",
+        hex::encode(cell_hash),
+        cell,
+        from.address_as_str,
+        to.address_as_str
+    );
 
     if let Ok(Ok(Some(Response::GenerateTxAck(ack)))) = timeout(
         Duration::from_secs(5),

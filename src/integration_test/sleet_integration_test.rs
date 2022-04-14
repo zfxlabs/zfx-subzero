@@ -1,9 +1,9 @@
+use crate::alpha::coinbase::CoinbaseOperation;
 use std::convert::TryInto;
 use std::panic;
 use std::thread::sleep;
 use std::time::Duration;
 use tracing::info;
-use crate::alpha::coinbase::CoinbaseOperation;
 
 use crate::alpha::transfer::TransferOperation;
 use crate::cell::inputs::Input;

@@ -119,7 +119,12 @@ impl Sleet {
             let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
             Ok(true)
         } else {
-            info!("[{}] received already known transaction {}: {}", "sleet".cyan(), hex::encode(sleet_tx.hash()), sleet_tx.clone());
+            info!(
+                "[{}] received already known transaction {}: {}",
+                "sleet".cyan(),
+                hex::encode(sleet_tx.hash()),
+                sleet_tx.clone()
+            );
             Ok(false)
         }
     }
@@ -605,7 +610,12 @@ impl Handler<GenerateTx> for Sleet {
         let parents = self.select_parents(NPARENTS).unwrap();
         let sleet_tx = Tx::new(parents, msg.cell.clone());
         let tx_hash = sleet_tx.hash();
-        info!("[{}] Generating new transaction: {}\n{}", "sleet".cyan(), hex::encode(tx_hash), sleet_tx);
+        info!(
+            "[{}] Generating new transaction: {}\n{}",
+            "sleet".cyan(),
+            hex::encode(tx_hash),
+            sleet_tx
+        );
 
         match self.on_receive_tx(sleet_tx.clone()) {
             Ok(true) => {
@@ -713,7 +723,13 @@ impl Handler<QueryTx> for Sleet {
                 })
             }
             Err(e) => {
-                error!("QueryTx: [{}] Couldn't insert new transaction:{} \n{}:\n {}", "sleet".cyan(), hex::encode(tx_hash), msg.tx, e);
+                error!(
+                    "QueryTx: [{}] Couldn't insert new transaction:{} \n{}:\n {}",
+                    "sleet".cyan(),
+                    hex::encode(tx_hash),
+                    msg.tx,
+                    e
+                );
                 Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } })
             }
         }
