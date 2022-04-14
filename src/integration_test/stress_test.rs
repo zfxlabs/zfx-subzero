@@ -111,7 +111,7 @@ pub async fn run_stress_test_with_chaos() -> Result<()> {
         Arc::new(Mutex::new(nodes)),
         Duration::from_secs(420),
         Range { start: 60, end: 90 },
-        Range { start: 4, end: 5 },
+        Range { start: 3, end: 4 },
     );
     manager.run_chaos();
 

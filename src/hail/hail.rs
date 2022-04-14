@@ -351,7 +351,7 @@ impl Handler<QueryComplete> for Hail {
             }
         }
         // if yes: set_chit(tx, 1), update ancestral preferences
-        if util::sum_outcomes(outcomes) > ALPHA {
+        if util::sum_outcomes(outcomes) >= ALPHA {
             let vx = msg.block.vertex().unwrap();
             self.dag.set_chit(vx.clone(), 1).unwrap();
             self.update_ancestral_preference(vx.clone()).unwrap();

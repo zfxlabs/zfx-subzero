@@ -131,6 +131,16 @@ impl TestNodes {
         self.start_all(vec![NODE_ID_0, NODE_ID_1, NODE_ID_2]);
         wait_until_nodes_start(self).await
     }
+
+    pub fn is_running(&self, node_id: usize) -> bool {
+        match self.get_node(node_id) {
+            Some(n) => match n.state {
+                ProcessNodeState::Stopped => false,
+                ProcessNodeState::Running(_) => true
+            }
+            None => false
+        }
+    }
 }
 
 impl Drop for TestNodes {

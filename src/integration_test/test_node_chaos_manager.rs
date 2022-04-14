@@ -61,9 +61,6 @@ impl TestNodeChaosManager {
         thread::spawn(move || {
             debug!("Starting chaos manager for node {}", node_id);
 
-            let mut node_ids = HashSet::new();
-            node_ids.insert(node_id);
-
             let mut now = Instant::now();
             let mut rng = thread_rng();
 
@@ -75,13 +72,11 @@ impl TestNodeChaosManager {
                 sleep(Duration::from_secs(delay));
 
                 if rng.gen_range(0, 2) == 1 {
-                    if node_ids.contains(&node_id) {
-                        node_ids.remove(&node_id);
+                    if test_nodes.lock().unwrap().is_running(node_id) {
                         debug!("stop the node {}", node_id);
                         test_nodes.lock().unwrap().kill_node(node_id);
                     } else {
                         debug!("start the node {}", node_id);
-                        node_ids.insert(node_id);
                         test_nodes.lock().unwrap().start_node(node_id);
                     }
                 }

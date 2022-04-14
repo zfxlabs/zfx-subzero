@@ -56,7 +56,8 @@ pub async fn spend_cell(
     cell: Cell,
     amount: u64,
 ) -> Result<Option<CellHash>> {
-    debug!("Sending a cell {}, from = {}, to: {}", cell, from.address_as_str, to.address_as_str);
+    let cell_hash = cell.hash();
+    debug!("Sending a cell {}:{}, from = {}, to: {}", hex::encode(cell_hash), cell, from.address_as_str, to.address_as_str);
 
     if let Ok(Ok(Some(Response::GenerateTxAck(ack)))) = timeout(
         Duration::from_secs(5),
@@ -66,6 +67,7 @@ pub async fn spend_cell(
     {
         Ok(ack.cell_hash)
     } else {
+        debug!("No confirmation for the cell {} has been received", hex::encode(cell_hash));
         Ok(None)
     }
 }
@@ -104,9 +106,11 @@ pub async fn spend_from(
     {
         let spent_cell_hash = spend_cell_from_hash(from, to, *cell_hash, amount).await?.unwrap();
         debug!(
-            "Cell has been sent {:?}, from = {}",
+            "Cell has been sent {:?} with amount {}, from = {}. Returned new cell: {:?}\n",
+            hex::encode(cell_hash),
+            amount,
+            from.address_as_str,
             hex::encode(spent_cell_hash),
-            from.address_as_str
         );
 
         let new_capacity = capacity - total_to_spend;
