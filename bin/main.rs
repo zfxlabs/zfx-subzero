@@ -11,9 +11,8 @@ use std::str::FromStr;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_level(false)
-        .with_target(false)
-        .without_time()
+        .with_level(true)
+        .with_target(true)
         .compact()
         .with_max_level(tracing::Level::INFO)
         .init();
