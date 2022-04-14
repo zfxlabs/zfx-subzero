@@ -25,14 +25,14 @@ pub async fn run_all_integration_tests() -> Result<()> {
     for _ in 0..TRANSFER_RUN_TIMES {
         test_send_cell(&nodes, &mut context).await?;
     }
-    //
-    // test_send_cell_with_modified_owner(&nodes, &mut context).await?;
-    // test_send_same_cell_twice(&nodes, &mut context).await?;
-    // test_send_cell_to_recipient_with_random_key(&nodes, &mut context).await?;
-    // test_send_cell_to_non_existing_recipient(&nodes, &mut context).await?;
-    // test_spend_unspendable_cell(&nodes, &mut context).await?;
-    // test_send_cell_when_has_faulty_node(&mut nodes, &mut context).await?;
-    // test_send_cell_to_recipient_with_non_existing_coinbase(&mut nodes, &mut context).await?;
+
+    test_send_cell_with_modified_owner(&nodes, &mut context).await?;
+    test_send_same_cell_twice(&nodes, &mut context).await?;
+    test_send_cell_to_recipient_with_random_key(&nodes, &mut context).await?;
+    test_send_cell_to_non_existing_recipient(&nodes, &mut context).await?;
+    test_spend_unspendable_cell(&nodes, &mut context).await?;
+    test_send_cell_when_has_faulty_node(&mut nodes, &mut context).await?;
+    test_send_cell_to_recipient_with_non_existing_coinbase(&mut nodes, &mut context).await?;
 
     nodes.kill_all();
     Result::Ok(())
