@@ -418,20 +418,16 @@ impl Handler<LiveCommittee> for Sleet {
         );
         let mut cell_ids_set: CellIds = CellIds::empty();
         for (cell_hash, cell) in msg.live_cells.clone() {
-            info!("{}", cell.clone());
+            info!("{}", cell);
             let cell_ids = CellIds::from_outputs(cell_hash.clone(), cell.outputs()).unwrap();
             cell_ids_set = cell_ids_set.union(&cell_ids).cloned().collect();
 
-            // if !self.live_cells.contains_key(&cell_hash) {
-            //     self.live_cells.insert(cell_hash, cell);
-            // }
+            if !self.live_cells.contains_key(&cell_hash) {
+                self.live_cells.insert(cell_hash, cell);
+            }
         }
         info!("");
-        self.live_cells = BoundedHashMap::new(1000);
-        for (k, v) in msg.live_cells.iter() {
-            self.live_cells.insert(k.clone(), v.clone());
-        }
-        self.conflict_graph = ConflictGraph::new(cell_ids_set);
+        self.conflict_graph.append(cell_ids_set);
 
         let mut s: String = format!("<<{}>>\n", "sleet".cyan());
         for (id, (ip, w)) in msg.validators.clone() {

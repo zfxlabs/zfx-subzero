@@ -28,12 +28,22 @@ use crate::Result;
 
 const ITERATION_LIMIT: u64 = 40;
 
+pub async fn run_all_stress_tests() -> Result<()> {
+    run_stress_test_with_valid_transfers().await?;
+    sleep(Duration::from_secs(5));
+    run_node_communication_stress_test().await?;
+    sleep(Duration::from_secs(5));
+    run_stress_test_with_failed_transfers().await?;
+
+    Result::Ok(())
+}
+
 /// Run stress test by transferring valid cells among 3 nodes in parallel.
 ///
 /// Verifies that all cells were transferred and stored in 'sleet'.
 /// Verifies transfer and remaining balance in all nodes.
 /// Verifies that blocks contains accepted cells in all 3 nodes are same and unique.
-pub async fn run_stress_test() -> Result<()> {
+pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
     let transfer_delay = Duration::from_millis(10);
 
@@ -93,6 +103,8 @@ pub async fn run_node_communication_stress_test() -> Result<()> {
             assert_eq!(0.2, validator.2);
         }
     }
+
+    nodes.kill_all();
 
     Result::Ok(())
 }
