@@ -272,8 +272,13 @@ async fn start_test_env() -> (Addr<Sleet>, Addr<DummyClient>, Addr<HailMock>, Ke
     let hail_mock = HailMock::new();
     let receiver = hail_mock.start();
 
-    let sleet =
-        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero(), mock_ip());
+    let sleet = Sleet::new(
+        sender.clone().recipient(),
+        receiver.clone().recipient(),
+        Id::zero(),
+        mock_ip(),
+        vec![],
+    );
     let sleet_addr = sleet.start();
 
     let mut csprng = OsRng {};
@@ -293,8 +298,13 @@ async fn start_test_env_with_two_sleet_actors(
 
     let (sleet_addr, client, hail, root_kp, genesis_tx) = start_test_env().await;
 
-    let sleet2 =
-        Sleet::new(client.clone().recipient(), hail.clone().recipient(), Id::one(), mock_ip());
+    let sleet2 = Sleet::new(
+        client.clone().recipient(),
+        hail.clone().recipient(),
+        Id::one(),
+        mock_ip(),
+        vec![],
+    );
     let sleet_addr2 = sleet2.start();
 
     let live_committee = make_live_committee(vec![genesis_tx.clone()]);
@@ -314,8 +324,13 @@ async fn start_test_env_with_two_sleet_actors_and_two_cells(
     let hail_mock = HailMock::new();
     let receiver = hail_mock.start();
 
-    let sleet =
-        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::zero(), mock_ip());
+    let sleet = Sleet::new(
+        sender.clone().recipient(),
+        receiver.clone().recipient(),
+        Id::zero(),
+        mock_ip(),
+        vec![],
+    );
     let sleet_addr = sleet.start();
 
     let mut csprng = OsRng {};
@@ -326,8 +341,13 @@ async fn start_test_env_with_two_sleet_actors_and_two_cells(
     let live_committee = make_live_committee(vec![genesis_tx1.clone(), genesis_tx2.clone()]);
     sleet_addr.send(live_committee.clone()).await.unwrap();
 
-    let sleet2 =
-        Sleet::new(sender.clone().recipient(), receiver.clone().recipient(), Id::one(), mock_ip());
+    let sleet2 = Sleet::new(
+        sender.clone().recipient(),
+        receiver.clone().recipient(),
+        Id::one(),
+        mock_ip(),
+        vec![],
+    );
     let sleet_addr2 = sleet2.start();
 
     sleet_addr2.send(live_committee).await.unwrap();
@@ -871,7 +891,8 @@ async fn test_strongly_preferred() {
 
     let genesis_tx = generate_coinbase(&root_kp, 1000);
     let genesis_cell_ids = CellIds::from_outputs(genesis_tx.hash(), genesis_tx.outputs()).unwrap();
-    let mut sleet = Sleet::new(sender.recipient(), receiver.recipient(), Id::zero(), mock_ip());
+    let mut sleet =
+        Sleet::new(sender.recipient(), receiver.recipient(), Id::zero(), mock_ip(), vec![]);
     sleet.conflict_graph = ConflictGraph::new(genesis_cell_ids);
 
     // Generate a genesis set of coins

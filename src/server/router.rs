@@ -172,6 +172,11 @@ impl Handler<RouterRequest> for Router {
                     let ancestors = sleet.send(get_ancestors).await.unwrap();
                     Response::TxAncestors(ancestors)
                 }
+                Request::GetAcceptedFrontier => {
+                    debug!("routing GetAcceptedFrontier -> Sleet");
+                    let frontier = sleet.send(sleet::GetAcceptedFrontier).await.unwrap();
+                    Response::AcceptedFrontier(frontier)
+                }
                 // Hail external requests
                 Request::GetBlock(get_block) => {
                     debug!("routing GetBlock -> Hail");

@@ -24,6 +24,7 @@ pub enum Request {
     GenerateTx(sleet::GenerateTx),
     QueryTx(sleet::QueryTx),
     GetTxAncestors(sleet::GetTxAncestors),
+    GetAcceptedFrontier,
     // Hail
     GetBlock(hail::GetBlock),
     GetBlockByHeight(hail::GetBlockByHeight),
@@ -48,6 +49,7 @@ pub enum Response {
     GenerateTxAck(sleet::GenerateTxAck),
     QueryTxAck(sleet::QueryTxAck),
     TxAncestors(sleet::TxAncestors),
+    AcceptedFrontier(sleet::AcceptedFrontier),
     // Hail
     BlockAck(hail::BlockAck),
     QueryBlockAck(hail::QueryBlockAck),

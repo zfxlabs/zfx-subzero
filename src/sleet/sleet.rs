@@ -71,6 +71,10 @@ pub struct Sleet {
     /// The accepted frontier of the DAG is a depth-first-search on the leaves of the DAG
     /// up to a vertices considered final, collecting all the final nodes.
     accepted_frontier: HashSet<TxHash>,
+    /// Peers to bootstrap
+    bootstrap_peers: Vec<(Id, SocketAddr)>,
+    /// `true` if Sleet is bootstrapped
+    bootstrapped: bool,
 }
 
 impl Sleet {
@@ -80,6 +84,7 @@ impl Sleet {
         hail_recipient: Recipient<AcceptedCells>,
         node_id: Id,
         node_ip: SocketAddr,
+        bootstrap_peers: Vec<(Id, SocketAddr)>,
     ) -> Self {
         Sleet {
             sender,
@@ -94,6 +99,8 @@ impl Sleet {
             pending_queries: vec![],
             dag: DAG::new(),
             accepted_frontier: HashSet::new(),
+            bootstrap_peers,
+            bootstrapped: false,
         }
     }
 
@@ -384,13 +391,81 @@ impl Sleet {
 impl Actor for Sleet {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Context<Self>) {
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        ctx.notify(Bootstrap);
         debug!("started sleet");
     }
 
     fn stopping(&mut self, _ctx: &mut Context<Self>) -> actix::Running {
         let _ = self.known_txs.flush();
         actix::Running::Stop
+    }
+}
+
+/// Start the bootstrapping process
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "Result<()>")]
+struct Bootstrap;
+
+impl Handler<Bootstrap> for Sleet {
+    type Result = ResponseActFuture<Self, Result<()>>;
+
+    fn handle(&mut self, _msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
+        let query = ClientRequest::Fanout {
+            peers: self.bootstrap_peers.clone(),
+            request: Request::GetAcceptedFrontier,
+        };
+        self.sender
+            .send(query)
+            .into_actor(self)
+            .map(|res, act, ctx| match res {
+                Ok(ClientResponse::Fanout(frontiers)) => {
+                    for f in frontiers.iter() {
+                        match f {
+                            Response::AcceptedFrontier(AcceptedFrontier { frontier }) => {
+                                act.accepted_frontier =
+                                    act.accepted_frontier.union(frontier).cloned().collect();
+                            }
+                            _ => (),
+                        }
+                    }
+                    Ok(())
+                }
+                Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
+                Err(e) => Err(Error::Actix(e)),
+            })
+            .boxed_local()
+    }
+}
+
+/// Report whether Sleet has finished bootstrapping
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "bool")]
+pub struct Bootstrapped;
+
+impl Handler<Bootstrapped> for Sleet {
+    type Result = bool;
+
+    fn handle(&mut self, _msg: Bootstrapped, _ctx: &mut Context<Self>) -> Self::Result {
+        self.bootstrapped
+    }
+}
+
+/// Get the accpeted frontier from the bootstrap peers
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "AcceptedFrontier")]
+pub struct GetAcceptedFrontier;
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct AcceptedFrontier {
+    frontier: HashSet<TxHash>,
+}
+
+impl Handler<GetAcceptedFrontier> for Sleet {
+    type Result = AcceptedFrontier;
+
+    fn handle(&mut self, _msg: GetAcceptedFrontier, _ctx: &mut Context<Self>) -> Self::Result {
+        AcceptedFrontier { frontier: self.accepted_frontier.clone() }
     }
 }
 
@@ -477,8 +552,7 @@ impl Handler<QueryComplete> for Sleet {
                     Some((_, w)) => outcomes.push((qtx_ack.id, w.clone(), qtx_ack.outcome)),
                     None => (),
                 },
-                // FIXME: Error
-                _ => (),
+                _ => panic!("QueryTxAck: unexpected response"),
             }
         }
         //   if yes: set_chit(tx, 1), update ancestral preferences
