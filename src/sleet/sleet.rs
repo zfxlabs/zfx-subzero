@@ -462,14 +462,34 @@ impl Handler<FetchWithAncestry> for Sleet {
     ) -> Self::Result {
         let db = self.known_txs.clone();
         let peers = self.bootstrap_peers.clone();
+        let sender = self.sender.clone();
         let act = ctx.address();
         Box::pin(async move {
             let mut txs: VecDeque<TxHash> = VecDeque::new();
             txs.extend(initial_txs.iter());
-            while let Some(hash) = txs.pop_front() {
+            while let Some(tx_hash) = txs.pop_front() {
                 // Fetch tx from peers
-                // Insert into DB
-                // Push parents to `txs`
+                for (id, ip) in peers.iter() {
+                    match sender
+                        .send(ClientRequest::Oneshot {
+                            id: *id,
+                            ip: *ip,
+                            request: Request::FetchTx(FetchTx { tx_hash }),
+                        })
+                        .await
+                    {
+                        Ok(ClientResponse::Oneshot(Some(Response::FetchedTx(FetchedTx {
+                            tx: Some(tx),
+                        })))) => {
+                            // Insert into DB
+                            let _ = tx_storage::insert_tx(&db, tx.clone());
+                            // Push parents to `txs` to the queue
+                            txs.extend(tx.parents.iter());
+                            break;
+                        }
+                        _ => (), // TODO
+                    }
+                }
             }
         })
     }
