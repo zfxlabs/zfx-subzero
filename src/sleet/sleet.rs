@@ -426,15 +426,74 @@ impl Handler<Bootstrap> for Sleet {
                                 act.accepted_frontier =
                                     act.accepted_frontier.union(frontier).cloned().collect();
                             }
-                            _ => (),
+                            _ => panic!("unexpected response"),
                         }
                     }
+
+                    // Insert the frontier into the in-memory DAG
+                    for tx in act.accepted_frontier.iter() {
+                        act.dag.insert_vx(tx.clone(), vec![])?;
+                        act.dag.set_chit(tx.clone(), 1)?;
+                    }
+                    ctx.notify(FetchWithAncestry { txs: act.accepted_frontier.clone() });
                     Ok(())
                 }
                 Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
                 Err(e) => Err(Error::Actix(e)),
             })
             .boxed_local()
+    }
+}
+
+/// Fetch transactions recursively on bootstrap
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct FetchWithAncestry {
+    txs: HashSet<TxHash>,
+}
+
+impl Handler<FetchWithAncestry> for Sleet {
+    type Result = ResponseFuture<()>;
+
+    fn handle(
+        &mut self,
+        FetchWithAncestry { txs: initial_txs }: FetchWithAncestry,
+        ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        let db = self.known_txs.clone();
+        let peers = self.bootstrap_peers.clone();
+        let act = ctx.address();
+        Box::pin(async move {
+            let mut txs: VecDeque<TxHash> = VecDeque::new();
+            txs.extend(initial_txs.iter());
+            while let Some(hash) = txs.pop_front() {
+                // Fetch tx from peers
+                // Insert into DB
+                // Push parents to `txs`
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "FetchedTx")]
+pub struct FetchTx {
+    tx_hash: TxHash,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct FetchedTx {
+    tx: Option<Tx>,
+}
+
+impl Handler<FetchTx> for Sleet {
+    type Result = FetchedTx;
+
+    fn handle(&mut self, FetchTx { tx_hash }: FetchTx, _ctx: &mut Context<Self>) -> Self::Result {
+        match tx_storage::get_tx(&self.known_txs, tx_hash) {
+            Ok((_hash, tx)) => FetchedTx { tx: Some(tx) },
+            _ => FetchedTx { tx: None },
+        }
     }
 }
 

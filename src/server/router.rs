@@ -177,6 +177,11 @@ impl Handler<RouterRequest> for Router {
                     let frontier = sleet.send(sleet::GetAcceptedFrontier).await.unwrap();
                     Response::AcceptedFrontier(frontier)
                 }
+                Request::FetchTx(fetch_tx) => {
+                    debug!("routing QueryTx -> Sleet");
+                    let fetched_tx = sleet.send(fetch_tx).await.unwrap();
+                    Response::FetchedTx(fetched_tx)
+                }
                 // Hail external requests
                 Request::GetBlock(get_block) => {
                     debug!("routing GetBlock -> Hail");
