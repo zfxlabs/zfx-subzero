@@ -79,7 +79,7 @@ pub fn run(
 
         // Initialise a view with the bootstrap ips and start its actor
         let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
-        view.init(converted_bootstrap_peers);
+        view.init(converted_bootstrap_peers.clone());
         let view_addr = view.start();
 
         // Create Dissemination Component
@@ -108,6 +108,7 @@ pub fn run(
             hail_addr.clone().recipient(),
             node_id,
             listener_ip,
+            converted_bootstrap_peers,
         );
         let sleet_addr = sleet.start();
 
