@@ -481,10 +481,12 @@ impl Handler<FetchWithAncestry> for Sleet {
                         Ok(ClientResponse::Oneshot(Some(Response::FetchedTx(FetchedTx {
                             tx: Some(tx),
                         })))) => {
-                            // Insert into DB
-                            let _ = tx_storage::insert_tx(&db, tx.clone());
-                            // Push parents to `txs` to the queue
-                            txs.extend(tx.parents.iter());
+                            if !tx_storage::is_known_tx(&db, tx_hash).unwrap_or(false) {
+                                // Insert into DB
+                                let _ = tx_storage::insert_tx(&db, tx.clone());
+                                // Push parents to `txs` to the queue
+                                txs.extend(tx.parents.iter());
+                            }
                             break;
                         }
                         _ => (), // TODO
