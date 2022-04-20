@@ -435,6 +435,7 @@ impl Handler<Bootstrap> for Sleet {
                         act.dag.insert_vx(tx.clone(), vec![])?;
                         act.dag.set_chit(tx.clone(), 1)?;
                     }
+                    // Fetch ancestors from the bootstrap nodes
                     ctx.notify(FetchWithAncestry { txs: act.accepted_frontier.clone() });
                     Ok(())
                 }
@@ -532,7 +533,7 @@ impl Handler<Bootstrapped> for Sleet {
     }
 }
 
-/// Get the accpeted frontier from the bootstrap peers
+/// Get the accepted frontier from the bootstrap peers
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "AcceptedFrontier")]
 pub struct GetAcceptedFrontier;
@@ -547,6 +548,24 @@ impl Handler<GetAcceptedFrontier> for Sleet {
 
     fn handle(&mut self, _msg: GetAcceptedFrontier, _ctx: &mut Context<Self>) -> Self::Result {
         AcceptedFrontier { frontier: self.accepted_frontier.clone() }
+    }
+}
+
+/// Get the live edge of the DAG
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "LiveFrontier")]
+pub struct GetLiveFrontier;
+
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct LiveFrontier {
+    frontier: HashSet<TxHash>,
+}
+
+impl Handler<GetLiveFrontier> for Sleet {
+    type Result = LiveFrontier;
+
+    fn handle(&mut self, _msg: GetLiveFrontier, _ctx: &mut Context<Self>) -> Self::Result {
+        LiveFrontier { frontier: self.dag.leaves().iter().cloned().collect() }
     }
 }
 
