@@ -58,7 +58,7 @@ pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
 
     let has_error = wait_for_future_response(results_futures).await;
 
-    sleep(Duration::from_secs(5));
+    sleep(Duration::from_secs(10));
 
     // validate blocks and cells consistency across all nodes
     // FIXME: uncomment when hail is working properly
@@ -94,8 +94,8 @@ pub async fn run_node_communication_stress_test() -> Result<()> {
 
     for node in &nodes.get_running_nodes() {
         let status = get_node_status(node.address).await?.unwrap();
-        assert_eq!(4, status.peers.len());
-        assert_eq!(4, status.validators.len());
+        assert!(status.peers.len() >= 3);
+        assert!(status.validators.len() >= 3);
         for validator in status.validators {
             // The weight will depend on stake of validators and currently is hardcoded to 2000 each
             // For total of 5 nodes with same stake, each validator should have 20% weight

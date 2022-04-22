@@ -239,6 +239,7 @@ async fn test_send_cell_when_has_faulty_node(
 ) -> Result<()> {
     info!("Run test_send_cell_when_has_faulty_node: Transfer balance when 1 node is down");
 
+    sleep(Duration::from_secs(5));
     nodes.kill_node(1);
 
     sleep(Duration::from_secs(10)); // wait some time so the network status updates
