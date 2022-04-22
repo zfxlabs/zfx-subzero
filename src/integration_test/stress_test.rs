@@ -26,8 +26,6 @@ use crate::integration_test::test_model::{IntegrationTestContext, TestNode, Test
 use crate::integration_test::test_node_chaos_manager::TestNodeChaosManager;
 use crate::Result;
 
-const ITERATION_LIMIT: u64 = 40;
-
 pub async fn run_all_stress_tests() -> Result<()> {
     run_stress_test_with_valid_transfers().await?;
     sleep(Duration::from_secs(5));
@@ -46,6 +44,7 @@ pub async fn run_all_stress_tests() -> Result<()> {
 pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
     let transfer_delay = Duration::from_millis(10);
+    let max_iterations = 700;
 
     let mut nodes = TestNodes::new();
     nodes.start_minimal_and_wait().await?;
@@ -53,9 +52,9 @@ pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     let initial_cells_size = get_total_initial_cell_hashes(&mut nodes).await?;
 
     let mut results_futures = vec![];
-    results_futures.push(send(0, 1, transfer_delay));
-    results_futures.push(send(1, 2, transfer_delay));
-    results_futures.push(send(2, 0, transfer_delay));
+    results_futures.push(send(0, 1, transfer_delay, max_iterations));
+    results_futures.push(send(1, 2, transfer_delay, max_iterations));
+    results_futures.push(send(2, 0, transfer_delay, max_iterations));
 
     let has_error = wait_for_future_response(results_futures).await;
 
@@ -67,7 +66,7 @@ pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
 
     let cell_hashes = validate_cell_hashes(&mut nodes, |addr| get_cell_hashes(addr)).await?;
     assert_eq!(
-        (nodes.get_running_nodes().len() * ITERATION_LIMIT as usize + initial_cells_size),
+        (nodes.get_running_nodes().len() * max_iterations as usize + initial_cells_size),
         cell_hashes.len()
     );
 
@@ -130,7 +129,7 @@ pub async fn run_stress_test_with_chaos() -> Result<()> {
     sleep(Duration::from_secs(20));
 
     let mut results_futures = vec![];
-    results_futures.push(send(0, 1, Duration::from_secs(10)));
+    results_futures.push(send(0, 1, Duration::from_secs(10), 100));
 
     let has_error = wait_for_future_response(results_futures).await;
 
@@ -154,7 +153,7 @@ pub async fn run_stress_test_with_failed_transfers() -> Result<()> {
     // send traffic with valid and invalid transfers so they can intersect with each other
     results_futures.push(send_from_accepted_cells(0, 1, Duration::from_millis(100)));
     results_futures.push(send_from_invalid_cells(0, 1, Duration::from_millis(150)));
-    results_futures.push(send(0, 1, Duration::from_millis(300)));
+    results_futures.push(send(0, 1, Duration::from_millis(300), 40));
 
     let has_error = wait_for_future_response(results_futures).await;
 
@@ -217,6 +216,7 @@ fn send(
     from_node_id: usize,
     to_node_id: usize,
     transfer_delay: Duration,
+    max_iterations: u64,
 ) -> JoinHandle<Result<()>> {
     const AMOUNT: Capacity = 1 as Capacity;
     const FULL_AMOUNT: u64 = AMOUNT + FEE;
@@ -239,9 +239,8 @@ fn send(
             .collect::<Vec<(u64, u64)>>();
         let mut iterations: u64 = residue_per_max_iterations.iter().map(|(i, _)| i).sum::<u64>();
 
-        // FIXME: temporal solution until the issue with DAG in sleet is fixed
-        if iterations > ITERATION_LIMIT {
-            iterations = ITERATION_LIMIT
+        if iterations > max_iterations {
+            iterations = max_iterations
         }
 
         let expected_balance = total_spendable_amount - iterations * FULL_AMOUNT;
@@ -249,7 +248,7 @@ fn send(
         // start sending cells
         let transfer_result =
             spend_many(from, to, AMOUNT, iterations as usize, transfer_delay).await?;
-        sleep(Duration::from_secs(2));
+        sleep(Duration::from_secs(10));
 
         // validate the remaining balance and transferred cells
         let cell_hashes =
@@ -258,11 +257,10 @@ fn send(
         let mut remaining_balance = 0;
         for cell_hash in transfer_result.0 {
             let found_cell = get_cell_from_hash(cell_hash, from.address).await?;
+            assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
             if let Some(cell) = found_cell {
                 transferred_balance = transferred_balance
                     + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
-
-                assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
             } else {
                 error!("Failed to find cell for hash {}", hex::encode(cell_hash));
             }

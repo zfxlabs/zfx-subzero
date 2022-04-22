@@ -171,10 +171,12 @@ pub async fn spend_many_from_cell_hashes(
         let updated_cells_hashes =
             spend_from(from, to, amount, cells_hashes.clone()).await?.clone();
         // extract the recently spent cell
-        let spent_cell_hash =
-            updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c)).unwrap().0;
-        cells_hashes = updated_cells_hashes;
-        accepted_cell_hashes.push(spent_cell_hash);
+        if let Some((spent_cell_hash, _)) =
+            updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c))
+        {
+            cells_hashes = updated_cells_hashes.clone();
+            accepted_cell_hashes.push(spent_cell_hash.clone());
+        }
     }
 
     Ok((accepted_cell_hashes, cells_hashes))
