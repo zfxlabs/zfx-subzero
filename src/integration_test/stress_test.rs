@@ -29,6 +29,8 @@ use crate::Result;
 pub async fn run_all_stress_tests() -> Result<()> {
     run_stress_test_with_valid_transfers().await?;
     sleep(Duration::from_secs(5));
+    run_long_stress_test_with_valid_transfers().await?;
+    sleep(Duration::from_secs(5));
     run_node_communication_stress_test().await?;
     sleep(Duration::from_secs(5));
     run_stress_test_with_failed_transfers().await?;
@@ -43,8 +45,8 @@ pub async fn run_all_stress_tests() -> Result<()> {
 /// Verifies that blocks contains accepted cells in all 3 nodes are same and unique.
 pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
-    let transfer_delay = Duration::from_millis(10);
-    let max_iterations = 700;
+    let transfer_delay = Duration::from_millis(50);
+    let max_iterations = 40;
 
     let mut nodes = TestNodes::new();
     nodes.start_minimal_and_wait().await?;
@@ -58,7 +60,7 @@ pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
 
     let has_error = wait_for_future_response(results_futures).await;
 
-    sleep(Duration::from_secs(10));
+    sleep(Duration::from_secs(5));
 
     // validate blocks and cells consistency across all nodes
     // FIXME: uncomment when hail is working properly
@@ -71,6 +73,28 @@ pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     );
 
     validate_cell_hashes(&mut nodes, |addr| get_accepted_cell_hashes(addr)).await?;
+
+    assert!(!has_error, "Stress test failed as one of the thread got an error");
+
+    nodes.kill_all();
+
+    Result::Ok(())
+}
+
+pub async fn run_long_stress_test_with_valid_transfers() -> Result<()> {
+    info!("Run long stress test: Transfer balance n-times from all 3 nodes in parallel");
+    let transfer_delay = Duration::from_millis(10);
+    let max_iterations = 700;
+
+    let mut nodes = TestNodes::new();
+    nodes.start_minimal_and_wait().await?;
+
+    let mut results_futures = vec![];
+    results_futures.push(send(0, 1, transfer_delay, max_iterations));
+    results_futures.push(send(1, 2, transfer_delay, max_iterations));
+    results_futures.push(send(2, 0, transfer_delay, max_iterations));
+
+    let has_error = wait_for_future_response(results_futures).await;
 
     assert!(!has_error, "Stress test failed as one of the thread got an error");
 
