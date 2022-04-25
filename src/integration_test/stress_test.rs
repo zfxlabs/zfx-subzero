@@ -27,9 +27,9 @@ use crate::integration_test::test_node_chaos_manager::TestNodeChaosManager;
 use crate::Result;
 
 pub async fn run_all_stress_tests() -> Result<()> {
-    run_stress_test_with_valid_transfers().await?;
-    sleep(Duration::from_secs(5));
     run_long_stress_test_with_valid_transfers().await?;
+    sleep(Duration::from_secs(5));
+    run_stress_test_with_valid_transfers().await?;
     sleep(Duration::from_secs(5));
     run_node_communication_stress_test().await?;
     sleep(Duration::from_secs(5));
@@ -81,9 +81,12 @@ pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     Result::Ok(())
 }
 
+/// Run a long stress test by transferring valid cells among 3 nodes in parallel.
+///
+/// Verifies that all cells were transferred and stored in 'sleet'.
 pub async fn run_long_stress_test_with_valid_transfers() -> Result<()> {
     info!("Run long stress test: Transfer balance n-times from all 3 nodes in parallel");
-    let transfer_delay = Duration::from_millis(10);
+    let transfer_delay = Duration::from_millis(50);
     let max_iterations = 700;
 
     let mut nodes = TestNodes::new();
