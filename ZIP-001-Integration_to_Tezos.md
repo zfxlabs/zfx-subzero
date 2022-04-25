@@ -13,7 +13,7 @@ Proposed deliverables:
 * Extend `hail` (block based consensus mechanism) with fraud proofs for proving an invalid state transition.
 * Produce a `hail` light-client which consumes block headers and receives fraud proofs when an invalid state transition occurs, such that the light client can discard invalid blocks.
 
-# Block structure extension
+## Block structure extension
 
 The block structure is extended with the following fields:
 ```
@@ -25,7 +25,7 @@ data_length
 state_root
 ```
 
-# State Root
+## State Root
 
 The state root in our model is represented by a key-value map where the keys are transaction output identifiers (e.g. `hash(hash(d)||i)` where `d` is the data of the transaction and `i` is the index of the output being referred to in `d`. The value of each key is the state of each transaction output: either `unspent(1)` or `nonexistent(0)` - the default value.
 
@@ -38,7 +38,7 @@ root_transition(state_root, t, w) E {state_root, err}
 
 A state witness `w` consists of a set of key-value pairs and their associated sparse merkle proofs in the state tree, `w = {(k1, v1, {k1, v1 -> state_root}), ..}`.
 
-# Fraud Proofs
+## Fraud Proofs
 
 A faulty or malicious miner may provide an incorrect `state_root_i`. We use the execution trace provided in `data_root_i` to prove that a part of the execution trace was invalid.
 
