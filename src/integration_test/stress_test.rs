@@ -30,10 +30,10 @@ pub async fn run_all_stress_tests() -> Result<()> {
     run_long_stress_test_with_valid_transfers().await?;
     sleep(Duration::from_secs(5));
     run_stress_test_with_valid_transfers().await?;
-    // sleep(Duration::from_secs(5));
-    // run_node_communication_stress_test().await?;
-    // sleep(Duration::from_secs(5));
-    // run_stress_test_with_failed_transfers().await?;
+    sleep(Duration::from_secs(5));
+    run_node_communication_stress_test().await?;
+    sleep(Duration::from_secs(5));
+    run_stress_test_with_failed_transfers().await?;
 
     Result::Ok(())
 }
@@ -278,19 +278,11 @@ fn send(
         sleep(Duration::from_secs(5));
 
         // validate the remaining balance and transferred cells
-        let cell_hashes =
-            get_cell_hashes(test_nodes.get_node(from_node_id).unwrap().address).await.unwrap();
-        debug!(
-            "Total cell hashes spent: {} and found: {}",
-            transfer_result.0.len(),
-            cell_hashes.len()
-        );
         let mut transferred_balance = 0;
         let mut remaining_balance = 0;
         for cell_hash in transfer_result.0 {
             let found_cell = get_cell_from_hash(cell_hash, from.address).await?;
             if let Some(cell) = found_cell {
-                // assert!(cell_hashes.contains(&cell_hash)); // verify that the spent cell is in the node
                 transferred_balance = transferred_balance
                     + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
             } else {

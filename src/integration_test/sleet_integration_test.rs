@@ -15,7 +15,7 @@ use crate::integration_test::test_model::{IntegrationTestContext, TestNode, Test
 use crate::zfx_id::Id;
 use crate::Result;
 
-const TRANSFER_RUN_TIMES: usize = 1;
+const TRANSFER_RUN_TIMES: usize = 5;
 
 pub async fn run_all_integration_tests() -> Result<()> {
     let mut context = IntegrationTestContext::new();

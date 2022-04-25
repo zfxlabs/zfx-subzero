@@ -21,14 +21,14 @@ mod integration_test {
             .with_max_level(tracing::Level::DEBUG)
             .init();
 
-        // run_all_integration_tests().await?;
-        // sleep(Duration::from_secs(5));
+        run_all_integration_tests().await?;
+        sleep(Duration::from_secs(5));
         run_all_stress_tests().await?;
         // FIXME: uncomment when hail component is stable
         // sleep(Duration::from_secs(5));
         // run_hail_integration_test().await?;
-        // sleep(Duration::from_secs(10));
-        // run_cell_transfer_benchmark_test().await?;
+        sleep(Duration::from_secs(10));
+        run_cell_transfer_benchmark_test().await?;
 
         Result::Ok(())
     }
