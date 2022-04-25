@@ -22,49 +22,36 @@ keypair2=6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2
 
 node0() {
    if [[ -z "$USE_TCP" ]]; then
-       # Use TLS
-
+      cargo run --bin node -- -a $node0_ip --id $node0_id -b $node1_id@$node1_ip \
+         --keypair $keypair0
+   else
        cargo run --bin node -- -a $node0_ip -b $node1_id@$node1_ip \
            --keypair $keypair0 \
            --use-tls --cert-path deployment/test-certs/node0.crt -p deployment/test-certs/node0.key
-
-   else
-
-        cargo run --bin node -- -a $node0_ip --id $node0_id -b $node1_id@$node1_ip \
-           --keypair $keypair0
-
    fi
 }
 
 node1() {
    if [[ -z "$USE_TCP" ]]; then
        # Use TLS
-
+     cargo run --bin node -- -a $node1_ip --id $node1_id -b $node0_id@$node0_ip \
+           --keypair $keypair1
+   else
        cargo run --bin node -- -a $node1_ip -b $node0_id@$node0_ip \
            --keypair $keypair1 \
            --use-tls --cert-path deployment/test-certs/node1.crt -p deployment/test-certs/node1.key
-
-   else
-
-        cargo run --bin node -- -a $node1_ip --id $node1_id -b $node0_id@$node0_ip \
-           --keypair $keypair1
-
    fi
 }
 
 node2() {
    if [[ -z "$USE_TCP" ]]; then
        # Use TLS
-
+        cargo run --bin node -- -a $node2_ip --id $node2_id -b $node1_id@$node1_ip \
+           --keypair $keypair2
+   else
        cargo run --bin node -- -a $node2_ip -b $node1_id@$node1_ip \
            --keypair $keypair2 \
            --use-tls --cert-path deployment/test-certs/node2.crt -p deployment/test-certs/node2.key
-
-   else
-
-        cargo run --bin node -- -a $node2_ip --id $node2_id -b $node1_id@$node1_ip \
-           --keypair $keypair2
-
    fi
 }
 
