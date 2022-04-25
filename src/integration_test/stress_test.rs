@@ -280,6 +280,7 @@ fn send(
         // validate the remaining balance and transferred cells
         let cell_hashes =
             get_cell_hashes(test_nodes.get_node(from_node_id).unwrap().address).await.unwrap();
+        debug!("Total cell hashes spent: {} and found: {}", transfer_result.0.len(), cell_hashes.len());
         let mut transferred_balance = 0;
         let mut remaining_balance = 0;
         for cell_hash in transfer_result.0 {
