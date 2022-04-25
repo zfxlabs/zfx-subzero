@@ -46,7 +46,7 @@ We defined a function `verify_transition_fraud_proof` and its parameters which v
 
 A fraud proof consists of the relevant shares in the block which contain a bad state transition, merkle proofs for those shares and the state witnesses for the transactions contained within those shares. The function takes as input a fraud proof and checks if applying the transactions in a period of the blocks data on the intermediate pre-state root results in the intermediate post-state root specified in the block data. It it does not then the fraud proof is valid and the block that the fraud proof is for should be permanently rejected by the light client.
 
-# Data Availability Proofs
+## Data Availability Proofs
 
 A malicious block producer can prevent full nodes from generating fraud proofs by withholding the data needed to compute the `data_root_i` and only release the block header to the network.
 
