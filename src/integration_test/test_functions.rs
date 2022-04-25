@@ -367,6 +367,7 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
         cell_hashes_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
         Result::Ok(cell_hashes_mut)
     } else {
+        debug!("No cell hashes returned from = {}", node_address);
         Result::Ok(vec![])
     }
 }

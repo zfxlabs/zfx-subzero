@@ -289,8 +289,8 @@ fn send(
         let mut remaining_balance = 0;
         for cell_hash in transfer_result.0 {
             let found_cell = get_cell_from_hash(cell_hash, from.address).await?;
-            assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
             if let Some(cell) = found_cell {
+                assert!(cell_hashes.contains(&cell_hash)); // verify that the spent cell is in the node
                 transferred_balance = transferred_balance
                     + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
             } else {
