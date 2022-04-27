@@ -7,7 +7,7 @@ use crate::client::Client;
 use crate::hail::Hail;
 use crate::ice::dissemination::DisseminationComponent;
 use crate::ice::{self, Ice, Reservoir};
-use crate::server::{Router, Server};
+use crate::server::{Router, Server, Settings};
 use crate::sleet::Sleet;
 use crate::tls;
 use crate::util;
@@ -19,28 +19,19 @@ use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 use tracing::info;
 
-pub fn run(
-    ip: String,
-    bootstrap_peers: Vec<String>,
-    keypair: Option<String>,
-    use_tls: bool,
-    cert_path: Option<String>,
-    pk_path: Option<String>,
-    // FIXME this is a temporary workaround
-    node_id: Option<Id>,
-) -> Result<()> {
-    let listener_ip: SocketAddr =
-        ip.to_socket_addrs().map_err(|_| Error::PeerParseError)?.next().unwrap();
-    let converted_bootstrap_peers = bootstrap_peers
+pub fn run(settings: Settings, home_dir: &Path) -> Result<()> {
+    let listener_ip: SocketAddr = settings.listener_ip.parse().unwrap();
+    let converted_bootstrap_peers = settings
+        .bootstrap_peers
         .iter()
         .map(|p| util::parse_id_and_ip(p).unwrap())
         .collect::<Vec<(Id, SocketAddr)>>();
 
     // This is temporary until we have TLS setup
-    let (node_id, upgraders) = if use_tls {
+    let (node_id, upgraders) = if settings.use_tls {
         let (cert, key) = tls::certificate::get_node_cert(
-            Path::new(&cert_path.unwrap()),
-            Path::new(&pk_path.unwrap()),
+            &home_dir.join(Path::new(&settings.certificate_file.unwrap())),
+            &home_dir.join(Path::new(&settings.private_key_file.unwrap())),
         )
         .unwrap();
         let upgraders = tls::upgrader::tls_upgraders(&cert, &key);
@@ -49,7 +40,7 @@ pub fn run(
         // (Id::from_ip(&listener_ip), upgraders)
     } else {
         // FIXME, until we change alpha and genesis
-        match node_id {
+        match settings.id {
             None => (Id::from_ip(&listener_ip), tls::upgrader::tcp_upgraders()),
             Some(id) => (id, tls::upgrader::tcp_upgraders()),
         }
@@ -58,19 +49,21 @@ pub fn run(
 
     info!("Node {} is starting", node_id);
 
-    match keypair {
-        Some(keypair_hex) => {
-            let dir_path = vec!["/tmp/", &node_id_str].concat();
-            let file_path = vec!["/tmp/", &node_id_str, "/", &node_id_str, ".keypair"].concat();
-            std::fs::create_dir_all(&dir_path)
-                .expect(&format!("Couldn't create directory: {}", dir_path));
-            let mut file = std::fs::File::create(file_path).unwrap();
-            file.write_all(keypair_hex.as_bytes()).unwrap();
-            let keypair_bytes = hex::decode(keypair_hex).unwrap();
-            Keypair::from_bytes(&keypair_bytes).unwrap()
-        }
-        None => panic!("Keypair is mandatory"),
-    };
+    let dir_path = &home_dir.join(Path::new(&node_id_str));
+    let file_path = &dir_path.join(node_id_str.to_owned() + ".keypair");
+    std::fs::create_dir_all(&dir_path)
+        .expect(&format!("Couldn't create directory: {}", dir_path.to_str().unwrap()));
+    let mut file = std::fs::File::create(file_path).unwrap();
+    file.write_all(settings.keypair.as_bytes()).unwrap();
+    let keypair_bytes = hex::decode(settings.keypair).unwrap();
+    Keypair::from_bytes(&keypair_bytes).unwrap();
+
+    let db_path = home_dir
+        .join(Path::new(&node_id_str))
+        .join("alpha.sled")
+        .into_os_string()
+        .into_string()
+        .unwrap();
 
     let execution = async move {
         // Create the 'client' actor
@@ -113,7 +106,6 @@ pub fn run(
         let sleet_addr = sleet.start();
 
         // Create the `alpha` actor
-        let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
         let alpha = Alpha::create(
             client_addr.clone().recipient(),
             node_id,

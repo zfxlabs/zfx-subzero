@@ -1,13 +1,17 @@
 use tracing::info;
+use tracing::trace;
 use tracing_subscriber;
 
 use clap::{value_t, values_t, App, Arg};
 
+use std::path::Path;
+use std::str::FromStr;
 use zfx_subzero::server::node;
+use zfx_subzero::server::settings::Settings;
 use zfx_subzero::zfx_id;
 use zfx_subzero::Result;
 
-use std::str::FromStr;
+const DEFAULT_HOME_DIR: &str = "src/server/settings";
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -62,46 +66,46 @@ fn main() -> Result<()> {
                 .requires("use-tls")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("home").short("h").long("home").takes_value(true).required(false))
         // FIXME this is a temporary workaround for tcp nodes
         .arg(Arg::with_name("node-id").long("id").value_name("NODE-ID").takes_value(true))
         .get_matches();
 
-    let listener_ip =
-        value_t!(matches.value_of("listener-ip"), String).unwrap_or_else(|e| e.exit());
-    let bootstrap_peers =
-        values_t!(matches.values_of("bootstrap-peer"), String).unwrap_or_else(|e| e.exit());
-    let keypair = match matches.value_of("keypair") {
-        Some(keypair_hex) => Some(String::from(keypair_hex)),
-        _ => None,
-    };
-    let use_tls = matches.is_present("use-tls");
-    let cert_path = if use_tls {
-        Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()))
-    } else {
-        None
-    };
-    let priv_key_path = if use_tls {
-        Some(value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit()))
-    } else {
-        None
+    let home_dir = matches.value_of("home").unwrap_or(DEFAULT_HOME_DIR);
+    let mut settings = Settings::new(Path::new(home_dir)).expect("failed to load configuration.");
+
+    if let Some(ip) = matches.value_of("listener-ip") {
+        trace!("CLI arg for listener-ip provided: {}", ip);
+        settings.listener_ip = ip.to_owned();
+    }
+
+    if let Some(peers) = matches.values_of("bootstrap-peer") {
+        trace!("CLI arg for bootstrap-peer provided: {:?}", peers);
+        settings.bootstrap_peers =
+            values_t!(matches.values_of("bootstrap-peer"), String).unwrap_or_else(|e| e.exit());
+    }
+
+    if let Some(kp) = matches.value_of("keypair") {
+        trace!("CLI arg for keypair provided: {}", kp);
+        settings.keypair = kp.to_owned();
+    }
+
+    if matches.is_present("use-tls") {
+        trace!("CLI arg for use-tls provided");
+        settings.use_tls = true;
+
+        settings.certificate_file =
+            Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()));
+        settings.private_key_file =
+            Some(value_t!(matches.value_of("pk-path"), String).unwrap_or_else(|e| e.exit()));
     };
 
-    let node_id = match matches.value_of("node-id") {
-        Some(node_str) => Some(zfx_id::Id::from_str(node_str).unwrap()),
-        _ => None,
+    if let Some(node_str) = matches.value_of("node-id") {
+        settings.id = Some(zfx_id::Id::from_str(node_str).unwrap())
     };
     let sys = actix::System::new();
     sys.block_on(async move {
-        node::run(
-            listener_ip,
-            bootstrap_peers,
-            keypair,
-            use_tls,
-            cert_path,
-            priv_key_path,
-            node_id,
-        )
-        .unwrap();
+        node::run(settings, Path::new(home_dir)).unwrap();
 
         let sig = if cfg!(unix) {
             use futures::future::FutureExt;

@@ -1,0 +1,8 @@
+{
+    "listener_ip": "127.0.0.1:1234",
+    "bootstrap_peers": ["19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235"],
+    "keypair": "ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416",
+    "use_tls": false,
+    "certificate_file": "node.crt",
+    "private_key_file": "node.key"
+}
