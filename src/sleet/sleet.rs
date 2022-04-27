@@ -73,6 +73,8 @@ pub struct Sleet {
     accepted_frontier: HashSet<TxHash>,
     /// Peers to bootstrap
     bootstrap_peers: Vec<(Id, SocketAddr)>,
+    /// The previous accepted frontier, used during bootstrapping
+    old_frontier: HashSet<TxHash>,
     /// `true` if Sleet is bootstrapped
     bootstrapped: bool,
 }
@@ -100,6 +102,7 @@ impl Sleet {
             dag: DAG::new(),
             accepted_frontier: HashSet::new(),
             bootstrap_peers,
+            old_frontier: HashSet::new(),
             bootstrapped: false,
         }
     }
@@ -415,11 +418,17 @@ impl Handler<Bootstrap> for Sleet {
             peers: self.bootstrap_peers.clone(),
             request: Request::GetAcceptedFrontier,
         };
+        info!("{} bootstrapping...", "[sleet]".cyan());
         self.sender
             .send(query)
             .into_actor(self)
             .map(|res, act, ctx| match res {
                 Ok(ClientResponse::Fanout(frontiers)) => {
+                    info!(
+                        "{} received {} frontier responses for bootstrap",
+                        "[sleet]".cyan(),
+                        frontiers.len()
+                    );
                     for f in frontiers.iter() {
                         match f {
                             Response::AcceptedFrontier(AcceptedFrontier { frontier }) => {
@@ -430,14 +439,23 @@ impl Handler<Bootstrap> for Sleet {
                         }
                     }
 
-                    // Insert the frontier into the in-memory DAG
-                    for tx in act.accepted_frontier.iter() {
-                        act.dag.insert_vx(tx.clone(), vec![])?;
-                        act.dag.set_chit(tx.clone(), 1)?;
+                    let diff: HashSet<_> =
+                        act.accepted_frontier.difference(&act.old_frontier).cloned().collect();
+                    if diff.len() > 0 {
+                        act.old_frontier = act.accepted_frontier.clone();
+                        // Insert the frontier into the in-memory DAG
+                        for tx in diff.iter() {
+                            act.dag.insert_vx(tx.clone(), vec![])?;
+                            act.dag.set_chit(tx.clone(), 1)?;
+                        }
+                        // Fetch ancestors from the bootstrap nodes
+                        ctx.notify(FetchWithAncestry { txs: diff });
+                        Ok(())
+                    } else {
+                        info!("{} bootstrapped", "[sleet]".cyan());
+                        act.bootstrapped = true;
+                        Ok(())
                     }
-                    // Fetch ancestors from the bootstrap nodes
-                    ctx.notify(FetchWithAncestry { txs: act.accepted_frontier.clone() });
-                    Ok(())
                 }
                 Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
                 Err(e) => Err(Error::Actix(e)),
@@ -470,30 +488,32 @@ impl Handler<FetchWithAncestry> for Sleet {
             txs.extend(initial_txs.iter());
             while let Some(tx_hash) = txs.pop_front() {
                 // Fetch tx from peers
-                for (id, ip) in peers.iter() {
-                    match sender
-                        .send(ClientRequest::Oneshot {
-                            id: *id,
-                            ip: *ip,
-                            request: Request::FetchTx(FetchTx { tx_hash }),
-                        })
-                        .await
-                    {
-                        Ok(ClientResponse::Oneshot(Some(Response::FetchedTx(FetchedTx {
-                            tx: Some(tx),
-                        })))) => {
-                            if !tx_storage::is_known_tx(&db, tx_hash).unwrap_or(false) {
+                if !tx_storage::is_known_tx(&db, tx_hash).unwrap_or(false) {
+                    for (id, ip) in peers.iter() {
+                        match sender
+                            .send(ClientRequest::Oneshot {
+                                id: *id,
+                                ip: *ip,
+                                request: Request::FetchTx(FetchTx { tx_hash }),
+                            })
+                            .await
+                        {
+                            Ok(ClientResponse::Oneshot(Some(Response::FetchedTx(FetchedTx {
+                                tx: Some(tx),
+                            })))) => {
                                 // Insert into DB
                                 let _ = tx_storage::insert_tx(&db, tx.clone());
-                                // Push parents to `txs` to the queue
+                                // Push parents of `tx` to the queue
                                 txs.extend(tx.parents.iter());
+                                break;
                             }
-                            break;
+                            _ => (), // TODO
                         }
-                        _ => (), // TODO
                     }
                 }
             }
+            // Repeat bootstrap procedure
+            act.do_send(Bootstrap);
         })
     }
 }

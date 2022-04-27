@@ -178,7 +178,7 @@ impl Handler<RouterRequest> for Router {
                     Response::AcceptedFrontier(frontier)
                 }
                 Request::FetchTx(fetch_tx) => {
-                    debug!("routing QueryTx -> Sleet");
+                    debug!("routing FetchTx -> Sleet");
                     let fetched_tx = sleet.send(fetch_tx).await.unwrap();
                     Response::FetchedTx(fetched_tx)
                 }
