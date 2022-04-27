@@ -89,8 +89,8 @@ impl Sleet {
             committee: HashMap::default(),
             known_txs: sled::Config::new().temporary(true).open().unwrap(),
             conflict_graph: ConflictGraph::new(CellIds::empty()),
-            live_cells: BoundedHashMap::new(1000),
-            accepted_txs: BoundedHashSet::new(1000),
+            live_cells: BoundedHashMap::new(3000),
+            accepted_txs: BoundedHashSet::new(3000),
             pending_queries: vec![],
             dag: DAG::new(),
             accepted_frontier: HashSet::new(),
@@ -119,7 +119,12 @@ impl Sleet {
             let _ = tx_storage::insert_tx(&self.known_txs, sleet_tx.clone());
             Ok(true)
         } else {
-            info!("[{}] received already known transaction {}", "sleet".cyan(), sleet_tx.clone());
+            info!(
+                "[{}] received already known transaction {}: {}",
+                "sleet".cyan(),
+                hex::encode(sleet_tx.hash()),
+                sleet_tx.clone()
+            );
             Ok(false)
         }
     }
@@ -413,16 +418,16 @@ impl Handler<LiveCommittee> for Sleet {
         );
         let mut cell_ids_set: CellIds = CellIds::empty();
         for (cell_hash, cell) in msg.live_cells.clone() {
-            info!("{}", cell.clone());
+            info!("{}", cell);
             let cell_ids = CellIds::from_outputs(cell_hash.clone(), cell.outputs()).unwrap();
             cell_ids_set = cell_ids_set.union(&cell_ids).cloned().collect();
+
+            if !self.live_cells.contains_key(&cell_hash) {
+                self.live_cells.insert(cell_hash, cell);
+            }
         }
         info!("");
-        self.live_cells = BoundedHashMap::new(1000);
-        for (k, v) in msg.live_cells.iter() {
-            self.live_cells.insert(k.clone(), v.clone());
-        }
-        self.conflict_graph = ConflictGraph::new(cell_ids_set);
+        self.conflict_graph.append(cell_ids_set);
 
         let mut s: String = format!("<<{}>>\n", "sleet".cyan());
         for (id, (ip, w)) in msg.validators.clone() {
@@ -600,7 +605,13 @@ impl Handler<GenerateTx> for Sleet {
     fn handle(&mut self, msg: GenerateTx, ctx: &mut Context<Self>) -> Self::Result {
         let parents = self.select_parents(NPARENTS).unwrap();
         let sleet_tx = Tx::new(parents, msg.cell.clone());
-        info!("[{}] Generating new transaction\n{}", "sleet".cyan(), sleet_tx.clone());
+        let tx_hash = sleet_tx.hash();
+        info!(
+            "[{}] Generating new transaction: {}\n{}",
+            "sleet".cyan(),
+            hex::encode(tx_hash),
+            sleet_tx
+        );
 
         match self.on_receive_tx(sleet_tx.clone()) {
             Ok(true) => {
@@ -611,8 +622,9 @@ impl Handler<GenerateTx> for Sleet {
 
             Err(e) => {
                 error!(
-                    "[{}] Couldn't insert new transaction\n{}:\n {}",
+                    "GenerateTx: [{}] Couldn't insert new transaction: {}\n{}:\n {}",
                     "sleet".cyan(),
+                    hex::encode(tx_hash),
                     sleet_tx,
                     e
                 );
@@ -707,7 +719,13 @@ impl Handler<QueryTx> for Sleet {
                 })
             }
             Err(e) => {
-                error!("[{}] Couldn't insert new transaction\n{}:\n {}", "sleet".cyan(), msg.tx, e);
+                error!(
+                    "QueryTx: [{}] Couldn't insert new transaction:{} \n{}:\n {}",
+                    "sleet".cyan(),
+                    hex::encode(tx_hash),
+                    msg.tx,
+                    e
+                );
                 Box::pin(async move { QueryTxAck { id, tx_hash, outcome: false } })
             }
         }
@@ -803,8 +821,9 @@ impl Handler<AskForAncestors> for Sleet {
                             }
                             Err(e) => {
                                 error!(
-                                    "[{}] Couldn't insert new transaction\n{}:\n {}",
+                                    "AskForAncestors: [{}] Couldn't insert new transaction: {}\n{}:\n {}",
                                     "sleet".cyan(),
+                                    hex::encode(ancestor.hash()),
                                     ancestor,
                                     e
                                 );

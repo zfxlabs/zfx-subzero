@@ -242,7 +242,7 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
         let mut visited = HashSet::new();
         let _ = visited.insert(v.clone());
 
-        let mut parents = self.g.get(v).unwrap().clone();
+        let mut parents = self.g.get(v).unwrap_or(&vec![]).clone();
         loop {
             let mut grandparents = vec![];
             for a in parents.iter() {
@@ -307,17 +307,22 @@ where
                 let _ = v.insert(true);
             }
         }
-        let adj = self.dag.get(&next).unwrap();
-        for edge in adj.iter() {
-            match self.visited.entry(edge) {
-                Entry::Occupied(_) => (),
-                Entry::Vacant(v) => {
-                    self.stack.push(edge);
-                    let _ = v.insert(true);
+
+        match self.dag.get(&next) {
+            Some(adj) => {
+                for edge in adj.iter() {
+                    match self.visited.entry(edge) {
+                        Entry::Occupied(_) => (),
+                        Entry::Vacant(v) => {
+                            self.stack.push(edge);
+                            let _ = v.insert(true);
+                        }
+                    }
                 }
+                Some(next)
             }
+            None => None,
         }
-        Some(next)
     }
 }
 
@@ -431,6 +436,19 @@ mod test {
         let res: Vec<_> = dag.dfs(&11).cloned().collect();
 
         assert_eq!(res, [11, 1, 0, 10, 9, 8, 7, 6, 5, 4, 3]);
+    }
+
+    #[actix_rt::test]
+    async fn dfs_with_non_existing_vx() {
+        #[rustfmt::skip]
+            let dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]),
+            (3, &[1])
+        ]);
+        let res: Vec<_> = dag.dfs(&5).cloned().collect();
+
+        assert!(res.is_empty());
     }
 
     #[actix_rt::test]
@@ -597,5 +615,13 @@ mod test {
         assert!(anc[2..].contains(&3));
         assert!(anc[2..].contains(&4));
         assert!(anc[2..].contains(&2));
+    }
+
+    #[actix_rt::test]
+    async fn test_get_ancestors_with_empty_dag() {
+        let dag = make_dag(&[]);
+
+        let anc = dag.get_ancestors(&1);
+        assert!(anc.is_empty());
     }
 }

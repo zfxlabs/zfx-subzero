@@ -25,6 +25,7 @@ pub async fn run_hail_integration_test() -> Result<()> {
     Result::Ok(())
 }
 
+/// Make several transfers and verify that a block is generated with a valid set of accepted cells
 async fn test_successful_block_generation(nodes: &TestNodes) -> Result<u64> {
     info!("Run successful hail test: Transfer balance n-times between nodes and validate blocks");
 

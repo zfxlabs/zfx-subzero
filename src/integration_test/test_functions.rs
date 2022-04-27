@@ -56,7 +56,14 @@ pub async fn spend_cell(
     cell: Cell,
     amount: u64,
 ) -> Result<Option<CellHash>> {
-    debug!("Sending a cell {}, from = {}, to: {}", cell, from.address_as_str, to.address_as_str);
+    let cell_hash = cell.hash();
+    debug!(
+        "Sending a cell {}:{}, from = {}, to: {}",
+        hex::encode(cell_hash),
+        cell,
+        from.address_as_str,
+        to.address_as_str
+    );
 
     if let Ok(Ok(Some(Response::GenerateTxAck(ack)))) = timeout(
         Duration::from_secs(5),
@@ -66,6 +73,7 @@ pub async fn spend_cell(
     {
         Ok(ack.cell_hash)
     } else {
+        debug!("No confirmation for the cell {} has been received", hex::encode(cell_hash));
         Ok(None)
     }
 }
@@ -104,9 +112,11 @@ pub async fn spend_from(
     {
         let spent_cell_hash = spend_cell_from_hash(from, to, *cell_hash, amount).await?.unwrap();
         debug!(
-            "Cell has been sent {:?}, from = {}",
+            "Cell has been sent {:?} with amount {}, from = {}. Returned new cell: {:?}\n",
+            hex::encode(cell_hash),
+            amount,
+            from.address_as_str,
             hex::encode(spent_cell_hash),
-            from.address_as_str
         );
 
         let new_capacity = capacity - total_to_spend;
@@ -161,10 +171,12 @@ pub async fn spend_many_from_cell_hashes(
         let updated_cells_hashes =
             spend_from(from, to, amount, cells_hashes.clone()).await?.clone();
         // extract the recently spent cell
-        let spent_cell_hash =
-            updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c)).unwrap().0;
-        cells_hashes = updated_cells_hashes;
-        accepted_cell_hashes.push(spent_cell_hash);
+        if let Some((spent_cell_hash, _)) =
+            updated_cells_hashes.iter().find(|c| !cells_hashes.contains(c))
+        {
+            cells_hashes = updated_cells_hashes.clone();
+            accepted_cell_hashes.push(spent_cell_hash.clone());
+        }
     }
 
     Ok((accepted_cell_hashes, cells_hashes))
@@ -355,6 +367,7 @@ pub async fn get_cell_hashes(node_address: SocketAddr) -> Result<Vec<CellHash>> 
         cell_hashes_mut.shuffle(&mut thread_rng()); // to avoid getting the same tx hash
         Result::Ok(cell_hashes_mut)
     } else {
+        debug!("No cell hashes returned from = {}", node_address);
         Result::Ok(vec![])
     }
 }

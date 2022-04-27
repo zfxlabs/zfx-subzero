@@ -26,16 +26,27 @@ use crate::integration_test::test_model::{IntegrationTestContext, TestNode, Test
 use crate::integration_test::test_node_chaos_manager::TestNodeChaosManager;
 use crate::Result;
 
-const ITERATION_LIMIT: u64 = 40;
+pub async fn run_all_stress_tests() -> Result<()> {
+    run_long_stress_test_with_valid_transfers().await?;
+    sleep(Duration::from_secs(5));
+    run_stress_test_with_valid_transfers().await?;
+    sleep(Duration::from_secs(5));
+    run_node_communication_stress_test().await?;
+    sleep(Duration::from_secs(5));
+    run_stress_test_with_failed_transfers().await?;
+
+    Result::Ok(())
+}
 
 /// Run stress test by transferring valid cells among 3 nodes in parallel.
 ///
 /// Verifies that all cells were transferred and stored in 'sleet'.
 /// Verifies transfer and remaining balance in all nodes.
 /// Verifies that blocks contains accepted cells in all 3 nodes are same and unique.
-pub async fn run_stress_test() -> Result<()> {
+pub async fn run_stress_test_with_valid_transfers() -> Result<()> {
     info!("Run stress test: Transfer balance n-times from all 3 nodes in parallel");
-    let transfer_delay = Duration::from_millis(10);
+    let transfer_delay = Duration::from_millis(50);
+    let max_iterations = 40;
 
     let mut nodes = TestNodes::new();
     nodes.start_minimal_and_wait().await?;
@@ -43,9 +54,9 @@ pub async fn run_stress_test() -> Result<()> {
     let initial_cells_size = get_total_initial_cell_hashes(&mut nodes).await?;
 
     let mut results_futures = vec![];
-    results_futures.push(send(0, 1, transfer_delay));
-    results_futures.push(send(1, 2, transfer_delay));
-    results_futures.push(send(2, 0, transfer_delay));
+    results_futures.push(send(0, 1, transfer_delay, max_iterations));
+    results_futures.push(send(1, 2, transfer_delay, max_iterations));
+    results_futures.push(send(2, 0, transfer_delay, max_iterations));
 
     let has_error = wait_for_future_response(results_futures).await;
 
@@ -57,11 +68,36 @@ pub async fn run_stress_test() -> Result<()> {
 
     let cell_hashes = validate_cell_hashes(&mut nodes, |addr| get_cell_hashes(addr)).await?;
     assert_eq!(
-        (nodes.get_running_nodes().len() * ITERATION_LIMIT as usize + initial_cells_size),
+        (nodes.get_running_nodes().len() * max_iterations as usize + initial_cells_size),
         cell_hashes.len()
     );
 
     validate_cell_hashes(&mut nodes, |addr| get_accepted_cell_hashes(addr)).await?;
+
+    assert!(!has_error, "Stress test failed as one of the thread got an error");
+
+    nodes.kill_all();
+
+    Result::Ok(())
+}
+
+/// Run a long stress test by transferring valid cells among 3 nodes in parallel.
+///
+/// Verifies that all cells were transferred and stored in 'sleet'.
+pub async fn run_long_stress_test_with_valid_transfers() -> Result<()> {
+    info!("Run long stress test: Transfer balance n-times from all 3 nodes in parallel");
+    let transfer_delay = Duration::from_millis(50);
+    let max_iterations = 700;
+
+    let mut nodes = TestNodes::new();
+    nodes.start_minimal_and_wait().await?;
+
+    let mut results_futures = vec![];
+    results_futures.push(send(0, 1, transfer_delay, max_iterations));
+    results_futures.push(send(1, 2, transfer_delay, max_iterations));
+    results_futures.push(send(2, 0, transfer_delay, max_iterations));
+
+    let has_error = wait_for_future_response(results_futures).await;
 
     assert!(!has_error, "Stress test failed as one of the thread got an error");
 
@@ -85,14 +121,16 @@ pub async fn run_node_communication_stress_test() -> Result<()> {
 
     for node in &nodes.get_running_nodes() {
         let status = get_node_status(node.address).await?.unwrap();
-        assert_eq!(4, status.peers.len());
-        assert_eq!(4, status.validators.len());
+        assert!(status.peers.len() >= 3);
+        assert!(status.validators.len() >= 3);
         for validator in status.validators {
             // The weight will depend on stake of validators and currently is hardcoded to 2000 each
             // For total of 5 nodes with same stake, each validator should have 20% weight
             assert_eq!(0.2, validator.2);
         }
     }
+
+    nodes.kill_all();
 
     Result::Ok(())
 }
@@ -111,14 +149,14 @@ pub async fn run_stress_test_with_chaos() -> Result<()> {
         Arc::new(Mutex::new(nodes)),
         Duration::from_secs(420),
         Range { start: 60, end: 90 },
-        Range { start: 4, end: 5 },
+        Range { start: 3, end: 4 },
     );
     manager.run_chaos();
 
     sleep(Duration::from_secs(20));
 
     let mut results_futures = vec![];
-    results_futures.push(send(0, 1, Duration::from_secs(10)));
+    results_futures.push(send(0, 1, Duration::from_secs(10), 100));
 
     let has_error = wait_for_future_response(results_futures).await;
 
@@ -142,7 +180,7 @@ pub async fn run_stress_test_with_failed_transfers() -> Result<()> {
     // send traffic with valid and invalid transfers so they can intersect with each other
     results_futures.push(send_from_accepted_cells(0, 1, Duration::from_millis(100)));
     results_futures.push(send_from_invalid_cells(0, 1, Duration::from_millis(150)));
-    results_futures.push(send(0, 1, Duration::from_millis(300)));
+    results_futures.push(send(0, 1, Duration::from_millis(300), 40));
 
     let has_error = wait_for_future_response(results_futures).await;
 
@@ -205,6 +243,7 @@ fn send(
     from_node_id: usize,
     to_node_id: usize,
     transfer_delay: Duration,
+    max_iterations: u64,
 ) -> JoinHandle<Result<()>> {
     const AMOUNT: Capacity = 1 as Capacity;
     const FULL_AMOUNT: u64 = AMOUNT + FEE;
@@ -227,9 +266,8 @@ fn send(
             .collect::<Vec<(u64, u64)>>();
         let mut iterations: u64 = residue_per_max_iterations.iter().map(|(i, _)| i).sum::<u64>();
 
-        // FIXME: temporal solution until the issue with DAG in sleet is fixed
-        if iterations > ITERATION_LIMIT {
-            iterations = ITERATION_LIMIT
+        if iterations > max_iterations {
+            iterations = max_iterations
         }
 
         let expected_balance = total_spendable_amount - iterations * FULL_AMOUNT;
@@ -237,11 +275,9 @@ fn send(
         // start sending cells
         let transfer_result =
             spend_many(from, to, AMOUNT, iterations as usize, transfer_delay).await?;
-        sleep(Duration::from_secs(2));
+        sleep(Duration::from_secs(5));
 
         // validate the remaining balance and transferred cells
-        let cell_hashes =
-            get_cell_hashes(test_nodes.get_node(from_node_id).unwrap().address).await.unwrap();
         let mut transferred_balance = 0;
         let mut remaining_balance = 0;
         for cell_hash in transfer_result.0 {
@@ -249,8 +285,6 @@ fn send(
             if let Some(cell) = found_cell {
                 transferred_balance = transferred_balance
                     + cell.outputs_of_owner(&to.public_key).iter().map(|o| o.capacity).sum::<u64>();
-
-                assert!(cell_hashes.contains(&cell_hash)); // verify that all spent cells are in the node
             } else {
                 error!("Failed to find cell for hash {}", hex::encode(cell_hash));
             }

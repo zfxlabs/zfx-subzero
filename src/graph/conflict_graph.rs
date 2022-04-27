@@ -54,6 +54,15 @@ impl ConflictGraph {
         }
     }
 
+    pub fn append(&mut self, cell_ids: CellIds) {
+        for g in cell_ids.iter() {
+            if !self.vertices.contains_key(&g) {
+                self.vertices
+                    .insert(g.clone(), VertexData { spenders: HashSet::new(), status: Accepted });
+            }
+        }
+    }
+
     pub fn insert_cell(&mut self, cell: Cell) -> Result<()> {
         let cell_hash = cell.hash();
         match self.cells.insert(cell_hash, cell.clone()) {

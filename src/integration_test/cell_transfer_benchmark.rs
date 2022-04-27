@@ -13,6 +13,11 @@ use crate::Result;
 
 const TRANSFER_DELAY: u64 = 10;
 
+/// Run a performance test involving parallel cell transfers among 3 nodes.
+/// Records time of each cell transfer and verifies min, max and avg time.
+///
+/// NOTE: the performance of cell transfers is run on local machine which varies in hardware
+/// thus the timings can be different. This test is intended to capture a large performance degradation.
 pub async fn run_cell_transfer_benchmark_test() -> Result<()> {
     info!("Run benchmark test for transfer cells: Transfer balance n-times from all 3 nodes in parallel");
 
@@ -52,7 +57,7 @@ pub async fn run_cell_transfer_benchmark() -> Result<()> {
 
             info!("Min = {:.2?}, Max = {:.2?}, Avg = {:.2?}", min, max, avg);
             assert!(
-                avg.as_millis() < 50,
+                avg.as_millis() < 100,
                 "Average cell processing time took too long: {:.2?}",
                 avg
             );

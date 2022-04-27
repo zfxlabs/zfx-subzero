@@ -96,6 +96,7 @@ mod test {
 
         let coinbase_op = CoinbaseOperation::new(vec![
             (pkh1.clone(), 700),
+            (pkh2.clone(), 800),
             (pkh1.clone(), 1000),
             (pkh1.clone(), 300),
         ]);
@@ -104,7 +105,14 @@ mod test {
         let transfer_op = TransferOperation::new(coinbase_tx, pkh2.clone(), pkh1.clone(), 1800);
         let transfer_tx = transfer_op.transfer(&kp1).unwrap();
 
+        // expected 3 inputs because the 1800 amount is taken from 3 outputs of `pkh1`
         assert_eq!(transfer_tx.inputs().len(), 3);
+        // As the outputs of `coinbase_tx` are sorted before spent, then inputs must have
+        // only indices of `pkh1` outputs
+        assert!(transfer_tx.inputs().iter().any(|i| i.output_index.index == 0));
+        assert!(transfer_tx.inputs().iter().any(|i| i.output_index.index == 1));
+        assert!(transfer_tx.inputs().iter().any(|i| i.output_index.index == 3));
+
         assert_eq!(transfer_tx.outputs()[0].capacity, 200 - FEE); // total spent - fee
         assert_eq!(transfer_tx.outputs()[1].capacity, 1800); // remaining spendable amount
     }
