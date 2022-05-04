@@ -5,6 +5,7 @@ extern crate actix_derive;
 extern crate colored;
 
 pub mod alpha;
+pub mod benchmark_test_util;
 pub mod cell;
 pub mod channel;
 pub mod client;
