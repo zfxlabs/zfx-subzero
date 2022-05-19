@@ -12,7 +12,8 @@ use crate::{ice, ice::Ice};
 
 use crate::storage::block;
 
-use super::block::{build_genesis, Block};
+use super::block::Block;
+use super::genesis::build_genesis_block;
 use super::state::State;
 use super::types::{BlockHash, VrfOutput};
 use super::Result;
@@ -72,7 +73,7 @@ impl Actor for Alpha {
     fn started(&mut self, _ctx: &mut Context<Self>) {
         // Check for the existence of `genesis` and write to the db if it is not present.
         if !block::exists_genesis(&self.tree) {
-            let genesis = build_genesis().unwrap();
+            let genesis = build_genesis_block().unwrap();
             let hash = block::accept_genesis(&self.tree, genesis.clone()).unwrap();
             info!("accepted genesis => {:?}", hex::encode(hash));
             let genesis_state = self.state.apply(genesis).unwrap();
@@ -146,7 +147,7 @@ impl Handler<QueryLastAccepted> for Alpha {
                                     ctx.notify(ReceiveLastAccepted {
                                         last_block_hash: last_accepted.clone(),
                                         last_block: last_block.clone(),
-                                        last_vrf_output: last_block.vrf_out.clone(),
+                                        last_vrf_output: last_block.vrf_output(),
                                         last_accepted: last_accepted.clone(),
                                     })
                                 }
