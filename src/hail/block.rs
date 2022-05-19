@@ -27,11 +27,11 @@ impl HailBlock {
 
     /// Returns the height of the contained block.
     pub fn height(&self) -> BlockHeight {
-        self.block.height.clone()
+        self.block.height()
     }
 
     pub fn vrf_output(&self) -> VrfOutput {
-        self.block.vrf_out.clone()
+        self.block.vrf_output()
     }
 
     /// Returns a vertex formed from the height and the hash of the block.

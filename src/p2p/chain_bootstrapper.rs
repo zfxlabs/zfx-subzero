@@ -38,8 +38,27 @@ impl ChainBootstrapper {
 impl Actor for ChainBootstrapper {
     type Context = Context<Self>;
 
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        info!("bootstrapping {:?}", self.chain_id);
+        ctx.notify(StartBootstrap {})
+    }
+
     fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("stopped");
+        debug!("stopped");
+    }
+}
+
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct StartBootstrap;
+
+impl Handler<StartBootstrap> for ChainBootstrapper {
+    type Result = ();
+
+    fn handle(&mut self, _msg: StartBootstrap, ctx: &mut Context<Self>) -> Self::Result {
+        // 1. read or persist genesis
+        // 2. read all stored entries up to the last accepted hash
+        // 3. obtain a quorum on the last accepted hash
     }
 }
 

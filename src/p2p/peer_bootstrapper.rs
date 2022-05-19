@@ -9,18 +9,35 @@ use super::response_handler::ResponseHandler;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-const MAX_PEER_LIST: usize = 124;
+/// The limit of a peer vector in terms of length received from another peer.
+const RECEIVED_PEER_VEC_LIM: usize = 124;
 
+/// The `PeerBootstrapper` receives `Execute` messages periodically and multicasts `Version`
+/// messages to neighboring peers. Peers share known `metadata` with one another via the
+/// handshake, which also serves to identify nodes according to their `id`s.
+///
+/// Once a vector of `PeerMetadata` is received the `PeerBootstrapper` forwards the peers
+/// to a recipient for further processing.
 pub struct PeerBootstrapper {
-    upgrader: Arc<dyn Upgrader>,
+    /// Metadata pertaining to this peer.
     local_peer_meta: PeerMetadata,
+    /// An initial trusted set of remote peers.
     remote_peer_metas: Vec<PeerMetadata>,
-    peer_group_recipient: Recipient<ReceivePeerGroup>,
-    peer_group_size: usize,
-    peer_group_limit: usize,
-    current_peer_group: Vec<PeerMetadata>,
+    /// A connection upgrader (e.g. upgrade plain TCP / upgrade TLS).
+    upgrader: Arc<dyn Upgrader>,
+    /// The recipient `Actor` of `Vec<Peer>`s.
+    peer_vec_recipient: Recipient<ReceivePeerVec>,
+    /// The maximum length of a peer vector.
+    peer_vec_lim: usize,
+    /// The maximum number of peer vectors to share.
+    peer_vec_share_lim: usize,
+    /// The current peer vector.
+    current_peer_vec: Vec<PeerMetadata>,
+    /// The epoch duration.
     delta: Duration,
-    sent_peer_groups: Arc<AtomicUsize>,
+    /// The number of peer vectors sent in total.
+    sent_peer_vecs: Arc<AtomicUsize>,
+    /// Whether the `PeerBootstrapper` is bootstrapped.
     bootstrapped: Arc<AtomicBool>,
 }
 
@@ -29,21 +46,21 @@ impl PeerBootstrapper {
         upgrader: Arc<dyn Upgrader>,
         local_peer_meta: PeerMetadata,
         remote_peer_metas: Vec<PeerMetadata>,
-        peer_group_recipient: Recipient<ReceivePeerGroup>,
-        peer_group_size: usize,
-        peer_group_limit: usize,
+        peer_vec_recipient: Recipient<ReceivePeerVec>,
+        peer_vec_lim: usize,
+        peer_vec_share_lim: usize,
         delta: Duration,
     ) -> Self {
         PeerBootstrapper {
             upgrader,
             local_peer_meta,
             remote_peer_metas,
-            peer_group_recipient,
-            peer_group_size,
-            peer_group_limit,
-            current_peer_group: vec![],
+            peer_vec_recipient,
+            peer_vec_lim,
+            peer_vec_share_lim,
+            current_peer_vec: vec![],
             delta,
-            sent_peer_groups: Arc::new(AtomicUsize::new(0)),
+            sent_peer_vecs: Arc::new(AtomicUsize::new(0)),
             bootstrapped: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -61,7 +78,8 @@ impl Handler<Execute> for PeerBootstrapper {
     type Result = ResponseActFuture<Self, bool>;
 
     fn handle(&mut self, msg: Execute, ctx: &mut Context<Self>) -> Self::Result {
-        // The peer handler uses this actor and sends `ReceivePeer` to it once a peer has been handled.
+        // The peer handler uses this actor and sends `ReceivePeer` to it once a peer has
+        // been handled.
         let self_recipient = ctx.address().recipient().clone();
         let peer_handler = PeerHandler::new(self_recipient);
         let sender_address = Sender::new(self.upgrader.clone(), peer_handler).start();
@@ -85,8 +103,8 @@ pub struct ReceivePeer {
 
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "()")]
-pub struct ReceivePeerGroup {
-    pub group: Vec<PeerMetadata>,
+pub struct ReceivePeerVec {
+    pub v: Vec<PeerMetadata>,
 }
 
 impl Handler<ReceivePeer> for PeerBootstrapper {
@@ -94,25 +112,25 @@ impl Handler<ReceivePeer> for PeerBootstrapper {
 
     fn handle(&mut self, msg: ReceivePeer, ctx: &mut Context<Self>) -> Self::Result {
         // TODO: check the peer metadata more thoroughly
-        info!("current_peer_group.len() = {}", self.current_peer_group.len());
-        if self.current_peer_group.len() >= self.peer_group_size {
-            let group = self.current_peer_group.clone();
-            self.current_peer_group = vec![];
-            let peer_group_limit = self.peer_group_limit.clone();
-            let peer_group_recipient = self.peer_group_recipient.clone();
-            let sent_peer_groups = self.sent_peer_groups.clone();
+        info!("current_peer_vec.len() = {}", self.current_peer_vec.len());
+        if self.current_peer_vec.len() >= self.peer_vec_lim {
+            let v = self.current_peer_vec.clone();
+            self.current_peer_vec = vec![];
+            let peer_vec_recipient = self.peer_vec_recipient.clone();
+            let peer_vec_lim = self.peer_vec_lim.clone();
+            let sent_peer_vecs = self.sent_peer_vecs.clone();
             let bootstrapped = self.bootstrapped.clone();
             Box::pin(async move {
-                peer_group_recipient.send(ReceivePeerGroup { group }).await;
-                let n_sent_peer_groups = sent_peer_groups.load(Ordering::Relaxed);
-                sent_peer_groups.store(n_sent_peer_groups + 1, Ordering::Relaxed);
-                if n_sent_peer_groups + 1 >= peer_group_limit {
+                peer_vec_recipient.send(ReceivePeerVec { v }).await;
+                let n_sent_peer_vecs = sent_peer_vecs.load(Ordering::Relaxed);
+                sent_peer_vecs.store(n_sent_peer_vecs + 1, Ordering::Relaxed);
+                if n_sent_peer_vecs + 1 >= peer_vec_lim {
                     info!("bootstrapped");
                     bootstrapped.store(true, Ordering::Relaxed);
                 }
             })
         } else {
-            self.current_peer_group.push(msg.peer_meta);
+            self.current_peer_vec.push(msg.peer_meta);
             Box::pin(async {})
         }
     }
@@ -129,13 +147,16 @@ impl PeerHandler {
     }
 }
 
+// A `VersionAck` is reponded when a `Version` request is made to a peer. The `PeerHandler`
+// sends the peers response to the `PeerBootstrapper` such that the contained metadata may
+// be aggregated.
 impl ResponseHandler for PeerHandler {
     fn handle_response(&self, response: Response) -> Pin<Box<dyn Future<Output = Result<()>>>> {
         let recipient = self.recipient.clone();
         match response {
             Response::VersionAck(version_ack) => Box::pin(async move {
                 if version_ack.version == version::CURRENT_VERSION {
-                    if version_ack.peer_list.len() > MAX_PEER_LIST {
+                    if version_ack.peer_list.len() > RECEIVED_PEER_VEC_LIM {
                         Err(Error::PeerListOverflow)
                     } else {
                         recipient

@@ -1,7 +1,7 @@
 use super::prelude::*;
 
 use super::chain_bootstrapper::{ChainBootstrapper, ReceiveBootstrapped};
-use super::peer_bootstrapper::ReceivePeerGroup;
+use super::peer_bootstrapper::ReceivePeerVec;
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 pub struct NetworkBootstrapper {
     /// The chain ids of the chains this network is subscribed to.
     chains: HashSet<Id>,
-    /// Map of chain id to bootstrap peer groups which can be used to bootstrap a chain.
+    /// Map of chain id to bootstrap peers which can be used to bootstrap a chain.
     chain_bootstrap_peers: HashMap<Id, HashSet<PeerMetadata>>,
     /// Map of chain id to chain bootstrappers.
     chain_bootstrappers: HashMap<Id, Addr<ChainBootstrapper>>,
@@ -70,15 +70,15 @@ impl Actor for NetworkBootstrapper {
 #[rtype(result = "()")]
 pub struct ReceiveBootstrapPeers {
     pub chain: Id,
-    pub group: Vec<PeerMetadata>,
+    pub peers: Vec<PeerMetadata>,
 }
 
-impl Handler<ReceivePeerGroup> for NetworkBootstrapper {
+impl Handler<ReceivePeerVec> for NetworkBootstrapper {
     type Result = ();
 
-    fn handle(&mut self, msg: ReceivePeerGroup, ctx: &mut Context<Self>) -> Self::Result {
-        info!("received peer group");
-        for peer_meta in msg.group.iter() {
+    fn handle(&mut self, msg: ReceivePeerVec, ctx: &mut Context<Self>) -> Self::Result {
+        info!("received peer vec");
+        for peer_meta in msg.v.iter() {
             let peer_chains = peer_meta.clone().chains.iter().cloned().collect::<HashSet<Id>>();
             let supported_chains: HashSet<Id> =
                 self.chains.intersection(&peer_chains).cloned().collect();

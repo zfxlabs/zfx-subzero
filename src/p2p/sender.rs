@@ -11,8 +11,8 @@ use crate::channel::Channel;
 
 use std::net::SocketAddr;
 
-/// A sender is responsible for handling requests from other actors to `Send` a message to a peer
-/// or `Multicast` a message to many peers.
+/// A sender is responsible for handling requests from other actors to `Send` a message to
+/// a peer or `Multicast` a message to many peers.
 pub struct Sender {
     /// Upgrades the connection to TLS or plain TCP according to configuration.
     upgrader: Arc<dyn Upgrader>,

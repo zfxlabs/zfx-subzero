@@ -59,7 +59,7 @@ impl ConflictMap {
     }
 
     pub fn insert_block(&mut self, block: Block) -> Result<ConflictSet> {
-        match self.inner.entry(block.height.clone()) {
+        match self.inner.entry(block.height()) {
             // The conflict set already contains a conflict.
             Entry::Occupied(mut o) => {
                 let cs = o.get_mut();

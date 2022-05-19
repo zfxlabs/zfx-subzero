@@ -12,6 +12,7 @@ pub mod graph;
 pub mod hail;
 pub mod ice;
 pub mod integration_test;
+pub mod p2p;
 pub mod porter;
 pub mod protocol;
 pub mod server;
@@ -57,6 +58,16 @@ pub enum Error {
 
     /// Peer IP and ID don't match or wrong certificate was presented
     UnexpectedPeerConnected,
+
+    // p2p errors
+    ActixMailboxError,
+    UnexpectedState,
+    UnexpectedPeer,
+    PeerListOverflow,
+    EmptyResponse,
+    EmptyConnection,
+    Timeout,
+    IncompatibleVersion,
 }
 
 impl std::error::Error for Error {}
@@ -64,6 +75,12 @@ impl std::error::Error for Error {}
 impl std::convert::From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Error::IO(error)
+    }
+}
+
+impl std::convert::From<actix::MailboxError> for Error {
+    fn from(error: actix::MailboxError) -> Self {
+        Error::ActixMailboxError
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::zfx_id::Id;
 
 use crate::alpha::block::Block;
+use crate::alpha::block_header::BlockHeader;
 use crate::alpha::types::{BlockHash, BlockHeight, VrfOutput, Weight};
 use crate::cell::Cell;
 use crate::client::{ClientRequest, ClientResponse};
@@ -364,7 +365,7 @@ impl Handler<QueryComplete> for Hail {
             // appropriately on subsequent blocks.
             let self_staking_capacity = self.committee.self_staking_capacity();
             let validators = self.committee.validators();
-            self.committee.next(self_staking_capacity, inner_block.vrf_out, validators);
+            self.committee.next(self_staking_capacity, inner_block.vrf_output(), validators);
             self.last_accepted_hash = Some(vx.block_hash.clone());
             self.height = vx.height;
 
@@ -538,7 +539,7 @@ impl Handler<GetBlockByHeight> for Hail {
     type Result = BlockAck;
 
     fn handle(&mut self, msg: GetBlockByHeight, _ctx: &mut Context<Self>) -> Self::Result {
-        let block = match self.live_blocks.iter().find(|e| e.1.height == msg.block_height) {
+        let block = match self.live_blocks.iter().find(|e| e.1.height() == msg.block_height) {
             Some(entry) => Some(entry.1.clone()),
             None => None,
         };
@@ -564,8 +565,8 @@ impl Handler<GenerateBlock> for Hail {
     type Result = GenerateBlockAck;
 
     fn handle(&mut self, msg: GenerateBlock, ctx: &mut Context<Self>) -> Self::Result {
-        info!("[{}] selecting parent at block height = {:?}", "hail".blue(), msg.block.height);
-        let parent = self.select_parent(msg.block.height).unwrap();
+        info!("[{}] selecting parent at block height = {:?}", "hail".blue(), msg.block.height());
+        let parent = self.select_parent(msg.block.height()).unwrap();
         let hail_block = HailBlock::new(Some(parent), msg.block.clone());
         info!("[{}] generating new block\n{}", "hail".blue(), hail_block.clone());
 
@@ -597,16 +598,13 @@ impl Handler<AcceptedCells> for Hail {
         info!("[{}] received {} accepted cells", "hail".cyan(), msg.cells.len());
 
         match self.committee.block_production_slot() {
-            Some(vrf_out) => {
+            Some(vrf_output) => {
                 if !self.committee.block_proposed() {
                     // If we are the block producer at height `h + 1` then generate a new block with
                     // the accepted cells.
-                    let block = Block::new(
-                        self.last_accepted_hash.unwrap(),
-                        self.height + 1,
-                        vrf_out,
-                        msg.cells.clone(),
-                    );
+                    let block_header =
+                        BlockHeader::new(self.height + 1, self.last_accepted_hash, vrf_output);
+                    let block = Block::new(block_header, msg.cells.clone());
                     ctx.notify(GenerateBlock { block });
                     self.committee.set_block_proposed(true);
                 }

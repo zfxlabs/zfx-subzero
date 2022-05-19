@@ -13,7 +13,7 @@ pub mod peer_bootstrapper;
 // network bootstrapper sorts peers by chain and sends accumulated bootstrap peers via the
 // a `chain_bootstrapper`.
 pub mod network_bootstrapper;
-// chain bootstrapper sends `ReceiveBootstrapQuorum` to `ice`
+// chain bootstrapper sends `ReceiveBootstrapQuorum` to `ice` (primary)
 pub mod chain_bootstrapper;
 
 // `ice` sends `LivePeers` to consensus
