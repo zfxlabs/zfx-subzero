@@ -1,15 +1,19 @@
 mod alpha;
 pub mod types;
 
+// Alpha protocol cell types
 pub mod coinbase;
 pub mod stake;
 pub mod transfer;
 
-pub mod block;
-
-pub mod state;
-
+// Alpha specific components
 mod initial_staker;
+
+// Alpha protocol blocks / state (TODO: maybe should be made generic)
+pub mod block;
+pub mod block_header;
+pub mod genesis;
+pub mod state;
 
 pub use alpha::*;
 
