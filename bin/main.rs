@@ -4,7 +4,7 @@ use tracing_subscriber;
 use clap::{value_t, values_t, App, Arg};
 
 use zfx_subzero::server::node;
-use zfx_subzero::zfx_id;
+use zfx_subzero::p2p::id;
 use zfx_subzero::Result;
 
 use std::str::FromStr;
@@ -88,7 +88,7 @@ fn main() -> Result<()> {
     };
 
     let node_id = match matches.value_of("node-id") {
-        Some(node_str) => Some(zfx_id::Id::from_str(node_str).unwrap()),
+        Some(node_str) => Some(id::Id::from_str(node_str).unwrap()),
         _ => None,
     };
     let sys = actix::System::new();

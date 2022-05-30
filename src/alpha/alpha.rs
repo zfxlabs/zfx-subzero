@@ -1,4 +1,4 @@
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 
 use crate::colored::Colorize;
 
@@ -6,7 +6,7 @@ use crate::client::{ClientRequest, ClientResponse};
 use crate::hail::block::HailBlock;
 use crate::hail::{self, Hail};
 use crate::protocol::{Request, Response};
-use crate::server::{InitRouter, Router, ValidatorSet};
+use crate::server::{InitRouter, Router}; //, ValidatorSet};
 use crate::sleet::{self, Sleet};
 use crate::{ice, ice::Ice};
 
@@ -97,7 +97,8 @@ impl Handler<InitRouter> for Alpha {
         let validators = self.get_validator_set();
         ctx.spawn(
             async move {
-                let _ = addr.send(ValidatorSet { validators }).await;
+		// TODO
+                // let _ = addr.send(ValidatorSet { validators }).await;
             }
             .into_actor(self),
         );
@@ -205,7 +206,8 @@ impl Handler<ReceiveLastAccepted> for Alpha {
             let initialize = async move {
                 // Update the router's knowledge of validators
                 if let Some(addr) = router {
-                    addr.send(ValidatorSet { validators }).await.unwrap();
+		    // TODO
+                    // addr.send(ValidatorSet { validators }).await.unwrap();
                 }
                 // Send `ice` the most up to date information concerning the peers which
                 // are validating the network, such that we may determine the peers
