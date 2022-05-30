@@ -5,18 +5,59 @@ use super::initial_staker::InitialStaker;
 use super::stake::StakeOperation;
 use super::Result;
 
-use crate::cell::Cell;
-use crate::zfx_id::Id;
+use crate::storage::cell::{Key, exists_genesis};
+use crate::cell::{Cell, CellIds};
+use crate::p2p::id::Id;
+use crate::graph::dependency_graph::DependencyGraph;
+
+use zerocopy::AsBytes;
 
 use std::convert::TryInto;
 use std::str::FromStr;
 
-/// Builds the genesis block for the primary network (alpha protocol).
-pub fn build_genesis_block() -> Result<Block> {
+/// Reads all existing cells or creates the genesis cells.
+pub fn read_or_create_cells(db: &sled::Db) -> Result<(Vec<CellIds>, Vec<Cell>)> {
+    if !exists_genesis(db) {
+	// Acquire the genesis cells defined by the `alpha` protocol
+	let cells = acquire_genesis_cells()?;
+	// Persist the cells since genesis does not exist
+	let mut batch = sled::Batch::default();
+	let mut dg = DependencyGraph::new();
+	for cell in cells.clone().iter() {
+	    // Insert the cell into the dependency graph
+	    dg.insert(cell.clone())?;
+	    // Store the cell
+	    let key = Key::new(cell.hash());
+	    let val = bincode::serialize(&cell)?;
+	    batch.insert(key.as_bytes(), val);
+	}
+	db.apply_batch(batch)?;
+	let sorted_cell_ids = dg.topological()?;
+	let sorted_cells = dg.topological_cells(cells)?;
+	Ok((sorted_cell_ids, sorted_cells))
+
+    } else {
+	// Read all existing cells into memory (FIXME)
+	let mut cells: Vec<Cell> = vec![];
+	let mut dg = DependencyGraph::new();
+	db.iter().for_each(|cell| {
+	    // FIXME: unwrap
+	    let (k, v) = cell.unwrap();
+	    let cell: Cell = bincode::deserialize(v.as_bytes()).unwrap();
+	    dg.insert(cell.clone()).unwrap();
+	    cells.push(cell);
+	});
+	let sorted_cell_ids = dg.topological()?;
+	let sorted_cells = dg.topological_cells(cells)?;
+	Ok((sorted_cell_ids, sorted_cells))
+    }
+}
+
+pub fn acquire_genesis_cells() -> Result<Vec<Cell>> {
     let initial_stakers = initial_stakers();
 
     // Aggregate the allocations into one coinbase output so that the conflict graph has
-    // one genesis vertex
+    // one genesis vertex.
     let mut allocations = vec![];
     for staker in initial_stakers.iter() {
         let pkh = staker.public_key_hash()?;
@@ -25,7 +66,8 @@ pub fn build_genesis_block() -> Result<Block> {
     let allocations_op = CoinbaseOperation::new(allocations);
     let allocations_tx: Cell = allocations_op.try_into()?;
 
-    // Construct the genesis block
+    // Create a series of cells for the networks initial staker set. (StakeOperation to
+    // be interpreted by the primary protocol.
     let mut cells = vec![];
     for staker in initial_stakers.iter() {
         let pkh = staker.public_key_hash()?;
@@ -39,6 +81,13 @@ pub fn build_genesis_block() -> Result<Block> {
         cells.push(stake_tx);
     }
     cells.push(allocations_tx);
+
+    Ok(cells)
+}
+
+/// Builds the genesis block for the primary network (alpha protocol).
+pub fn build_genesis_block() -> Result<Block> {
+    let cells = acquire_genesis_cells()?;
 
     // TODO: Generate a merkle root from the transactions (..)
 
