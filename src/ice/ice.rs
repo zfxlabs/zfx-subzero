@@ -1,11 +1,11 @@
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 
 use crate::alpha::{self, Alpha};
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::protocol::{Request, Response};
 use crate::util;
-use crate::view::{self, View};
+//use crate::view::{self, View};
 use crate::{Error, Result};
 
 use super::choice::Choice;
@@ -389,35 +389,35 @@ pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: S
     }
 }
 
-pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alpha>) {
-    loop {
-        let () = ice.send(PrintReservoir).await.unwrap();
+// pub async fn run(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>) {
+//     loop {
+//         let () = ice.send(PrintReservoir).await.unwrap();
 
-        // Sample a random peer from the view
-        let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
+//         // Sample a random peer from the view
+//         // let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
 
-        for (id, ip) in sample.iter().cloned() {
-            // Sample up to `k` peers from the reservoir and collect ping queries
-            let Queries { queries } =
-                ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
+//         for (id, ip) in sample.iter().cloned() {
+//             // Sample up to `k` peers from the reservoir and collect ping queries
+//             let Queries { queries } =
+//                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
 
-            // Ping the designated peer
-            match ice
-                .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries })
-                .await
-                .unwrap()
-            {
-                Ok(ack) => {
-                    send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
-                        .await
-                }
-                Err(_) => {
-                    send_ping_failure(ice.clone(), alpha.clone(), id.clone(), ip.clone()).await
-                }
-            }
-        }
+//             // Ping the designated peer
+//             match ice
+//                 .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries })
+//                 .await
+//                 .unwrap()
+//             {
+//                 Ok(ack) => {
+//                     send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
+//                         .await
+//                 }
+//                 Err(_) => {
+//                     send_ping_failure(ice.clone(), alpha.clone(), id.clone(), ip.clone()).await
+//                 }
+//             }
+//         }
 
-        // Sleep for the protocol period duration.
-        actix::clock::sleep(PROTOCOL_PERIOD).await;
-    }
-}
+//         // Sleep for the protocol period duration.
+//         actix::clock::sleep(PROTOCOL_PERIOD).await;
+//     }
+// }

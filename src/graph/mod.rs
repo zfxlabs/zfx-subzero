@@ -1,3 +1,4 @@
+//! The implementation of directed acyclic graphs used in consensus.
 mod dag;
 
 pub mod conflict_graph;

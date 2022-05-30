@@ -1,8 +1,8 @@
 use zfx_sortition::sortition;
 
 use crate::alpha::types::{VrfOutput, Weight};
+use crate::p2p::id::Id;
 use crate::util;
-use crate::zfx_id::Id;
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;

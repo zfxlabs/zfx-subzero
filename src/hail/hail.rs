@@ -1,4 +1,5 @@
-use crate::zfx_id::Id;
+//! The implementation of a graph based block consensus algorithm.
+use crate::p2p::id::Id;
 
 use crate::alpha::block::Block;
 use crate::alpha::block_header::BlockHeader;
