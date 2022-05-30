@@ -1,3 +1,4 @@
+//! Definition of the primary network protocol.
 mod alpha;
 pub mod types;
 

@@ -1,4 +1,4 @@
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 
 use super::block::Block;
 use super::stake::StakeState;
@@ -37,6 +37,120 @@ impl State {
         }
     }
 
+    pub fn apply_cell(&mut self, cell: Cell) -> Result<()> {
+	// Fetch all the live cell outputs which are inputs to this cell.
+	let input_cell_ids = CellIds::from_inputs(cell.inputs())?;
+
+	// The `cell_ids` of output cells which this cell consumes
+	let mut consumed_cell_ids = CellIds::empty();
+	let mut consumed_cell_outputs = vec![];
+	// The amount of `capacity` (datasize) spent by the cell
+	let mut consumed_capacity = 0u64;
+	let _intersecting_cell_ids = CellIds::empty();
+	// Iterate over the cells which are currently live
+	for (live_cell_ids, live_cell) in self.live_cells.iter() {
+	    // If the live cell intersects with this cells inputs
+	    if input_cell_ids.intersects_with(live_cell_ids) {
+		// Fetch the common inputs of both cells
+		let intersection = input_cell_ids.intersect(&live_cell_ids);
+		// Construct output cell ids of the live cell and check if they intersect
+		let live_cell_outputs = live_cell.outputs();
+                for i in 0..live_cell_outputs.len() {
+                    let cell_id = CellId::from_output(
+                        live_cell.hash(),
+                        i as u8,
+                        live_cell_outputs[i].clone(),
+                    )?;
+                    if intersection.contains(&cell_id) {
+			// If the output of the live cell is spent by this cell, add to consumed
+                        consumed_cell_ids.insert(cell_id.clone());
+                        consumed_cell_outputs.push(live_cell_outputs[i].clone());
+                        consumed_capacity += live_cell_outputs[i].capacity;
+                    }
+                }
+	    }
+	}
+	if consumed_cell_ids.clone() != input_cell_ids.clone() {
+	    return Err(Error::UndefinedCellIds);
+	}
+	
+        // Verify that the cell outputs transition correctly according to their constraints.
+        let mut verified_outputs = vec![];
+        for output in cell.outputs().iter() {
+            // Fetch consumed outputs of the same type as this output.
+            let mut arguments = vec![];
+            for consumed_output in consumed_cell_outputs.iter() {
+                if output.cell_type == consumed_output.cell_type {
+                    arguments.push(consumed_output.clone());
+                }
+                let verified_output = output.verify(arguments.clone())?;
+                verified_outputs.push(verified_output);
+            }
+        }
+
+        // Remove consumed output cells from the live cell map (these are no longer spendable)
+        self.remove_intersection(consumed_cell_ids)?;
+
+        // Apply the primitive cell types which change the `alpha` state.
+        let mut coinbase_capacity = 0u64;
+        let mut produced_staking_capacity = 0u64;
+        let mut produced_capacity = 0u64;
+        let cell_outputs = cell.outputs();
+        for i in 0..cell_outputs.len() {
+            let cell_output = cell_outputs[i].clone();
+            // If the cell output is a coinbase at genesis then add the produced capacity.
+            if cell_output.cell_type == CellType::Coinbase {
+                if self.height == 0 {
+                    // The coinbase generates capacity without consuming it.
+                    coinbase_capacity += cell_output.capacity;
+                } else {
+                    return Err(Error::InvalidCoinbase);
+                }
+            } else if cell_output.cell_type == CellType::Stake {
+                // If the cell output is a `Stake` cell then add the validator to the list of
+                // validators.
+                let stake_state: StakeState = bincode::deserialize(&cell_output.data)?;
+                self.validators.push((stake_state.node_id, cell_output.capacity));
+                produced_staking_capacity += cell_output.capacity;
+            } else {
+                // Otherwise treat it normally.
+                produced_capacity += cell_output.capacity;
+            }
+        }
+
+        // Add newly produced output cells to live cell map.
+        let produced_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
+        // println!("inserting {:?}", produced_cell_ids);
+        if let Some(_) = self.live_cells.insert(produced_cell_ids, cell.clone()) {
+            return Err(Error::ExistingCellIds);
+        }
+	
+        // Subtract the consumed capacity and add the produced capacity.
+        if consumed_capacity >= produced_capacity + produced_staking_capacity
+            && consumed_capacity > 0
+            && coinbase_capacity == 0
+        {
+            // println!("consumed capacity = {:?}", consumed_capacity);
+            // println!("total_spending_capacity = {:?}", self.total_spending_capacity);
+            // println!("produced_capaciy = {:?}", produced_capacity);
+            // println!("produced_staking_capacity = {:?}", produced_staking_capacity);
+            self.total_spending_capacity -= consumed_capacity;
+            self.total_spending_capacity += produced_capacity;
+            self.total_staking_capacity += produced_staking_capacity;
+        } else if self.height == 0
+            && coinbase_capacity > 0
+            && produced_capacity == 0
+            && produced_staking_capacity == 0
+        {
+            // println!("coinbase capacity = {:?}", coinbase_capacity);
+            self.total_spending_capacity += coinbase_capacity;
+        } else {
+            return Err(Error::ExceedsCapacity);
+        }
+
+	Ok(())
+    }
+
     pub fn apply(&self, block: Block) -> Result<State> {
         let mut state = self.clone();
 
@@ -48,115 +162,8 @@ impl State {
         let ordered_cells = dg.topological_cells(block.cells.clone())?;
 
         // Try to apply the cells by order of dependence.
-        for cell in ordered_cells.iter() {
-            // Pull all the live cell outputs which are inputs to the cell.
-            let input_cell_ids = CellIds::from_inputs(cell.inputs())?;
-            let mut consumed_cell_ids = CellIds::empty();
-            let mut consumed_cell_outputs = vec![];
-            let mut consumed_capacity = 0u64;
-            // TODO figure out if we need this
-            let _intersecting_cell_ids = CellIds::empty();
-            for (live_cell_ids, live_cell) in state.live_cells.iter() {
-                // println!("live_cell_ids = {:?}", live_cell_ids.clone());
-                if input_cell_ids.intersects_with(live_cell_ids) {
-                    // Fetch the intersecting cell ids.
-                    let intersection = input_cell_ids.intersect(&live_cell_ids);
-                    // println!("intersection = {:?}", intersection.clone());
-                    // Fetch the outputs corresponding to the intersection.
-                    let live_cell_outputs = live_cell.outputs();
-                    for i in 0..live_cell_outputs.len() {
-                        let cell_id = CellId::from_output(
-                            live_cell.hash(),
-                            i as u8,
-                            live_cell_outputs[i].clone(),
-                        )?;
-                        if intersection.contains(&cell_id) {
-                            consumed_cell_ids.insert(cell_id.clone());
-                            consumed_cell_outputs.push(live_cell_outputs[i].clone());
-                            consumed_capacity += live_cell_outputs[i].capacity;
-                        }
-                    }
-                }
-            }
-            if consumed_cell_ids.clone() != input_cell_ids.clone() {
-                // println!("consumed {:?}", consumed_cell_ids.clone());
-                // println!("inputs {:?}", input_cell_ids.clone());
-                return Err(Error::UndefinedCellIds);
-            }
-
-            // Verify that the cell outputs transition correctly according to their constraints.
-            let mut verified_outputs = vec![];
-            for output in cell.outputs().iter() {
-                // Fetch consumed outputs of the same type as this output.
-                let mut arguments = vec![];
-                for consumed_output in consumed_cell_outputs.iter() {
-                    if output.cell_type == consumed_output.cell_type {
-                        arguments.push(consumed_output.clone());
-                    }
-                    let verified_output = output.verify(arguments.clone())?;
-                    verified_outputs.push(verified_output);
-                }
-            }
-
-            // Remove consumed output cells from the live cell map.
-            state.remove_intersection(consumed_cell_ids)?;
-
-            // Apply the primitive cell types which change the `alpha` state.
-            let mut coinbase_capacity = 0u64;
-            let mut produced_staking_capacity = 0u64;
-            let mut produced_capacity = 0u64;
-            let cell_outputs = cell.outputs();
-            for i in 0..cell_outputs.len() {
-                let cell_output = cell_outputs[i].clone();
-                // If the cell output is a coinbase at genesis then add the produced capacity.
-                if cell_output.cell_type == CellType::Coinbase {
-                    if state.height == 0 {
-                        // The coinbase generates capacity without consuming it.
-                        coinbase_capacity += cell_output.capacity;
-                    } else {
-                        return Err(Error::InvalidCoinbase);
-                    }
-                } else if cell_output.cell_type == CellType::Stake {
-                    // If the cell output is a `Stake` cell then add the validator to the list of
-                    // validators.
-                    let stake_state: StakeState = bincode::deserialize(&cell_output.data)?;
-                    state.validators.push((stake_state.node_id, cell_output.capacity));
-                    produced_staking_capacity += cell_output.capacity;
-                } else {
-                    // Otherwise treat it normally.
-                    produced_capacity += cell_output.capacity;
-                }
-            }
-
-            // Add newly produced output cells to live cell map.
-            let produced_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
-            // println!("inserting {:?}", produced_cell_ids);
-            if let Some(_) = state.live_cells.insert(produced_cell_ids, cell.clone()) {
-                return Err(Error::ExistingCellIds);
-            }
-
-            // Subtract the consumed capacity and add the produced capacity.
-            if consumed_capacity >= produced_capacity + produced_staking_capacity
-                && consumed_capacity > 0
-                && coinbase_capacity == 0
-            {
-                // println!("consumed capacity = {:?}", consumed_capacity);
-                // println!("total_spending_capacity = {:?}", state.total_spending_capacity);
-                // println!("produced_capaciy = {:?}", produced_capacity);
-                // println!("produced_staking_capacity = {:?}", produced_staking_capacity);
-                state.total_spending_capacity -= consumed_capacity;
-                state.total_spending_capacity += produced_capacity;
-                state.total_staking_capacity += produced_staking_capacity;
-            } else if state.height == 0
-                && coinbase_capacity > 0
-                && produced_capacity == 0
-                && produced_staking_capacity == 0
-            {
-                // println!("coinbase capacity = {:?}", coinbase_capacity);
-                state.total_spending_capacity += coinbase_capacity;
-            } else {
-                return Err(Error::ExceedsCapacity);
-            }
+        for cell in ordered_cells.iter().cloned() {
+	    state.apply_cell(cell);
         }
         Ok(state)
     }
