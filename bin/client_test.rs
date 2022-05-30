@@ -1,5 +1,6 @@
 use zfx_subzero::alpha::transfer::TransferOperation;
 use zfx_subzero::client;
+use zfx_subzero::p2p::peer_meta::PeerMetadata;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::sleet;
 use zfx_subzero::sleet::GenerateTxAck;
@@ -69,7 +70,7 @@ async fn main() -> Result<()> {
     let n = value_t!(matches.value_of("loop"), u64).unwrap_or(1);
     let use_tls = matches.is_present("use-tls");
 
-    let (peer_id, peer_ip) = zfx_subzero::util::parse_id_and_ip(&peer).unwrap();
+    let PeerMetadata { id, ip, chains } = PeerMetadata::from_id_and_ip(&peer, vec![]).unwrap();
 
     let cert_path = if use_tls {
         Some(value_t!(matches.value_of("cert-path"), String).unwrap_or_else(|e| e.exit()))
@@ -109,14 +110,8 @@ async fn main() -> Result<()> {
 
     for amount in 0..n {
         for retry in 1..11 {
-            match client::oneshot(
-                peer_id,
-                peer_ip,
-                Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() }),
-                upgrader.clone(),
-            )
-            .await?
-            {
+            let request = Request::GetCell(sleet::GetCell { cell_hash: cell_hash_bytes.clone() });
+            match client::oneshot(id, ip, request, upgrader.clone()).await? {
                 Some(Response::CellAck(sleet::CellAck { cell: Some(cell_in) })) => {
                     info!("spendable:\n{}\n", cell_in.clone());
                     let transfer_op = TransferOperation::new(
@@ -127,14 +122,9 @@ async fn main() -> Result<()> {
                     );
                     let transfer_tx = transfer_op.transfer(&keypair).unwrap();
                     cell_hash_bytes = transfer_tx.hash();
-                    match client::oneshot(
-                        peer_id,
-                        peer_ip,
-                        Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() }),
-                        upgrader.clone(),
-                    )
-                    .await?
-                    {
+                    let request =
+                        Request::GenerateTx(sleet::GenerateTx { cell: transfer_tx.clone() });
+                    match client::oneshot(id, ip, request, upgrader.clone()).await? {
                         Some(Response::GenerateTxAck(GenerateTxAck { cell_hash: Some(_hash) })) => {
                             // info!("Ack hash: {}", hex::encode(_hash))
                         }
