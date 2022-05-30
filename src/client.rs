@@ -1,7 +1,8 @@
+//! A client used to make external requests to the `node`.
 use crate::channel::Channel;
+use crate::p2p::id::Id;
 use crate::protocol::{Request, Response};
 use crate::tls::upgrader::Upgrader;
-use crate::zfx_id::Id;
 use crate::{Error, Result};
 
 use tracing::{debug, error, warn};

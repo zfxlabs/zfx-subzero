@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::colored::Colorize;
 
-// The hash of a cells output index.
+/// A `CellId` is the hash of a cells output index.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct CellId([u8; 32]);
 

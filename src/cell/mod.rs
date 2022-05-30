@@ -1,3 +1,4 @@
+//! The cell transaction format.
 mod cell;
 mod cell_id;
 mod cell_ids;
