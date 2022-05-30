@@ -3,16 +3,18 @@ use crate::cell::{Cell, CellIds};
 
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
-/// The dependency graph is a cell graph which maps produced outputs to consumed inputs in cells.
-/// The cell graphs purpose is to order cells by their dependencies.
+/// The dependency graph maps a causal relation between a `Cell`s produced outputs (the
+/// operations it contains) to its consumed inputs (capacity spent from an input cells
+/// data field). The cell graphs purpose is to order cells by their dependencies.
 pub struct DependencyGraph {
     /// An adjacency list from produced output cell ids to consumed input cell ids
     dh: HashMap<CellIds, CellIds>,
-    /// Vertices in the graph with no inbound edges.
+    /// Vertices in the graph with no inbound edges
     roots: Vec<CellIds>,
 }
 
-/// Returns true if some produced cell ids intersect (have an existing edge directed).
+/// Returns true if some produced cell ids intersect (have an existing edge directed at
+/// them).
 pub fn has_inbound_edges(dh: &HashMap<CellIds, CellIds>, produced_cell_ids: &CellIds) -> bool {
     for (_, consumed_cell_ids) in dh.iter() {
         if produced_cell_ids.intersects_with(consumed_cell_ids) {
@@ -27,9 +29,12 @@ impl DependencyGraph {
         DependencyGraph { dh: HashMap::new(), roots: vec![] }
     }
 
+    /// Inserts a cell into the `DependencyGraph`.
     pub fn insert(&mut self, cell: Cell) -> Result<()> {
-        let produced_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
+        // A cell consumes inputs which are references to outputs of other cells.
         let consumed_cell_ids = CellIds::from_inputs(cell.inputs())?;
+        // A cell produces outputs which may later be referred to in subsequent cells.
+        let produced_cell_ids = CellIds::from_outputs(cell.hash(), cell.outputs())?;
         match self.dh.entry(produced_cell_ids.clone()) {
             Entry::Occupied(_) => return Err(Error::DuplicateCell),
             Entry::Vacant(v) => {
@@ -37,8 +42,8 @@ impl DependencyGraph {
             }
         }
 
-        // If the consumed cell ids do not intersect with existing produced cell ids in the roots,
-        // keep them as roots, otherwise remove the root.
+        // If the consumed cell ids do not intersect with existing produced cell ids in the
+        // roots, keep them as roots. Otherwise remove the root.
         let mut roots = vec![];
         for root_cell_ids in self.roots.iter() {
             if !consumed_cell_ids.intersects_with(root_cell_ids) {
@@ -47,8 +52,8 @@ impl DependencyGraph {
         }
         self.roots = roots;
 
-        // If the produced cell ids by this cell are referenced by existing consumers, do not store
-        // this vertex as a root. Otherwise store it as a potential root vertex.
+        // If the produced cell ids by this cell are referenced by existing consumers, do
+        // not store this vertex as a root. Otherwise store it as a potential root vertex.
         let mut referenced_by_existing_consumers = false;
         for (_, referenced_cell_ids) in self.dh.iter() {
             if produced_cell_ids.intersects_with(referenced_cell_ids) {
