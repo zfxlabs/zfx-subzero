@@ -1,3 +1,5 @@
+//! Storage functions for cells, blocks and consensus data.
+
 use crate::alpha;
 use crate::cell as inner_cell;
 use crate::hail;

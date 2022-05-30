@@ -1,4 +1,4 @@
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 
 use super::choice::Choice;
 use super::constants::*;

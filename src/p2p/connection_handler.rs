@@ -33,15 +33,15 @@ impl ConnectionHandler {
         let (mut sender, mut receiver) = channel.split();
         Box::pin(async move {
             let () = sender.send(request.clone()).await.unwrap();
-            info!("sent request {:?} ({})", request, "ok".green());
+            info!("-> {:?} ({})", request, "ok".green());
             match timeout(send_timeout, receiver.recv()).await {
                 Ok(res) => match res {
                     Ok(Some(response)) => {
-                        info!("received response ({})", "ok".green());
+                        info!("<- {:?} ({})", response.clone(), "ok".green());
                         response_handler.handle_response(response).await
                     }
                     Ok(None) => {
-                        error!("empty response ({})", "error".red());
+                        error!("{}", "empty_response".red());
                         Err(Error::EmptyResponse)
                     }
                     Err(err) => {

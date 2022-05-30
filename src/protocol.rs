@@ -1,3 +1,5 @@
+//! The node network message protocol.
+
 use crate::alpha;
 use crate::hail;
 use crate::ice;

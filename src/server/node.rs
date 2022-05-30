@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::{BufReader, Read, Write};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -10,9 +11,11 @@ use crate::server::{Router, Server};
 use crate::sleet::Sleet;
 use crate::tls;
 use crate::util;
-use crate::view::{self, View};
-use crate::zfx_id::Id;
+//use crate::view::{self, View};
+use crate::p2p::id::Id;
+use crate::p2p::peer_meta::PeerMetadata;
 use crate::Result;
+
 use actix::{Actor, Arbiter};
 use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
@@ -28,11 +31,16 @@ pub fn run(
     // FIXME this is a temporary workaround
     node_id: Option<Id>,
 ) -> Result<()> {
+    // The chains the node wishes to use
+    let mut chains = HashSet::new();
+    chains.insert(Id::one());
+
     let listener_ip: SocketAddr = ip.parse().unwrap();
     let converted_bootstrap_peers = bootstrap_peers
         .iter()
-        .map(|p| util::parse_id_and_ip(p).unwrap())
-        .collect::<Vec<(Id, SocketAddr)>>();
+        // FIXME: Add bootstrap peer subscribed chains
+        .map(|p| PeerMetadata::from_id_and_ip(p, chains.clone()).unwrap())
+        .collect::<Vec<PeerMetadata>>();
 
     // This is temporary until we have TLS setup
     let (node_id, upgraders) = if use_tls {
@@ -76,10 +84,10 @@ pub fn run(
         let client_addr = client.start();
 
         // Initialise a view with the bootstrap ips and start its actor
-        let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
-        view.init(converted_bootstrap_peers);
-        let view_addr = view.start();
-
+        //let mut view = View::new(client_addr.clone().recipient(), listener_ip, node_id);
+        //view.init(converted_bootstrap_peers);
+        //let view_addr = view.start();
+        //
         // Create the `ice` actor
         let reservoir = Reservoir::new();
         let ice = Ice::new(client_addr.clone().recipient(), node_id, listener_ip, reservoir);
@@ -113,17 +121,17 @@ pub fn run(
         let alpha_addr = alpha.start();
 
         // Bootstrap the view
-        let view_addr_clone = view_addr.clone();
+        //let view_addr_clone = view_addr.clone();
         let ice_addr_clone = ice_addr.clone();
         let alpha_addr_clone = alpha_addr.clone();
 
         let bootstrap_execution = async move {
-            view::bootstrap(view_addr_clone.clone(), ice_addr_clone.clone()).await;
-            let view_addr_clone = view_addr_clone.clone();
+            //view::bootstrap(view_addr_clone.clone(), ice_addr_clone.clone()).await;
+            //let view_addr_clone = view_addr_clone.clone();
             let ice_addr_clone = ice_addr_clone.clone();
             let ice_execution = async move {
                 // Setup `ice` consensus for establishing the liveness of peers
-                ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone).await;
+                //ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone).await;
             };
             let arbiter = Arbiter::new();
             arbiter.spawn(ice_execution);
@@ -131,12 +139,12 @@ pub fn run(
 
         let listener_execution = async move {
             // Setup the router
-            let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
-            let router_addr = router.start();
+            //let router = Router::new(view_addr, ice_addr, alpha_addr, sleet_addr, hail_addr);
+            //let router_addr = router.start();
             // Setup the server
-            let server = Server::new(listener_ip, router_addr, upgraders.server.clone());
+            //let server = Server::new(listener_ip, router_addr, upgraders.server.clone());
             // Listen for incoming connections
-            server.listen().await.unwrap()
+            //server.listen().await.unwrap()
         };
 
         let arbiter = Arbiter::new();

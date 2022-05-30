@@ -1,3 +1,5 @@
+//! A graph based consensus algorithm over cells.
+
 mod sleet;
 pub mod tx;
 

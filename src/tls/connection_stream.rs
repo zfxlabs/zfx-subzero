@@ -5,7 +5,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 
 /// A unified type for TCP and TLS streams for uniform handling of connections
 /// As it implements Tokio's `AsyncWrite` and `AsyncRead` traits, it is usable

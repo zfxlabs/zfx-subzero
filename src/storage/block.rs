@@ -55,7 +55,7 @@ pub fn get_genesis(db: &sled::Db) -> Result<(BlockHash, Block)> {
 /// Inserts the genesis block into the database, returning its hash.
 pub fn accept_genesis(db: &sled::Db, genesis: Block) -> Result<BlockHash> {
     let encoded = bincode::serialize(&genesis)?;
-    let key = Key::new(genesis.height, genesis.hash()?);
+    let key = Key::new(genesis.height(), genesis.hash()?);
     let _ = db.insert(key.as_bytes(), encoded.clone())?;
     let h = genesis.hash()?;
     Ok(h)
@@ -67,17 +67,17 @@ pub fn accept_next_block(db: sled::Db, block: Block) -> Result<BlockHash> {
         Ok(Some((k, _v))) => {
             let key: Key = Key::read_from(k.as_bytes()).ok_or(Error::InvalidLast)?;
             // check that height(block) = predecessor.height + 1
-            if block.height != u64::from(key.height) - 1u64 {
+            if block.height() != u64::from(key.height) - 1u64 {
                 return Err(Error::InvalidHeight);
             }
             // check that block.predecessor = hash(predecessor_block)
-            if block.predecessor != Some(key.hash) {
+            if block.predecessor() != Some(key.hash) {
                 return Err(Error::InvalidPredecessor);
             }
             // insert accepted block
             let encoded = bincode::serialize(&block)?;
             let hash = block.hash()?;
-            let key = Key::new(block.height, hash.clone());
+            let key = Key::new(block.height(), hash.clone());
             let _ = db.insert(key.as_bytes(), encoded.clone())?;
             Ok(hash)
         }
@@ -98,7 +98,7 @@ pub fn is_known_block(db: &sled::Db, h: BlockHeight, block_hash: BlockHash) -> R
 /// Inserts a new block into the database.
 pub fn insert_block(db: &sled::Db, block: Block) -> Result<Option<sled::IVec>> {
     let encoded = bincode::serialize(&block)?;
-    let key = Key::new(block.height, block.hash()?);
+    let key = Key::new(block.height(), block.hash()?);
     match db.insert(key.as_bytes(), encoded) {
         Ok(v) => Ok(v),
         Err(err) => Err(Error::Sled(err)),

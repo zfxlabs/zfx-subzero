@@ -1,28 +1,51 @@
+#![doc(html_logo_url = "/logo.png")]
+
+//! # Subzero
+//!
+//! Subzero is an ensemble of components for the creation of a network inspired by the `Snow*`
+//! family of consensus algorithms.
+//!
+//! ## Ice
+//!
+//! Ice is a set of actors for assessing the liveness of the primary protocols validator set.
+//!
+//! ## Sleet
+//!
+//! Sleet is a set of actors designed to reach consensus on `Cell`s, which are the primitive
+//! transaction type used in Subzero.
+//!
+//! ## Hail
+//!
+//! Hail is a set of actors designed to reach consensus on `Block`s containing cells.
+
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate actix_derive;
 extern crate colored;
 
-pub mod alpha;
+pub mod p2p;
+pub mod protocol;
+pub mod server;
+pub mod util;
+pub mod version;
+
+mod integration_test;
+
 pub mod cell;
 pub mod channel;
 pub mod client;
 pub mod graph;
 pub mod hail;
+
 pub mod ice;
-pub mod integration_test;
-pub mod p2p;
 pub mod porter;
-pub mod protocol;
-pub mod server;
 pub mod sleet;
 pub mod storage;
 pub mod tls;
-pub mod util;
-pub mod version;
 pub mod view;
-pub mod zfx_id;
+
+pub mod alpha;
 
 use protocol::{Request, Response};
 

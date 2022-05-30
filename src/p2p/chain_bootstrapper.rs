@@ -20,8 +20,11 @@ use std::collections::HashSet;
 
 /// The chain bootstrapper is used to bootstrap the chain state from a set of trusted peers.
 pub struct ChainBootstrapper {
+    /// The `id` of the chain being bootstrapped.
     chain_id: Id,
+    /// A hashset of known trusted peers for bootstrapping the chain.
     peers: HashSet<PeerMetadata>,
+    /// A recipient to notify that the chain is bootstrapped.
     recipient: Recipient<ReceiveBootstrapped>,
 }
 

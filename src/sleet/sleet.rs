@@ -1,5 +1,5 @@
 use crate::colored::Colorize;
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 
 use crate::alpha::types::{TxHash, Weight};
 use crate::cell::types::CellHash;

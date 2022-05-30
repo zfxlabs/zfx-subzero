@@ -1,10 +1,10 @@
-//! Utility functions for consensus algorithms
+//! Utility functions.
 use std::net::SocketAddr;
 
 use rand::seq::SliceRandom;
 
 use crate::alpha::types::Weight;
-use crate::zfx_id::Id;
+use crate::p2p::id::Id;
 use crate::{Error, Result};
 
 /// Compute the `hail` consensus weight based on the number of tokens a validator has.
@@ -40,22 +40,6 @@ pub fn sample_weighted(
         None
     } else {
         Some(sample)
-    }
-}
-
-/// Parse a peer description from the format `IP` or `ID@IP` to its ID and address
-pub fn parse_id_and_ip(s: &str) -> Result<(Id, SocketAddr)> {
-    let parts: Vec<&str> = s.split('@').collect();
-    if parts.len() == 1 {
-        let ip: SocketAddr = parts[0].parse().map_err(|_| Error::PeerParseError)?;
-        let id = Id::from_ip(&ip);
-        Ok((id, ip))
-    } else if parts.len() == 2 {
-        let id: Id = parts[0].parse().map_err(|_| Error::PeerParseError)?;
-        let ip: SocketAddr = parts[1].parse().map_err(|_| Error::PeerParseError)?;
-        Ok((id, ip))
-    } else {
-        Err(Error::PeerParseError)
     }
 }
 

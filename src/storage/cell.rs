@@ -37,6 +37,28 @@ pub fn insert_cell(db: &sled::Db, cell: Cell) -> Result<Option<sled::IVec>> {
     }
 }
 
+/// Checks if the genesis vertex exists (the first vertex in the database).
+pub fn exists_genesis(db: &sled::Db) -> bool {
+    if let Ok(Some(_)) = db.first() {
+        true
+    } else {
+        false
+    }
+}
+
+/// Fetches the genesis vertex - a transaction containing multiple coinbase outputs.
+pub fn get_genesis(db: &sled::Db) -> Result<(CellHash, Cell)> {
+    match db.first() {
+        Ok(Some((k, v))) => {
+            let key: Key = Key::read_from(k.as_bytes()).unwrap();
+            let cell: Cell = bincode::deserialize(v.as_bytes())?;
+            Ok((key.hash.clone(), cell))
+        }
+        Ok(None) => Err(Error::InvalidGenesis),
+        Err(err) => Err(Error::Sled(err)),
+    }
+}
+
 /// Fetches the genesis block (the first block in the database).
 pub fn get_cell(db: &sled::Db, cell_hash: CellHash) -> Result<(CellHash, Cell)> {
     let key = Key::new(cell_hash);

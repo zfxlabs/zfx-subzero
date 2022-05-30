@@ -1,3 +1,4 @@
+//! The implementation of a hashtable based network consensus algorithm.
 mod choice;
 mod constants;
 mod ice;

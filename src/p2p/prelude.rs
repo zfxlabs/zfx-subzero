@@ -1,7 +1,6 @@
 pub use crate::{Error, Result};
 
-pub use crate::zfx_id::Id;
-
+pub use super::id::Id;
 pub use super::peer_meta::PeerMetadata;
 
 pub use actix::{Actor, Handler, Recipient, ResponseFuture};
