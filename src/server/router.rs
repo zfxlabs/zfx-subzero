@@ -4,7 +4,7 @@ use crate::p2p::id::Id;
 use crate::p2p::peer_meta::PeerMetadata;
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
-use crate::version::{Version, VersionAck, CURRENT_VERSION};
+use crate::message::{Version, VersionAck, CURRENT_VERSION};
 //use crate::view::View;
 use crate::{alpha, alpha::Alpha};
 

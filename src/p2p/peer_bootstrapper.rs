@@ -1,6 +1,13 @@
+//! The `PeerBootstrapper` receives `Execute` messages periodically and multicasts `Version`
+//! messages to neighboring peers. Peers share known `metadata` with one another via the
+//! handshake, which also serves to identify nodes according to their `id`s.
+//!
+//! Once a vector of `PeerMetadata` is received the `PeerBootstrapper` forwards the peers
+//! to a recipient for further processing.
+
 use super::prelude::*;
 
-use crate::version::{self, Version};
+use crate::message::{Version, CURRENT_VERSION};
 
 use super::linear_backoff::Execute;
 use super::sender::{multicast, Sender};
@@ -13,12 +20,6 @@ use std::collections::HashSet;
 /// The limit of a peer vector in terms of length received from another peer.
 const RECEIVED_PEER_VEC_LIM: usize = 124;
 
-/// The `PeerBootstrapper` receives `Execute` messages periodically and multicasts `Version`
-/// messages to neighboring peers. Peers share known `metadata` with one another via the
-/// handshake, which also serves to identify nodes according to their `id`s.
-///
-/// Once a vector of `PeerMetadata` is received the `PeerBootstrapper` forwards the peers
-/// to a recipient for further processing.
 pub struct PeerBootstrapper {
     /// Metadata pertaining to this peer.
     self_peer_meta: PeerMetadata,
@@ -75,10 +76,6 @@ impl PeerBootstrapper {
 
 impl Actor for PeerBootstrapper {
     type Context = Context<Self>;
-
-    fn stopped(&mut self, ctx: &mut Context<Self>) {
-        info!("stopped");
-    }
 }
 
 impl Handler<Execute> for PeerBootstrapper {
@@ -167,7 +164,7 @@ impl ResponseHandler for PeerHandler {
         let recipient = self.recipient.clone();
         match response {
             Response::VersionAck(version_ack) => Box::pin(async move {
-                if version_ack.version == version::CURRENT_VERSION {
+                if version_ack.version == CURRENT_VERSION {
                     if version_ack.peer_set.len() > RECEIVED_PEER_VEC_LIM {
                         Err(Error::PeerListOverflow)
                     } else {

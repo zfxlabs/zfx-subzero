@@ -25,10 +25,10 @@ extern crate actix_derive;
 extern crate colored;
 
 pub mod p2p;
-pub mod protocol;
 pub mod server;
 pub mod util;
-pub mod version;
+pub mod message;
+pub mod protocol;
 
 mod integration_test;
 

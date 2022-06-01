@@ -4,13 +4,15 @@ use crate::alpha;
 use crate::hail;
 use crate::ice;
 use crate::sleet;
-use crate::version;
+use crate::message;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
 pub enum Request {
     // Handshake
-    Version(version::Version),
+    Version(message::Version),
+    // Primary Network
+    LastCellId(message::LastCellId),
     // Ice
     CheckStatus,
     Ping(ice::Ping),
@@ -35,7 +37,9 @@ pub enum Request {
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub enum Response {
     // Handshake
-    VersionAck(version::VersionAck),
+    VersionAck(message::VersionAck),
+    // Primary Network
+    LastCellIdAck(message::LastCellIdAck),
     // Ice
     Ack(ice::Ack),
     Status(ice::Status),

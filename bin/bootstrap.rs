@@ -12,7 +12,7 @@ use zfx_subzero::server::{Router, Server};
 use zfx_subzero::tls;
 
 use zfx_subzero::p2p::peer_meta::PeerMetadata;
-use zfx_subzero::version::Version;
+use zfx_subzero::message::Version;
 
 use ed25519_dalek::Keypair;
 use std::net::SocketAddr;
