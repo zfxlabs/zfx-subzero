@@ -4,6 +4,7 @@ use crate::ice;
 use crate::sleet;
 use crate::version;
 
+/// Different kinds of requests for the components
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
 pub enum Request {
@@ -33,6 +34,7 @@ pub enum Request {
     QueryBlock(hail::QueryBlock),
 }
 
+/// Response returned for the [Request], used in the [Router](crate::server::router::Router)
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub enum Response {
     // Handshake

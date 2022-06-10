@@ -9,6 +9,20 @@ use zfx_subzero::Result;
 
 use std::str::FromStr;
 
+/// An entrypoint for starting up a node.
+/// When running from a terminal, accepts the following list of parameters:
+/// * `--listener-ip` or `-a` - IP address of the node (ex. 127.0.0.1).
+/// * `--bootstrap-peer` or `-b` - one or more addresses of running nodes of the network for bootstrapping
+/// in format <node_id>@<node_ip_address> (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1).
+/// * `--keypair` or `-k` - a hex keypair for the node in String format.
+/// * `--use-tls` or `-t` (optional) - indicates whether to use TLS connection.
+/// If true, then `cert_path` and `pk_path` are mandatory parameters.
+/// If false, then plain TCP connection is used.
+/// * `--cert-path` or `-c` (optional) - path to a certificate used in TLS connection. Mandatory parameter if `use_tls` flag is true.
+/// A sample of certificate can be found in `./deployment/test-certs/*.crt`.
+/// * `--priv-key-path` or `-p` (optional) - path to a private key for the node. Mandatory parameter if `use_tls` flag is true.
+/// A sample of private key can be found in `./deployment/test-certs/*.key`
+/// * `--id` - Id of a node in a hex String format (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf).
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_level(true)

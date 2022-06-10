@@ -32,11 +32,14 @@ mod sleet_utils;
 
 // Parent selection
 
+/// Max number of parents to assign for a received transaction
 const NPARENTS: usize = 3;
 
 // Safety parameters
 
+/// Min required combined weight of sampled validators, used when checking consensus outcome.
 pub const ALPHA: f64 = 0.5;
+/// Min required confidence level for a transaction, to check whether it's accepted
 pub const BETA1: u8 = 11;
 pub const BETA2: u8 = 20;
 
@@ -80,7 +83,14 @@ pub struct Sleet {
 }
 
 impl Sleet {
-    // Initialisation - FIXME: Temporary databases
+    // FIXME: Temporary databases
+    /// Instantiate `sleet` component.
+    /// * `sender` - a recipient of the [Client](crate::client::Client) for sending remote requests
+    /// to other nodes in the network.
+    /// * `hail_recipient` - a recipient of the [hail](crate::hail) component for sending the accepted cells
+    /// * `node_id` - node ID
+    /// * `node_ip` - node IP address
+    /// * `bootstrap_peers` - a list of peers which are used for bootstrapping the node, to be able to
     pub fn new(
         sender: Recipient<ClientRequest>,
         hail_recipient: Recipient<AcceptedCells>,
@@ -139,8 +149,7 @@ impl Sleet {
         }
     }
 
-    // Vertices
-
+    /// Insert transaction into the DAG and Conflict Graph
     pub fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
@@ -150,8 +159,8 @@ impl Sleet {
     }
 
     /// Check if Sleet has all the parents for a transaction
-    /// (otherwise the ancestry needs to be fetched
-    pub fn has_parents(&self, tx: &Tx) -> bool {
+    /// otherwise the ancestry needs to be fetched
+    fn has_parents(&self, tx: &Tx) -> bool {
         match self.dag.has_vertices(&tx.parents) {
             Ok(()) => true,
             Err(missing_parents) => missing_parents
@@ -162,7 +171,7 @@ impl Sleet {
 
     /// Removes the transactions that already have been accepted, and might not be present
     /// in the DAG at insertion time
-    pub fn remove_accepted_parents(&self, mut parents: Vec<TxHash>) -> Vec<TxHash> {
+    fn remove_accepted_parents(&self, mut parents: Vec<TxHash>) -> Vec<TxHash> {
         parents.retain(|p| !tx_storage::is_accepted_tx(&self.known_txs, p).unwrap_or(false));
         parents
     }
@@ -171,7 +180,7 @@ impl Sleet {
     /// Starts at some vertex and does a depth first search in order to compute whether
     /// the vertex is strongly preferred (by checking whether all its ancestry is
     /// preferred).
-    pub fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
+    fn is_strongly_preferred(&self, tx: TxHash) -> Result<bool> {
         for ancestor in self.dag.dfs(&tx) {
             if !self.conflict_graph.is_preferred(ancestor)? {
                 return Ok(false);
@@ -185,7 +194,7 @@ impl Sleet {
     /// Starts at the live edges (the leaf nodes) of the `DAG` and does a depth first
     /// search until `p` preferrential parents are accumulated (or none if there are
     /// none).
-    pub fn select_parents(&self, p: usize) -> Result<Vec<TxHash>> {
+    fn select_parents(&self, p: usize) -> Result<Vec<TxHash>> {
         if self.dag.is_empty() {
             return Ok(vec![]);
         }
@@ -229,9 +238,9 @@ impl Sleet {
 
     // Ancestral Preference
 
-    // The ancestral update updates the preferred path through the DAG every time a new
-    // vertex is added.
-    pub fn update_ancestral_preference(&mut self, root_txhash: TxHash) -> Result<()> {
+    /// The ancestral update updates the preferred path through the DAG every time a new
+    /// vertex is added.
+    fn update_ancestral_preference(&mut self, root_txhash: TxHash) -> Result<()> {
         for tx_hash in self.dag.dfs(&root_txhash) {
             // conviction of T vs Pt.pref
             let pref = self.conflict_graph.get_preferred(&tx_hash)?;
@@ -350,7 +359,7 @@ impl Sleet {
     }
 
     /// Remove transactions from the dag above the accepted frontier
-    pub fn prune_at_accepted_frontier(&mut self) {
+    fn prune_at_accepted_frontier(&mut self) {
         self.compute_accepted_frontier();
         let mut to_be_pruned = HashSet::new();
         for f in self.accepted_frontier.iter() {
@@ -364,8 +373,12 @@ impl Sleet {
         }
     }
 
-    /// Check if a transaction or one of its ancestors have become accepted
-    pub fn compute_accepted_txs(&mut self, tx_hash: &TxHash) -> Vec<TxHash> {
+    /// Check if a transaction or one of its ancestors have become accepted.
+    /// Each accepted transaction is inserted into `accepted_txs` of [Sleet]
+    /// with status [TxStatus::Accepted].
+    ///
+    /// Returns a list of the newly accepted transaction hashes.
+    fn compute_accepted_txs(&mut self, tx_hash: &TxHash) -> Vec<TxHash> {
         let mut new = vec![];
         let mut memo = HashMap::new();
         for t in self.dag.dfs(tx_hash) {
@@ -380,9 +393,10 @@ impl Sleet {
         new
     }
 
-    // Weighted sampling
-
-    pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
+    /// Returns a list of validators with total minimum combined weight from the `committee` of [Sleet].
+    ///
+    /// Throws [Error::InsufficientWeight] if `committee` doesn't have validators with sufficient weight.
+    fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
         let mut validators = vec![];
         for (id, (ip, w)) in self.committee.iter() {
             validators.push((id.clone(), ip.clone(), w.clone()));
@@ -405,7 +419,9 @@ impl Actor for Sleet {
     }
 }
 
-/// Start the bootstrapping process
+/// A request structure to start the bootstrapping process of the node for [Sleet].
+/// The handler of this request communicates with `bootstrap_peers` of [Sleet]
+/// to synchronize it with other nodes.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 struct Bootstrap;
@@ -518,12 +534,17 @@ impl Handler<FetchWithAncestry> for Sleet {
     }
 }
 
+/// A request structure to get [Tx] from the storage.
+///
+/// ##Properties:
+/// * `tx_hash` - hash of [Tx] to search in storage
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "FetchedTx")]
 pub struct FetchTx {
     tx_hash: TxHash,
 }
 
+/// A response for [FetchTx] with [Tx] if found.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct FetchedTx {
     tx: Option<Tx>,
@@ -558,6 +579,7 @@ impl Handler<Bootstrapped> for Sleet {
 #[rtype(result = "AcceptedFrontier")]
 pub struct GetAcceptedFrontier;
 
+/// A response to [GetAcceptedFrontier] with a set of [TxHash] from `accepted_frontier` of [Sleet]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct AcceptedFrontier {
     frontier: HashSet<TxHash>,
@@ -576,6 +598,7 @@ impl Handler<GetAcceptedFrontier> for Sleet {
 #[rtype(result = "LiveFrontier")]
 pub struct GetLiveFrontier;
 
+/// A response to [GetLiveFrontier] with a set of [TxHash] (leaves) from the DAG of [Sleet]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct LiveFrontier {
     frontier: HashSet<TxHash>,
@@ -589,10 +612,14 @@ impl Handler<GetLiveFrontier> for Sleet {
     }
 }
 
-// When the committee is initialised in `alpha` or when it comes back online due to a
-// `FaultyNetwork` message received in `alpha`, `sleet` is updated with the latest relevant
-// chain state.
-
+/// When the committee is initialised in [Alpha](crate::alpha::Alpha) or when it comes back online due to a
+/// [FaultyNetwork](crate:alpha::FaultyNetwork) message received in
+/// [Alpha](crate::alpha::Alpha), [Sleet] is updated with the latest relevant
+/// chain state.
+///
+/// ##Properties:
+/// * `validators` - a list of validators in the `committee`
+/// * `live_cells` - live cells in the [State](crate::alpha::state::State)
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
@@ -636,6 +663,14 @@ impl Handler<LiveCommittee> for Sleet {
     }
 }
 
+/// A request structure for handling an incomplete transaction, resetting its confidence level
+/// and setting status back to [TxStatus::Queried].
+/// This request is send in [Sleet] when not all validators responded successfully to [QueryTx]
+/// when a [Cell](crate::cell::Cell) is received.
+///
+/// ##Properties:
+/// * `tx` - transaction to process
+/// * `acks` - a list of responses from sampled validators for this transaction
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
@@ -653,6 +688,16 @@ impl Handler<QueryIncomplete> for Sleet {
     }
 }
 
+/// A request structure for handling a successfully received transactions,
+/// sampled by validators with [min required weight](ALPHA).
+///
+/// This request is send in [Sleet] when all validators responded successfully to [QueryTx]
+/// when a [Cell](crate::cell::Cell) is received. The `DAG` of [Sleet] sets chit = 1 for
+/// this transaction and looks for the old transactions with required [confidence level](BETA1) which can be accepted.
+///
+/// ##Properties:
+/// * `tx` - transaction to process
+/// * `acks` - a list of responses from sampled validators for this transaction
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryComplete {
@@ -697,6 +742,12 @@ impl Handler<QueryComplete> for Sleet {
     }
 }
 
+/// A request structure to notify for new accepted transactions in [Sleet].
+/// Upon receipt, it removes conflicts for each of these transactions
+/// and notifies [Hail](crate::hail::Hail] about them.
+///
+/// ##Properties:
+/// * `tx_hashes` - transaction hashes which were accepted
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
@@ -729,11 +780,17 @@ impl Handler<NewAccepted> for Sleet {
     }
 }
 
-// Instead of having an infinite loop as per the paper which receives and processes
-// inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
-// a fresh transaction is received - either externally in `GenerateTx` or as an internal
-// consensus message via `QueryTx`.
-
+/// A request structure to handle a new transaction received in [Sleet]
+/// by sampling validators with [min required weight](ALPHA).
+/// Depending on the outcome of the sampling, it sends [QueryComplete] or [QueryIncomplete] within the component.
+///
+/// Instead of having an infinite loop as per the paper which receives and processes
+/// inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
+/// a fresh transaction is received - either externally in [GenerateTx] or as an internal
+/// consensus message via [QueryTx].
+///
+/// ##Properties:
+/// * `tx` - transaction to process
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 pub struct FreshTx {
@@ -781,12 +838,21 @@ impl Handler<FreshTx> for Sleet {
     }
 }
 
+/// A request structure for generating a new transaction from the received [Cell](crate::cell::Cell).
+/// To generate a [Tx], it selects a [min number of parents](NPARENTS) and calls [Sleet::on_receive_tx]
+/// to record it properly in the state and if it's successful then notifies the component with [FreshTx]
+/// and returns [GenerateTxAck]
+///
+/// ##Properties:
+/// * `cell` - received cell to use for generating a [Tx]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "GenerateTxAck")]
 pub struct GenerateTx {
     pub cell: Cell,
 }
 
+/// Contains a cell hash which was successfully applied to a generated [Tx].
+/// `cell_hash` is empty if [Tx] was not generated successfully.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct GenerateTxAck {
     /// hash of applied transaction
@@ -828,23 +894,34 @@ impl Handler<GenerateTx> for Sleet {
     }
 }
 
-// Receiving transactions. The only difference between receiving transactions and receiving
-// a transaction query is that any client should be able to send `sleet` a `GenerateTx`
-// message, whereas only network validators should be able to perform a `QueryTx`.
-//
-// Otherwise the functionality is identical but `QueryTx` returns a consensus response -
-// whether the transaction is strongly preferred or not.
-
+/// This request is used in [FreshTx] when sending a new generated [Tx] to the sampled validators.
+///
+/// Receiving transactions. The only difference between receiving transactions and receiving
+/// a transaction query is that any client should be able to send `sleet` a [GenerateTx]
+/// message, whereas only network validators should be able to perform a [QueryTx].
+///
+/// Otherwise the functionality is identical but `QueryTx` returns a consensus response -
+/// whether the transaction is strongly preferred or not.
+///
+///
+/// ##Properties:
+/// * `id` - the node's own Id
+/// * `ip` - the node's own listening address, for sending queries back ([GetTxAncestors] in particular)
+/// * `tx` - generated transaction to sample in a node (validator) `id@ip`
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
 pub struct QueryTx {
-    /// The node's own ID
     pub id: Id,
-    /// The node's own listening address, for sending queries back (`GetTxAncestors` in particular)
     pub ip: SocketAddr,
     pub tx: Tx,
 }
 
+/// Response for [QueryTx]
+///
+/// ##Properties:
+/// * `id` - the node Id which responded
+/// * `tx_hash` - hash of generated [Tx]
+/// * `outcome` - true if the validator considered this [Tx] to be strongly preferred
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct QueryTxAck {
     pub id: Id,
@@ -926,6 +1003,9 @@ impl Handler<QueryTx> for Sleet {
     }
 }
 
+/// Request structure to check and process pending queries from `pending_queries` of [Sleet]
+/// with transactions. If there are - then sends [FreshTx] for new transactions,
+/// or a validator outcome if pending [Tx] is strongly preferred.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct CheckPending;
@@ -970,6 +1050,13 @@ impl Handler<CheckPending> for Sleet {
     }
 }
 
+/// A request structure for getting ancestors of a selected transaction from a node.
+/// Notifies [Sleet] with [FreshTx] for each newly received ancestor.
+///
+/// ##Properties:
+/// * `tx_hash` - hash of [Tx] to find ancestors for
+/// * `id` - the node's own ID
+/// * `ip` - the node's own listening address
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct AskForAncestors {
