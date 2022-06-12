@@ -1,3 +1,5 @@
+//! The network sender is responsible for sending external requests from `p2p` actors to other peers
+//! on the network. A `Send` sends to one peer and a `Multicast` sends to many peers.
 use crate::{Error, Result};
 
 use super::prelude::*;
@@ -9,10 +11,9 @@ use super::response_handler::ResponseHandler;
 
 use crate::channel::Channel;
 
+use std::collections::HashSet;
 use std::net::SocketAddr;
 
-/// A sender is responsible for handling requests from other actors to `Send` a message to
-/// a peer or `Multicast` a message to many peers.
 pub struct Sender {
     /// Upgrades the connection to TLS or plain TCP according to configuration.
     upgrader: Arc<dyn Upgrader>,
@@ -58,7 +59,7 @@ impl Handler<Send> for Sender {
             let factory_address =
                 ConnectionFactory::new(upgrader, msg.request, response_handler).start();
             let connect = Connect::new(msg.peer_meta);
-            info!("sending {:?} to connection factory", connect.clone());
+            // info!("sending {:?} to connection factory", connect.clone());
             factory_address.send(connect).await.unwrap()
         };
         Box::pin(execution)
@@ -77,7 +78,7 @@ pub async fn send(
 
 pub async fn multicast(
     sender: Addr<Sender>,
-    peer_metas: Vec<PeerMetadata>,
+    peer_metas: HashSet<PeerMetadata>,
     request: Request,
     delta: Duration,
 ) -> Result<()> {

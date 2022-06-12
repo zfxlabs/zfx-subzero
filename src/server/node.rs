@@ -89,52 +89,52 @@ pub fn run(
         //let view_addr = view.start();
         //
         // Create the `ice` actor
-        let reservoir = Reservoir::new();
-        let ice = Ice::new(client_addr.clone().recipient(), node_id, listener_ip, reservoir);
-        let ice_addr = ice.start();
+        // let reservoir = Reservoir::new();
+        // let ice = Ice::new(client_addr.clone().recipient(), node_id, listener_ip, reservoir);
+        // let ice_addr = ice.start();
 
-        // Create the `hail` actor
-        let hail = Hail::new(client_addr.clone().recipient(), node_id);
-        let hail_addr = hail.start();
+        // // Create the `hail` actor
+        // let hail = Hail::new(client_addr.clone().recipient(), node_id);
+        // let hail_addr = hail.start();
 
-        // Create the `sleet` actor
-        // FIXME: Sleet has to be initialised with the genesis utxo ids.
-        let sleet = Sleet::new(
-            client_addr.clone().recipient(),
-            hail_addr.clone().recipient(),
-            node_id,
-            listener_ip,
-        );
-        let sleet_addr = sleet.start();
+        // // Create the `sleet` actor
+        // // FIXME: Sleet has to be initialised with the genesis utxo ids.
+        // let sleet = Sleet::new(
+        //     client_addr.clone().recipient(),
+        //     hail_addr.clone().recipient(),
+        //     node_id,
+        //     listener_ip,
+        // );
+        // let sleet_addr = sleet.start();
 
-        // Create the `alpha` actor
-        let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
-        let alpha = Alpha::create(
-            client_addr.clone().recipient(),
-            node_id,
-            Path::new(&db_path),
-            ice_addr.clone(),
-            sleet_addr.clone(),
-            hail_addr.clone(),
-        )
-        .unwrap();
-        let alpha_addr = alpha.start();
+        // // Create the `alpha` actor
+        // let db_path = vec!["/tmp/", &node_id_str, "/alpha.sled"].concat();
+        // let alpha = Alpha::create(
+        //     client_addr.clone().recipient(),
+        //     node_id,
+        //     Path::new(&db_path),
+        //     ice_addr.clone(),
+        //     sleet_addr.clone(),
+        //     hail_addr.clone(),
+        // )
+        // .unwrap();
+        // let alpha_addr = alpha.start();
 
-        // Bootstrap the view
-        //let view_addr_clone = view_addr.clone();
-        let ice_addr_clone = ice_addr.clone();
-        let alpha_addr_clone = alpha_addr.clone();
+        // // Bootstrap the view
+        // //let view_addr_clone = view_addr.clone();
+        // let ice_addr_clone = ice_addr.clone();
+        // let alpha_addr_clone = alpha_addr.clone();
 
         let bootstrap_execution = async move {
             //view::bootstrap(view_addr_clone.clone(), ice_addr_clone.clone()).await;
             //let view_addr_clone = view_addr_clone.clone();
-            let ice_addr_clone = ice_addr_clone.clone();
-            let ice_execution = async move {
-                // Setup `ice` consensus for establishing the liveness of peers
-                //ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone).await;
-            };
-            let arbiter = Arbiter::new();
-            arbiter.spawn(ice_execution);
+            //let ice_addr_clone = ice_addr_clone.clone();
+            //let ice_execution = async move {
+            // Setup `ice` consensus for establishing the liveness of peers
+            //ice::run(node_id, ice_addr_clone, view_addr_clone, alpha_addr_clone).await;
+            //};
+            //let arbiter = Arbiter::new();
+            //arbiter.spawn(ice_execution);
         };
 
         let listener_execution = async move {

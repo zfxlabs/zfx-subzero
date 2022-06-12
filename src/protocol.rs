@@ -3,8 +3,8 @@
 use crate::alpha;
 use crate::hail;
 use crate::ice;
-use crate::sleet;
 use crate::message;
+use crate::sleet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
@@ -43,9 +43,10 @@ pub enum Response {
     // Ice
     Ack(ice::Ack),
     Status(ice::Status),
-    // Chain Bootstrapping
-    LastAccepted(alpha::LastAccepted),
-    Ancestors,
+    // Alpha
+    AncestorsAck,
+    // LastAccepted(alpha::LastAccepted),
+    // Ancestors,
     CellHashes(sleet::CellHashes),
     AcceptedCellHashes(sleet::sleet_cell_handlers::AcceptedCellHashes),
     // Sleet
