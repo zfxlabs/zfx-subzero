@@ -1,18 +1,18 @@
-use crate::hail::Hail;
-use crate::ice::{CheckStatus, Ice};
+//use crate::hail::Hail;
+//use crate::ice::{CheckStatus, Ice};
+use crate::message::{LastCellIdAck, Version, VersionAck, CURRENT_VERSION};
 use crate::p2p::id::Id;
 use crate::p2p::peer_meta::PeerMetadata;
 use crate::protocol::{Request, Response};
 use crate::sleet::Sleet;
-use crate::message::{Version, VersionAck, CURRENT_VERSION};
 //use crate::view::View;
 use crate::{alpha, alpha::Alpha};
 
 use tracing::{debug, error, info, trace};
 
 use std::collections::HashSet;
-use std::sync::RwLock;
 use std::sync::Arc;
+use std::sync::RwLock;
 
 use crate::sleet;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
@@ -21,7 +21,7 @@ const MAX_PEER_SET: usize = 32;
 
 #[derive(Clone)]
 pub enum RouterState {
-    /// The `Bootstrapping` state implies the set of peers in the `peer_set` are whitelisted. 
+    /// The `Bootstrapping` state implies the set of peers in the `peer_set` are whitelisted.
     Bootstrapping,
     /// The `Ready` state implies the set of peers in the `peer_set` are validators.
     Ready,
@@ -31,20 +31,20 @@ pub enum RouterState {
 pub struct Router {
     self_peer: PeerMetadata,
     peer_set: Arc<RwLock<HashSet<PeerMetadata>>>,
+    alpha_address: Addr<Alpha>,
     state: RouterState,
 }
 
 impl Router {
-    pub fn new(
-        self_peer: PeerMetadata,
-    ) -> Self {
-	let mut initial_peer_set = HashSet::new();
-	initial_peer_set.insert(self_peer.clone());
+    pub fn new(self_peer: PeerMetadata, alpha_address: Addr<Alpha>) -> Self {
+        let mut initial_peer_set = HashSet::new();
+        initial_peer_set.insert(self_peer.clone());
         Router {
-	    self_peer,
-	    peer_set: Arc::new(RwLock::new(initial_peer_set)),
-	    state: RouterState::Bootstrapping,
-	}
+            self_peer,
+            peer_set: Arc::new(RwLock::new(initial_peer_set)),
+            alpha_address,
+            state: RouterState::Bootstrapping,
+        }
     }
 }
 
@@ -103,8 +103,9 @@ impl Handler<RouterRequest> for Router {
         _ctx: &mut Context<Self>,
     ) -> Self::Result {
         let self_peer = self.self_peer.clone();
-	let peer_set = self.peer_set.clone();
-	let state = self.state.clone();
+        let peer_set = self.peer_set.clone();
+        let alpha_address = self.alpha_address.clone();
+        let state = self.state.clone();
         Box::pin(async move {
             trace!(
                 "Handling incoming msg: needs_checking: {}, id: {}", // ", validator: {}",
@@ -114,31 +115,32 @@ impl Handler<RouterRequest> for Router {
             );
             match request {
                 // Handshake
-                Request::Version(version) => {
-                    debug!("routing Version -> View");
-
-		    match state {
-			RouterState::Bootstrapping => {
-			    let mut peer_set = peer_set.write().unwrap();
-			    if version.peer_set.len() <= MAX_PEER_SET {
-				for peer in version.peer_set.iter().cloned() { 
-				    if peer.clone() == self_peer.clone() {
-					continue;
-				    } else {
-					if peer_set.len() <= MAX_PEER_SET {
-					    peer_set.insert(peer);
-					}
-				    }
-				}
-			    }
-			    Response::VersionAck(VersionAck::new(self_peer, peer_set.clone()))
-			},
-			RouterState::Ready => {
-			    info!("Router reached ready state ...");
-			    let peer_set = peer_set.read().unwrap();
-			    Response::VersionAck(VersionAck::new(self_peer, peer_set.clone()))
-			},
-		    }
+                Request::Version(version) => match state {
+                    RouterState::Bootstrapping => {
+                        let mut peer_set = peer_set.write().unwrap();
+                        if version.peer_set.len() <= MAX_PEER_SET {
+                            for peer in version.peer_set.iter().cloned() {
+                                if peer.clone() == self_peer.clone() {
+                                    continue;
+                                } else {
+                                    if peer_set.len() <= MAX_PEER_SET {
+                                        peer_set.insert(peer);
+                                    }
+                                }
+                            }
+                        }
+                        Response::VersionAck(VersionAck::new(self_peer, peer_set.clone()))
+                    }
+                    RouterState::Ready => {
+                        info!("Router reached ready state ...");
+                        let peer_set = peer_set.read().unwrap();
+                        Response::VersionAck(VersionAck::new(self_peer, peer_set.clone()))
+                    }
+                },
+                // State Bootstrapping
+                Request::LastCellId(last_cell_id) => {
+                    let ack = alpha_address.send(alpha::LastCellId).await.unwrap().unwrap();
+                    Response::LastCellIdAck(LastCellIdAck::new(self_peer, ack))
                 }
 
                 // Ice external requests
