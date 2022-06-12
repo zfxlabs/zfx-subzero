@@ -1,3 +1,4 @@
+use super::cell_id::CellId;
 use super::inputs::Inputs;
 use super::outputs::{Output, Outputs};
 use super::types::*;
@@ -37,6 +38,10 @@ impl Cell {
     pub fn hash(&self) -> CellHash {
         let encoded = bincode::serialize(self).unwrap();
         blake3::hash(&encoded).as_bytes().clone()
+    }
+
+    pub fn id(&self) -> CellId {
+        CellId::new(self.hash())
     }
 
     /// Sums the output capacities.
