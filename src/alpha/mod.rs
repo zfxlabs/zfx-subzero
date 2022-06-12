@@ -32,6 +32,10 @@ pub enum Error {
     Graph(graph::Error),
     // Alpha
     BootstrapConsensus,
+    AlphaUninitialised,
+    AlphaDbUninitialised,
+    AlphaInvalidChainState,
+    AlphaOutOfSync,
     // Operations
     UnspendableCell,
     ExceedsAvailableFunds,
