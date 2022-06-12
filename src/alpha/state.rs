@@ -38,23 +38,23 @@ impl State {
     }
 
     pub fn apply_cell(&mut self, cell: Cell) -> Result<()> {
-	// Fetch all the live cell outputs which are inputs to this cell.
-	let input_cell_ids = CellIds::from_inputs(cell.inputs())?;
+        // Fetch all the live cell outputs which are inputs to this cell.
+        let input_cell_ids = CellIds::from_inputs(cell.inputs())?;
 
-	// The `cell_ids` of output cells which this cell consumes
-	let mut consumed_cell_ids = CellIds::empty();
-	let mut consumed_cell_outputs = vec![];
-	// The amount of `capacity` (datasize) spent by the cell
-	let mut consumed_capacity = 0u64;
-	let _intersecting_cell_ids = CellIds::empty();
-	// Iterate over the cells which are currently live
-	for (live_cell_ids, live_cell) in self.live_cells.iter() {
-	    // If the live cell intersects with this cells inputs
-	    if input_cell_ids.intersects_with(live_cell_ids) {
-		// Fetch the common inputs of both cells
-		let intersection = input_cell_ids.intersect(&live_cell_ids);
-		// Construct output cell ids of the live cell and check if they intersect
-		let live_cell_outputs = live_cell.outputs();
+        // The `cell_ids` of output cells which this cell consumes
+        let mut consumed_cell_ids = CellIds::empty();
+        let mut consumed_cell_outputs = vec![];
+        // The amount of `capacity` (datasize) spent by the cell
+        let mut consumed_capacity = 0u64;
+        let _intersecting_cell_ids = CellIds::empty();
+        // Iterate over the cells which are currently live
+        for (live_cell_ids, live_cell) in self.live_cells.iter() {
+            // If the live cell intersects with this cells inputs
+            if input_cell_ids.intersects_with(live_cell_ids) {
+                // Fetch the common inputs of both cells
+                let intersection = input_cell_ids.intersect(&live_cell_ids);
+                // Construct output cell ids of the live cell and check if they intersect
+                let live_cell_outputs = live_cell.outputs();
                 for i in 0..live_cell_outputs.len() {
                     let cell_id = CellId::from_output(
                         live_cell.hash(),
@@ -62,18 +62,18 @@ impl State {
                         live_cell_outputs[i].clone(),
                     )?;
                     if intersection.contains(&cell_id) {
-			// If the output of the live cell is spent by this cell, add to consumed
+                        // If the output of the live cell is spent by this cell, add to consumed
                         consumed_cell_ids.insert(cell_id.clone());
                         consumed_cell_outputs.push(live_cell_outputs[i].clone());
                         consumed_capacity += live_cell_outputs[i].capacity;
                     }
                 }
-	    }
-	}
-	if consumed_cell_ids.clone() != input_cell_ids.clone() {
-	    return Err(Error::UndefinedCellIds);
-	}
-	
+            }
+        }
+        if consumed_cell_ids.clone() != input_cell_ids.clone() {
+            return Err(Error::UndefinedCellIds);
+        }
+
         // Verify that the cell outputs transition correctly according to their constraints.
         let mut verified_outputs = vec![];
         for output in cell.outputs().iter() {
@@ -124,7 +124,7 @@ impl State {
         if let Some(_) = self.live_cells.insert(produced_cell_ids, cell.clone()) {
             return Err(Error::ExistingCellIds);
         }
-	
+
         // Subtract the consumed capacity and add the produced capacity.
         if consumed_capacity >= produced_capacity + produced_staking_capacity
             && consumed_capacity > 0
@@ -148,7 +148,7 @@ impl State {
             return Err(Error::ExceedsCapacity);
         }
 
-	Ok(())
+        Ok(())
     }
 
     pub fn apply(&self, block: Block) -> Result<State> {
@@ -163,7 +163,7 @@ impl State {
 
         // Try to apply the cells by order of dependence.
         for cell in ordered_cells.iter().cloned() {
-	    state.apply_cell(cell);
+            state.apply_cell(cell);
         }
         Ok(state)
     }
