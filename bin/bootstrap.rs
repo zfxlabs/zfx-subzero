@@ -1,24 +1,25 @@
 //! This is a program used to bootstrap a network, currently being used for testing. Please use the
 //! `node` executable unless creating a new network for the first time.
 
-use zfx_subzero::Result;
+use zfx_subzero::alpha::Alpha;
 use zfx_subzero::client::Client;
 use zfx_subzero::p2p::id::Id;
 use zfx_subzero::p2p::linear_backoff::{LinearBackoff, Start};
-use zfx_subzero::p2p::primary_bootstrapper::PrimaryBootstrapper;
 use zfx_subzero::p2p::peer_bootstrapper::PeerBootstrapper;
+use zfx_subzero::p2p::primary_bootstrapper::PrimaryBootstrapper;
 use zfx_subzero::protocol::{Request, Response};
 use zfx_subzero::server::{Router, Server};
 use zfx_subzero::tls;
+use zfx_subzero::Result;
 
-use zfx_subzero::p2p::peer_meta::PeerMetadata;
 use zfx_subzero::message::Version;
+use zfx_subzero::p2p::peer_meta::PeerMetadata;
 
 use ed25519_dalek::Keypair;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
-use std::collections::HashSet;
 
 use actix::{Actor, Arbiter};
 
@@ -141,19 +142,30 @@ fn main() -> Result<()> {
 
     let sys = actix::System::new();
     sys.block_on(async move {
-        let self_peer_meta_clone = self_peer_meta.clone();
+        let self_peer_meta_clone_1 = self_peer_meta.clone();
+        let self_peer_meta_clone_2 = self_peer_meta.clone();
         let send_timeout = Duration::from_millis(1000);
+
+	// Primary chain configuration
+	let primary_chain_id = Id::one();
+	let primary_chain_id_s = format!("{}", primary_chain_id);
+	let bootstrap_peer_lim = 2;
+	let node_id_str = hex::encode(node_id.as_bytes());
+	let chain_db_path = vec!["/tmp/", &node_id_str, "/", &primary_chain_id_s, "/alpha.sled"].concat();
+	// Primary chain initialisation (alpha chain protocol)
+	let alpha_address = Alpha::new(primary_chain_id.clone(), chain_db_path).start();
+	let alpha_address_clone = alpha_address.clone();
+
         let client_execution = async move {
-	    // Primary chain configuration
-	    let primary_chain_id = Id::one();
-	    let primary_chain_id_s = format!("{}", primary_chain_id);
-	    let bootstrap_peer_lim = 2;
-	    let node_id_str = hex::encode(node_id.as_bytes());
-	    let chain_db_path = vec!["/tmp/", &node_id_str, "/", &primary_chain_id_s, "/alpha.sled"].concat();
-	    // Primary chain instantiation
+	    // Primary bootstrapper init
 	    info!("initialising primary bootstrapper");
-	    let mut primary_bootstrapper = PrimaryBootstrapper::new(primary_chain_id, bootstrap_peer_lim, chain_db_path);
-	    primary_bootstrapper.open_db().unwrap();
+	    let mut primary_bootstrapper = PrimaryBootstrapper::new(
+		client_upgrader.clone(),
+		self_peer_meta_clone_1.clone(),
+		primary_chain_id,
+		bootstrap_peer_lim,
+		alpha_address.clone(),
+	    );
 	    let primary_bootstrapper_address = primary_bootstrapper.start();
 	    let primary_bootstrapper_recipient = primary_bootstrapper_address.recipient().clone();
 
@@ -184,7 +196,7 @@ fn main() -> Result<()> {
             let () = backoff.do_send(Start);
         };
         let server_execution = async move {
-            let router = Router::new(self_peer_meta_clone);
+            let router = Router::new(self_peer_meta_clone_2, alpha_address_clone);
             let router_address = router.start();
             let server = Server::new(self_ip, router_address, server_upgrader);
             server.listen().await.unwrap()
