@@ -5,18 +5,43 @@
 //! Subzero is an ensemble of components for the creation of a network inspired by the `Snow*`
 //! family of consensus algorithms.
 //!
+//! Although there is a lot of surrounding code for setting up secure channels, protocol messages,
+//! bootstrapping etc, `subzero` is the synthesis of four main actors - `alpha`, `ice`, `sleet` and
+//! `hail`.
+//!
+//! ## Alpha
+//!
+//! `alpha` is the primary chain protocol which defines staking operations and basic transfers. It is
+//! defined as an actor which can be used to initialise and retrieve chain state.
+//!
+//! `alpha` is responsible for providing the latest known set of cells, their ancestry and the state
+//! which relates to the latest application of said cells.
+//!
 //! ## Ice
 //!
-//! Ice is a set of actors for assessing the liveness of the primary protocols validator set.
+//! `ice` is a reservoir-sampling based consensus algorithm for approximating the liveness of the
+//! validator set dynamically. `ice` is required in order to reward validators based on their uptime.
 //!
 //! ## Sleet
 //!
-//! Sleet is a set of actors designed to reach consensus on `Cell`s, which are the primitive
-//! transaction type used in Subzero.
+//! `sleet` is a cell-based (equivalent to a utxo transaction with added data / type field) consensus
+//! algorithm which uses a directed acyclic graph and random sampling to reach consensus.
+//!
+//! `sleet` is based on `Avalanche` with improvements against safety faults[1].
+//!
+//! Although some of the algorithms have been optimised in `sleet` to be constant space, the
+//! underlying graph (data storage) still needs to be optimised such that they use a constant amount
+//! of memory.
 //!
 //! ## Hail
 //!
-//! Hail is a set of actors designed to reach consensus on `Block`s containing cells.
+//! `hail` is a block-based consensus algorithm which uses a directed acyclic graph with random
+//! sampling to reach consensus, as well as VRF based sortition to select block producers, where the
+//! lowest VRF hash is used to resolve conflicts.
+//!
+//! Although `hail` tries to successively collect enough samples to advance, it is currently lacking
+//! an extra instance of consensus in its decision making process. This is because initially we
+//! assumed the `sleet` model would work almost unchanged with blocks.
 
 #[macro_use]
 extern crate serde_derive;
@@ -24,11 +49,11 @@ extern crate serde_derive;
 extern crate actix_derive;
 extern crate colored;
 
+pub mod message;
 pub mod p2p;
+pub mod protocol;
 pub mod server;
 pub mod util;
-pub mod message;
-pub mod protocol;
 
 mod integration_test;
 
