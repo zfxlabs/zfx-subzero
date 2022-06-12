@@ -5,10 +5,10 @@ use super::initial_staker::InitialStaker;
 use super::stake::StakeOperation;
 use super::Result;
 
-use crate::storage::cell::{Key, exists_genesis};
 use crate::cell::{Cell, CellIds};
-use crate::p2p::id::Id;
 use crate::graph::dependency_graph::DependencyGraph;
+use crate::p2p::id::Id;
+use crate::storage::cell::{exists_genesis, Key};
 
 use zerocopy::AsBytes;
 
@@ -18,38 +18,37 @@ use std::str::FromStr;
 /// Reads all existing cells or creates the genesis cells.
 pub fn read_or_create_cells(db: &sled::Db) -> Result<(Vec<CellIds>, Vec<Cell>)> {
     if !exists_genesis(db) {
-	// Acquire the genesis cells defined by the `alpha` protocol
-	let cells = acquire_genesis_cells()?;
-	// Persist the cells since genesis does not exist
-	let mut batch = sled::Batch::default();
-	let mut dg = DependencyGraph::new();
-	for cell in cells.clone().iter() {
-	    // Insert the cell into the dependency graph
-	    dg.insert(cell.clone())?;
-	    // Store the cell
-	    let key = Key::new(cell.hash());
-	    let val = bincode::serialize(&cell)?;
-	    batch.insert(key.as_bytes(), val);
-	}
-	db.apply_batch(batch)?;
-	let sorted_cell_ids = dg.topological()?;
-	let sorted_cells = dg.topological_cells(cells)?;
-	Ok((sorted_cell_ids, sorted_cells))
-
+        // Acquire the genesis cells defined by the `alpha` protocol
+        let cells = acquire_genesis_cells()?;
+        // Persist the cells since genesis does not exist
+        let mut batch = sled::Batch::default();
+        let mut dg = DependencyGraph::new();
+        for cell in cells.clone().iter() {
+            // Insert the cell into the dependency graph
+            dg.insert(cell.clone())?;
+            // Store the cell
+            let key = Key::new(cell.hash());
+            let val = bincode::serialize(&cell)?;
+            batch.insert(key.as_bytes(), val);
+        }
+        db.apply_batch(batch)?;
+        let sorted_cell_ids = dg.topological()?;
+        let sorted_cells = dg.topological_cells(cells)?;
+        Ok((sorted_cell_ids, sorted_cells))
     } else {
-	// Read all existing cells into memory (FIXME)
-	let mut cells: Vec<Cell> = vec![];
-	let mut dg = DependencyGraph::new();
-	db.iter().for_each(|cell| {
-	    // FIXME: unwrap
-	    let (k, v) = cell.unwrap();
-	    let cell: Cell = bincode::deserialize(v.as_bytes()).unwrap();
-	    dg.insert(cell.clone()).unwrap();
-	    cells.push(cell);
-	});
-	let sorted_cell_ids = dg.topological()?;
-	let sorted_cells = dg.topological_cells(cells)?;
-	Ok((sorted_cell_ids, sorted_cells))
+        // Read all existing cells into memory (FIXME)
+        let mut cells: Vec<Cell> = vec![];
+        let mut dg = DependencyGraph::new();
+        db.iter().for_each(|cell| {
+            // FIXME: unwrap
+            let (k, v) = cell.unwrap();
+            let cell: Cell = bincode::deserialize(v.as_bytes()).unwrap();
+            dg.insert(cell.clone()).unwrap();
+            cells.push(cell);
+        });
+        let sorted_cell_ids = dg.topological()?;
+        let sorted_cells = dg.topological_cells(cells)?;
+        Ok((sorted_cell_ids, sorted_cells))
     }
 }
 
