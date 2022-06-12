@@ -3,8 +3,8 @@ use tracing_subscriber;
 
 use clap::{value_t, values_t, App, Arg};
 
-use zfx_subzero::server::node;
 use zfx_subzero::p2p::id;
+use zfx_subzero::server::node;
 use zfx_subzero::Result;
 
 use std::str::FromStr;
