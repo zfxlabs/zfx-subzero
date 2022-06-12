@@ -1,7 +1,8 @@
 //! The last cell id message definition.
+use crate::cell::CellId;
 use crate::p2p::id::Id;
 use crate::p2p::peer_meta::PeerMetadata;
-use crate::cell::CellId;
+use crate::Result;
 
 use std::collections::HashSet;
 use std::net::SocketAddr;

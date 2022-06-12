@@ -16,16 +16,6 @@ pub mod peer_bootstrapper;
 /// primary network and forwards them to the `PrimarySynchroniser`, responsible for obtaining as much
 /// of the cell state from the trusted peers as is currently available at those peers.
 pub mod primary_bootstrapper;
-
+/// The `PrimarySynchroniser` attempts to align peers on the `last_cell_id` contained within the
+/// primary state actor (in this case `alpha`).
 pub mod primary_synchroniser;
-
-// network bootstrapper sorts peers by chain and sends accumulated bootstrap peers via the
-// a `chain_bootstrapper`.
-//pub mod network_bootstrapper;
-// chain bootstrapper sends `ReceiveBootstrapQuorum` to `ice` (primary)
-//pub mod chain_bootstrapper;
-
-// `ice` sends `LivePeers` to consensus
-// consensus:
-//   * requests transactions from `sleet` to build and propose blocks
-//   * receives new blocks from `ice` gossip

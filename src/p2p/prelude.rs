@@ -5,7 +5,7 @@ pub use super::peer_meta::PeerMetadata;
 
 pub use actix::{Actor, Handler, Recipient, ResponseFuture};
 pub use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
-pub use actix::{Addr, AsyncContext, Context};
+pub use actix::{Addr, Arbiter, AsyncContext, Context};
 
 pub use crate::tls::connection_stream::ConnectionStream;
 pub use crate::tls::upgrader::Upgrader;

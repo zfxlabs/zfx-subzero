@@ -4,59 +4,71 @@
 //! instantiate the initial validator set required for subsequent network bootstraps. Subsequent
 //! bootstrappers are expected to use trusted validator sets derived from the primary network state.
 
+use crate::alpha::{Alpha, LastCellId, ValidatorSet};
+use crate::cell::CellId;
+
 use super::prelude::*;
 
+use super::linear_backoff::{LinearBackoff, Start};
 use super::peer_bootstrapper::ReceivePeerSet;
-
-use crate::alpha::{genesis, state::State};
+use super::primary_synchroniser::PrimarySynchroniser;
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 pub struct PrimaryBootstrapper {
-    /// The `id` of the primary chain.
+    /// The connection upgrader.
+    upgrader: Arc<dyn Upgrader>,
+    /// The metadata of this peer.
+    self_peer: PeerMetadata,
+    /// The `Id` of the chain being bootstrapped.
     chain_id: Id,
     /// A trusted set of bootstrap peers for bootstrapping the chain.
     bootstrap_peers: HashSet<PeerMetadata>,
     /// The number of peers required to bootstrap the chain.
     bootstrap_peer_lim: usize,
-    /// The path to the database of the primary chain.
-    chain_db_path: String,
-    /// The database of the primary chain.
-    chain_db: Option<sled::Db>,
+    /// The `alpha` (primary chain protocol) address.
+    alpha_address: Addr<Alpha>,
 }
 
 impl PrimaryBootstrapper {
-    pub fn new(chain_id: Id, bootstrap_peer_lim: usize, chain_db_path: String) -> Self {
-	PrimaryBootstrapper { chain_id, bootstrap_peers: HashSet::default(), bootstrap_peer_lim, chain_db_path, chain_db: None }
-    }
-
-    /// Opens the database of the primary chain for reading.
-    pub fn open_db(&mut self) -> Result<()> {
-	// Opens the primary chains database at `path`.
-	let primary_chain_db = sled::open(&self.chain_db_path)?;
-	info!("initialised primary `chain_db`");
-	self.chain_db = Some(primary_chain_db);
-	Ok(())
+    pub fn new(
+        upgrader: Arc<dyn Upgrader>,
+        self_peer: PeerMetadata,
+        chain_id: Id,
+        bootstrap_peer_lim: usize,
+        alpha_address: Addr<Alpha>,
+    ) -> Self {
+        PrimaryBootstrapper {
+            upgrader,
+            self_peer,
+            chain_id,
+            bootstrap_peers: HashSet::default(),
+            bootstrap_peer_lim,
+            alpha_address,
+        }
     }
 
     /// Inserts a new bootstrap peer and returns `Some(_)` when the bootstrap peer limit has been
     /// reached, otherwise `None` is returned.
-    pub fn insert_bootstrap_peer(&mut self, peer_meta: PeerMetadata) -> Option<HashSet<PeerMetadata>> {
-	if self.bootstrap_peers.len() >= self.bootstrap_peer_lim {
-	    return Some(self.bootstrap_peers.clone());
-	} else {
-	    if let true = self.bootstrap_peers.insert(peer_meta) {
-		if self.bootstrap_peers.len() >= self.bootstrap_peer_lim {
-		    Some(self.bootstrap_peers.clone())
-		} else {
-		    None
-		}
-	    } else {
-		None
-	    }
-	}
+    pub fn insert_bootstrap_peer(
+        &mut self,
+        peer_meta: PeerMetadata,
+    ) -> Option<HashSet<PeerMetadata>> {
+        if self.bootstrap_peers.len() >= self.bootstrap_peer_lim {
+            return Some(self.bootstrap_peers.clone());
+        } else {
+            if let true = self.bootstrap_peers.insert(peer_meta) {
+                if self.bootstrap_peers.len() >= self.bootstrap_peer_lim {
+                    Some(self.bootstrap_peers.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -71,77 +83,83 @@ pub struct ReceivePrimaryBootstrap {
     pub peers: HashSet<PeerMetadata>,
 }
 
-// pub struct ReceiveSync {
-//     pub last_cell_hash: Hash,
-//     pub state: State,
-// }
-
 impl Handler<ReceivePeerSet> for PrimaryBootstrapper {
     type Result = ();
 
     fn handle(&mut self, msg: ReceivePeerSet, ctx: &mut Context<Self>) -> Self::Result {
-	if let Some(db) = self.chain_db.clone() {
-	    // Collects the peers which support the primary chain and tries to insert them into the
-	    // primary bootstrappers
-	    let mut primary_peers = HashSet::new();
-	    for peer in msg.peer_set.iter().cloned() {
-		if peer.chains.contains(&self.chain_id) {
-		    primary_peers.insert(peer.clone());
-		    match self.insert_bootstrap_peer(peer.clone()) {
-			// If the primary chain has enough peers, start bootstrapping the primary
-			// chain
-			Some(peers) => {
-			    // TODO: Make this a streaming solution for constant space memory overhead
+        // Collects the peers which support the primary chain and tries to insert them into the
+        // primary bootstrappers
+        let mut primary_peers = HashSet::new();
+        for peer in msg.peer_set.iter().cloned() {
+            if peer.chains.contains(&self.chain_id) {
+                primary_peers.insert(peer.clone());
+                match self.insert_bootstrap_peer(peer.clone()) {
+                    // If the primary chain has enough peers, start bootstrapping the primary
+                    // chain
+                    Some(peers) => {
+                        let arbiter = Arbiter::new();
+                        let alpha_address = self.alpha_address.clone();
+                        let upgrader = self.upgrader.clone();
+                        let self_peer = self.self_peer.clone();
+                        let sync_recipient = ctx.address().recipient().clone();
+                        arbiter.spawn(async move {
+                            match alpha_address.send(LastCellId).await.unwrap() {
+                                Ok(last_cell_id) => {
+                                    // Synchronise the chain state according to the trusted peers
+                                    info!("bootstrapped: initialising primary synchroniser");
+                                    let primary_synchroniser_address = PrimarySynchroniser::new(
+                                        upgrader.clone(),
+                                        self_peer.clone(),
+                                        last_cell_id,
+                                        primary_peers,
+                                        sync_recipient,
+                                    )
+                                    .start();
 
-			    // Read all existing cells or create the genesis cells
-			    let (cell_ids, cells) = genesis::read_or_create_cells(&db).unwrap();
-			    // Save the last cell hash for comparison with other peers
-			    let last_cell_hash = cells[cells.len()-1].hash();
-			    // Apply the cells to a new genesis state
-			    let mut genesis_state = State::new();
-			    for (i, cell) in cells.iter().cloned().enumerate() {
-				info!("[{:?}] applying cell: {:?}", i, cell);
-				genesis_state.apply_cell(cell).unwrap();
-			    }
-			    // TODO: Save the last state hash for comparison with other peers (?)
-			    // let last_state_hash = genesis_state.hash();
-			    info!("last_cell_hash = {:?}", last_cell_hash);
-			    
-			    // Synchronise the chain state according to the trusted peers
-			    
-			    // The synchronised cells (latest cells) are all accepted in `sleet`.
+                                    info!("primary sync backoff delay = 10s");
+                                    let backoff = LinearBackoff::new(
+                                        primary_synchroniser_address.recipient(),
+                                        Duration::from_millis(10000),
+                                    )
+                                    .start();
+                                    let () = backoff.do_send(Start);
+                                }
+                                Err(err) => error!("{:?}", err),
+                            }
+                        });
+                        return;
+                    }
+                    None => continue,
+                }
+            } else {
+                error!("error: database unopened, skipping primary bootstrapper")
+            }
+        }
+    }
+}
 
-			    return;
-			},
-			None =>
-			    continue,
-		    }
-		}
-	    }
-	} else {
-	    error!("error: database unopened, skipping primary bootstrapper")
-	}
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "()")]
+pub struct ReceiveSynchronised {
+    pub last_cell_id: CellId,
+}
 
-			    // Apply state transitions of primary network cells
-			    
-			    // loop:
-			    
-			    // Obtain the network quorums last accepted hash, in order to sync
-			    
-			    // Request missing ancestry between the quorum hash and the local hash
-			    
-			    // Find the distance between the network quorum hash and the locally known last
-			    // accepted hash. If the distance is close to 0 end the loop.
-			    
-			    // end-loop
-			    
-			    // At this point we have a valid validator set for the primary network encoded
-			    // within the primary networks state, since all cells have been applied up to
-			    // the latest set and the network quorum resolved to a distance of 0.
-			    
-			    // `ice` is initialised with the initial validator set so that the liveness
-			    // of participants can begin to be evaluated. Once `ice` has sufficient `Live`
-			    // participants, `sleet` is bootstrapped for the primary chain so that new
-			    // cells can be received.
+impl Handler<ReceiveSynchronised> for PrimaryBootstrapper {
+    type Result = ();
+
+    fn handle(&mut self, msg: ReceiveSynchronised, ctx: &mut Context<Self>) -> Self::Result {
+        info!("--- bootststrap synchronisation complete ---");
+        info!("fetching latest validator set from `alpha`");
+        let arbiter = Arbiter::new();
+        let alpha_address = self.alpha_address.clone();
+        arbiter.spawn(async move {
+            match alpha_address.send(ValidatorSet { cell_id: msg.last_cell_id }).await.unwrap() {
+                Ok(validators) => {
+                    info!("received validators =>\n{:?}", validators.clone());
+                    info!("initialising `ice`");
+                }
+                Err(err) => error!("{:?}", err),
+            }
+        });
     }
 }

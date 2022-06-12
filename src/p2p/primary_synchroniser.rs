@@ -14,17 +14,18 @@
 //! importance from the point of view of security to have a valid set of active validators to
 //! bootstrap from and for the routes to be unimpeded.
 
+use super::linear_backoff::Execute;
+use super::peer_meta::PeerMetadata;
 use super::prelude::*;
+use super::primary_bootstrapper::ReceiveSynchronised;
 use super::response_handler::ResponseHandler;
 use super::sender::{multicast, Sender};
-use super::peer_meta::PeerMetadata;
-use super::linear_backoff::Execute;
 
 use crate::cell::CellId;
 use crate::message::LastCellId;
 
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::collections::HashMap;
 
 pub struct PrimarySynchroniser {
     /// The current connection upgrader.
@@ -34,7 +35,7 @@ pub struct PrimarySynchroniser {
     /// The last cell `id` of this peer.
     self_last_cell_id: CellId,
     /// A vec of trusted peers which are subscribed to the primary network.
-    primary_peers: Vec<PeerMetadata>,
+    primary_peers: HashSet<PeerMetadata>,
     /// The longest time to wait for a multicast response.
     delta: Duration,
     /// The threshold of last cell ids required to make a decision.
@@ -47,30 +48,39 @@ pub struct PrimarySynchroniser {
     decisions: HashMap<CellId, usize>,
     /// Whether the `PrimarySynchroniser` has finished.
     complete: Arc<AtomicBool>,
+    /// The recipient of `ReceiveSynchronised` when the primary synchroniser has finished.
+    sync_recipient: Recipient<ReceiveSynchronised>,
 }
 
 impl PrimarySynchroniser {
-    pub fn new(upgrader: Arc<dyn Upgrader>, self_peer: PeerMetadata, self_last_cell_id: CellId, primary_peers: Vec<PeerMetadata>) -> Self {
-	PrimarySynchroniser {
-	    upgrader,
-	    self_peer,
-	    self_last_cell_id,
-	    primary_peers,
-	    delta: Duration::from_millis(1000),
-	    primary_sync_threshold: 2,
-	    quorum_lim: 3,
-	    quorum: HashMap::default(),
-	    decisions: HashMap::default(),
-	    complete: Arc::new(AtomicBool::new(false)),
-	}
+    pub fn new(
+        upgrader: Arc<dyn Upgrader>,
+        self_peer: PeerMetadata,
+        self_last_cell_id: CellId,
+        primary_peers: HashSet<PeerMetadata>,
+        sync_recipient: Recipient<ReceiveSynchronised>,
+    ) -> Self {
+        PrimarySynchroniser {
+            upgrader,
+            self_peer,
+            self_last_cell_id,
+            primary_peers,
+            delta: Duration::from_millis(1000),
+            primary_sync_threshold: 2,
+            quorum_lim: 2,
+            quorum: HashMap::default(),
+            decisions: HashMap::default(),
+            complete: Arc::new(AtomicBool::new(false)),
+            sync_recipient,
+        }
     }
 
     pub fn set_delta(&mut self, delta: Duration) {
-	self.delta = delta;
+        self.delta = delta;
     }
 
     pub fn set_primary_sync_threshold(&mut self, threshold: usize) {
-	self.primary_sync_threshold = threshold;
+        self.primary_sync_threshold = threshold;
     }
 }
 
@@ -83,17 +93,17 @@ impl Handler<Execute> for PrimarySynchroniser {
     type Result = ResponseActFuture<Self, bool>;
 
     fn handle(&mut self, msg: Execute, ctx: &mut Context<Self>) -> Self::Result {
-	let self_recipient = ctx.address().recipient().clone();
-	let last_cell_id_handler = LastCellIdHandler::new(self_recipient);
-	let sender_addr = Sender::new(self.upgrader.clone(), last_cell_id_handler).start();
-	let request = Request::LastCellId(LastCellId::new(self.self_peer.clone()));
-	let multicast_fut =
-	    multicast(sender_addr, self.primary_peers.clone(), request, self.delta.clone());
+        let self_recipient = ctx.address().recipient().clone();
+        let last_cell_id_handler = LastCellIdHandler::new(self_recipient);
+        let sender_addr = Sender::new(self.upgrader.clone(), last_cell_id_handler).start();
+        let request = Request::LastCellId(LastCellId::new(self.self_peer.clone()));
+        let multicast_fut =
+            multicast(sender_addr, self.primary_peers.clone(), request, self.delta.clone());
         let multicast_wrapped = actix::fut::wrap_future::<_, Self>(multicast_fut);
-	Box::pin(
-	    multicast_wrapped
-		.map(move |responses, actor, ctx| actor.complete.load(Ordering::Relaxed))
-	)
+        Box::pin(
+            multicast_wrapped
+                .map(move |responses, actor, ctx| actor.complete.load(Ordering::Relaxed)),
+        )
     }
 }
 
@@ -108,49 +118,60 @@ impl Handler<ReceiveLastCellId> for PrimarySynchroniser {
     type Result = ResponseFuture<()>;
 
     fn handle(&mut self, msg: ReceiveLastCellId, ctx: &mut Context<Self>) -> Self::Result {
-	// If the `primary_synchroniser` is complete then we no longer should be receiving
-	// `last_cell_id`s in this actor.
-	let complete = self.complete.clone().load(Ordering::Relaxed);
-	if complete {
-	    return Box::pin(async {});
-	}
-	
-	// If a quorum is complete then complete the first stage of the synchronisation protocol.
-	if self.quorum.len() >= self.quorum_lim {
-	    let mut decision = None;
-	    for (d, x) in self.decisions.iter() {
-		if *x >= self.primary_sync_threshold {
-		    decision = Some(d);
-		    break;
-		}
-	    }
-	    match decision {
-		Some(d) => {
-		    // If the `last_cell_id` corroborates, then we are done
-		    if self.self_last_cell_id == *d {
-			self.complete.store(true, Ordering::Relaxed);
-			Box::pin(async {})
-		    } else {
-			// If the decision is not the same as this `last_cell_id` then:
-			//   1. Fetch all the peer metadatas whose last cell id is `*d`
-			//   2. Try to fetch all ancestors of the `last_cell_id` from the peer.
-			info!("TODO: sync to latest cell id");
-			Box::pin(async {})
-		    }
-		},
-		// Otherwise try again after some delay
-		None => Box::pin(async {})
-	    }
-	} else {
-	    // If a quorum is incomplete then accumulate last cell ids and update the decisions.
-	    let _ = self.quorum.insert(msg.peer_meta.clone(), msg.last_cell_id.clone());
-	    self.decisions.entry(msg.last_cell_id.clone())
-		.and_modify(|x| {
-		    *x += 1
-		})
-		.or_insert(0);
-	    Box::pin(async move {})
-	}
+        info!("ReceiveLastCellId({:?}, {:?})", msg.peer_meta.ip.clone(), msg.last_cell_id.clone());
+
+        // If the `primary_synchroniser` is complete then we no longer should be receiving
+        // `last_cell_id`s in this actor.
+        let complete = self.complete.clone().load(Ordering::Relaxed);
+        if complete {
+            return Box::pin(async {});
+        }
+
+        // If a quorum is complete then complete the first stage of the synchronisation protocol.
+        if self.quorum.len() >= self.quorum_lim {
+            let mut decision = None;
+            for (d, x) in self.decisions.iter() {
+                if *x >= self.primary_sync_threshold {
+                    info!(">>> primary_sync_threshold({:?}) <<<", d.clone());
+                    decision = Some(d);
+                    break;
+                }
+            }
+            match decision {
+                Some(d) => {
+                    // If the `last_cell_id` corroborates, then we are done
+                    if self.self_last_cell_id == *d {
+                        info!("cell synchronisation complete");
+                        // Ensures that the actor no longer receives backoff messages.
+                        self.complete.store(true, Ordering::Relaxed);
+
+                        // Alert the primary bootstrapper that we are done.
+                        let sync_recipient = self.sync_recipient.clone();
+                        let last_cell_id = self.self_last_cell_id.clone();
+                        Box::pin(async move {
+                            let () = sync_recipient
+                                .send(ReceiveSynchronised { last_cell_id })
+                                .await
+                                .unwrap();
+                        })
+                    } else {
+                        // TODO: Ancestor based synchronisation
+                        // If the decision is not the same as this `last_cell_id` then:
+                        //   1. Fetch all the peer metadatas whose last cell id is `*d`
+                        //   2. Try to fetch all ancestors of the `last_cell_id` from the peer.
+                        info!("TODO: sync to latest cell id");
+                        Box::pin(async {})
+                    }
+                }
+                // Otherwise try again after some delay
+                None => Box::pin(async {}),
+            }
+        } else {
+            // If a quorum is incomplete then accumulate last cell ids and update the decisions.
+            let _ = self.quorum.insert(msg.peer_meta.clone(), msg.last_cell_id.clone());
+            self.decisions.entry(msg.last_cell_id.clone()).and_modify(|x| *x += 1).or_insert(1);
+            Box::pin(async move {})
+        }
     }
 }
 
@@ -161,7 +182,7 @@ pub struct LastCellIdHandler {
 
 impl LastCellIdHandler {
     pub fn new(recipient: Recipient<ReceiveLastCellId>) -> Arc<dyn ResponseHandler> {
-	Arc::new(LastCellIdHandler { recipient })
+        Arc::new(LastCellIdHandler { recipient })
     }
 }
 
@@ -173,12 +194,13 @@ impl ResponseHandler for LastCellIdHandler {
         let recipient = self.recipient.clone();
         match response {
             Response::LastCellIdAck(last_cell_id_ack) => Box::pin(async move {
-		recipient.send(ReceiveLastCellId {
-		    peer_meta: last_cell_id_ack.peer,
-		    last_cell_id: last_cell_id_ack.last_cell_id,
-		})
-		    .await
-		    .map_err(|err| err.into())
+                recipient
+                    .send(ReceiveLastCellId {
+                        peer_meta: last_cell_id_ack.peer,
+                        last_cell_id: last_cell_id_ack.last_cell_id,
+                    })
+                    .await
+                    .map_err(|err| err.into())
             }),
             _ => Box::pin(async { Err(Error::InvalidResponse) }),
         }

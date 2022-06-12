@@ -14,8 +14,8 @@ use super::sender::{multicast, Sender};
 
 use super::response_handler::ResponseHandler;
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// The limit of a peer vector in terms of length received from another peer.
 const RECEIVED_PEER_VEC_LIM: usize = 124;
@@ -56,7 +56,7 @@ impl PeerBootstrapper {
         PeerBootstrapper {
             upgrader,
             self_peer_meta,
-	    trusted_peers,
+            trusted_peers,
             peer_set_recipient,
             peer_set_lim,
             peer_set_share_lim,
@@ -68,9 +68,9 @@ impl PeerBootstrapper {
     }
 
     fn update_peer_set(&mut self, new_peer_set: HashSet<PeerMetadata>) -> HashSet<PeerMetadata> {
-	let old_peer_set = self.current_peer_set.clone();
-	self.current_peer_set = new_peer_set;
-	old_peer_set
+        let old_peer_set = self.current_peer_set.clone();
+        self.current_peer_set = new_peer_set;
+        old_peer_set
     }
 }
 
@@ -87,10 +87,9 @@ impl Handler<Execute> for PeerBootstrapper {
         let self_recipient = ctx.address().recipient().clone();
         let peer_handler = PeerHandler::new(self_recipient);
         let sender_address = Sender::new(self.upgrader.clone(), peer_handler).start();
-	let peer_set = self.trusted_peers.iter().cloned().collect::<HashSet<PeerMetadata>>();
-        let request = Request::Version(Version::new(self.self_peer_meta.clone(), peer_set));
-        let multicast_fut =
-            multicast(sender_address, self.trusted_peers.clone(), request, self.delta.clone());
+        let peer_set = self.trusted_peers.iter().cloned().collect::<HashSet<PeerMetadata>>();
+        let request = Request::Version(Version::new(self.self_peer_meta.clone(), peer_set.clone()));
+        let multicast_fut = multicast(sender_address, peer_set, request, self.delta.clone());
         let multicast_wrapped = actix::fut::wrap_future::<_, Self>(multicast_fut);
         Box::pin(
             multicast_wrapped
@@ -118,14 +117,14 @@ impl Handler<ReceivePeer> for PeerBootstrapper {
     fn handle(&mut self, msg: ReceivePeer, ctx: &mut Context<Self>) -> Self::Result {
         // TODO: check the peer metadata more thoroughly
 
-	// If the `peer_bootstrapper` has already completed the bootstrap, ignore messages
-	let bootstrapped = self.bootstrapped.clone().load(Ordering::Relaxed);
-	if bootstrapped {
-	    return Box::pin(async {});
-	}
+        // If the `peer_bootstrapper` has already completed the bootstrap, ignore messages
+        let bootstrapped = self.bootstrapped.clone().load(Ordering::Relaxed);
+        if bootstrapped {
+            return Box::pin(async {});
+        }
 
         if self.current_peer_set.len() >= self.peer_set_lim {
-	    let peer_set = self.update_peer_set(HashSet::default());
+            let peer_set = self.update_peer_set(HashSet::default());
             let peer_set_recipient = self.peer_set_recipient.clone();
             let peer_set_lim = self.peer_set_lim.clone();
             let sent_peer_sets = self.sent_peer_sets.clone();
@@ -135,7 +134,6 @@ impl Handler<ReceivePeer> for PeerBootstrapper {
                 let n_sent_peer_sets = sent_peer_sets.load(Ordering::Relaxed);
                 sent_peer_sets.store(n_sent_peer_sets + 1, Ordering::Relaxed);
                 if n_sent_peer_sets + 1 >= peer_set_lim {
-                    info!("bootstrapped");
                     bootstrapped.store(true, Ordering::Relaxed);
                 }
             })

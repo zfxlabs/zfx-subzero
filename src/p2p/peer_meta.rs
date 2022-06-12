@@ -3,9 +3,9 @@ use crate::{Error, Result};
 
 use super::id::Id;
 
-use std::net::SocketAddr;
-use std::hash::{Hash, Hasher};
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+use std::net::SocketAddr;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PeerMetadata {
@@ -19,8 +19,8 @@ pub struct PeerMetadata {
 
 impl Hash for PeerMetadata {
     fn hash<H: Hasher>(&self, state: &mut H) {
-	self.id.hash(state);
-	self.ip.hash(state);
+        self.id.hash(state);
+        self.ip.hash(state);
         let mut chains: Vec<Id> = self.chains.iter().cloned().collect();
         chains.sort();
         chains.hash(state);
@@ -29,7 +29,7 @@ impl Hash for PeerMetadata {
 
 fn collect_chains(chains: Vec<Id>) -> HashSet<Id> {
     chains.iter().cloned().collect::<HashSet<Id>>()
-}    
+}
 
 impl PeerMetadata {
     pub fn new(id: Id, ip: SocketAddr, chains: Vec<Id>) -> Self {
@@ -52,4 +52,3 @@ impl PeerMetadata {
         }
     }
 }
-
