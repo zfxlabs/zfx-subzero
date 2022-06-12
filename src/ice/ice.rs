@@ -372,11 +372,11 @@ pub async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, 
     if switch.flipped {
         // If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
         if !switch.bootstrapped {
-            alpha.send(alpha::FaultyNetwork).await.unwrap();
+            // alpha.send(alpha::FaultyNetwork).await.unwrap();
         } else {
             // Otherwise alert the `Alpha` chain of a `LiveNetwork`.
             let LivePeers { live_peers } = ice.send(GetLivePeers {}).await.unwrap();
-            alpha.send(alpha::LiveNetwork { self_id, live_peers }).await.unwrap();
+            // alpha.send(alpha::LiveNetwork { self_id, live_peers }).await.unwrap();
         }
     }
 }
@@ -385,7 +385,7 @@ pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: S
     let flipped = ice.send(PingFailure { id: id.clone(), ip: ip.clone() }).await.unwrap();
     // If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
     if flipped {
-        alpha.send(alpha::FaultyNetwork).await.unwrap();
+        // alpha.send(alpha::FaultyNetwork).await.unwrap();
     }
 }
 
