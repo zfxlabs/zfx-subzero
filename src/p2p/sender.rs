@@ -1,5 +1,6 @@
 //! The network sender is responsible for sending external requests from `p2p` actors to other peers
 //! on the network. A `Send` sends to one peer and a `Multicast` sends to many peers.
+
 use crate::{Error, Result};
 
 use super::prelude::*;

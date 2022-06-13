@@ -1,5 +1,5 @@
 //use crate::hail::Hail;
-//use crate::ice::{CheckStatus, Ice};
+use crate::ice::Ice;
 use crate::message::{LastCellIdAck, Version, VersionAck, CURRENT_VERSION};
 use crate::p2p::id::Id;
 use crate::p2p::peer_meta::PeerMetadata;
@@ -32,6 +32,7 @@ pub struct Router {
     self_peer: PeerMetadata,
     peer_set: Arc<RwLock<HashSet<PeerMetadata>>>,
     alpha_address: Addr<Alpha>,
+    ice_address: Option<Addr<Ice>>,
     state: RouterState,
 }
 
@@ -43,8 +44,13 @@ impl Router {
             self_peer,
             peer_set: Arc::new(RwLock::new(initial_peer_set)),
             alpha_address,
+            ice_address: None,
             state: RouterState::Bootstrapping,
         }
+    }
+
+    pub fn set_ice_address(&mut self, ice_address: Addr<Ice>) {
+        self.ice_address = Some(ice_address);
     }
 }
 
@@ -52,34 +58,23 @@ impl Actor for Router {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        //        self.alpha.do_send(InitRouter { addr: ctx.address() });
         debug!("[router] started");
     }
 }
 
 #[derive(Clone, Message)]
 #[rtype(result = "()")]
-pub struct InitRouter {
-    pub addr: Addr<Router>,
+pub struct InitIce {
+    pub addr: Addr<Ice>,
 }
 
-// #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-// #[rtype(result = "()")]
-// pub struct ValidatorSet {
-//     pub validators: HashSet<Id>,
-// }
+impl Handler<InitIce> for Router {
+    type Result = ();
 
-// impl Handler<ValidatorSet> for Router {
-//     type Result = ();
-
-//     fn handle(
-//         &mut self,
-//         ValidatorSet { validators }: ValidatorSet,
-//         _ctx: &mut Context<Self>,
-//     ) -> Self::Result {
-//         //self.validators = Arc::new(validators);
-//     }
-// }
+    fn handle(&mut self, InitIce { addr }: InitIce, _ctx: &mut Context<Self>) -> Self::Result {
+        self.set_ice_address(addr);
+    }
+}
 
 /// Wrapper for a `Request`, augmenting it with the peer's ID
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
@@ -105,6 +100,7 @@ impl Handler<RouterRequest> for Router {
         let self_peer = self.self_peer.clone();
         let peer_set = self.peer_set.clone();
         let alpha_address = self.alpha_address.clone();
+        let ice_address = self.ice_address.clone();
         let state = self.state.clone();
         Box::pin(async move {
             trace!(
@@ -144,11 +140,29 @@ impl Handler<RouterRequest> for Router {
                 }
 
                 // Ice external requests
-                // Request::Ping(ping) => {
-                //     debug!("routing Ping -> Ice");
-                //     let ack = ice.send(ping).await.unwrap();
-                //     Response::Ack(ack)
-                // }
+                Request::Ping(ping) => {
+                    match state {
+                        RouterState::Bootstrapping =>
+                        // TODO:FIXME
+                        {
+                            Response::Unknown
+                        }
+                        RouterState::Ready => {
+                            match ice_address {
+                                Some(ice_address) => {
+                                    debug!("routing Ping -> Ice");
+                                    let ping_ack = ice_address.send(ping).await.unwrap();
+                                    Response::PingAck(ping_ack)
+                                }
+                                None =>
+                                // TODO:FIXME
+                                {
+                                    Response::Unknown
+                                }
+                            }
+                        }
+                    }
+                }
                 // Request::GetLastAccepted => {
                 //     debug!("routing GetLastAccepted -> Alpha");
                 //     let last_accepted = alpha.send(alpha::GetLastAccepted).await.unwrap();

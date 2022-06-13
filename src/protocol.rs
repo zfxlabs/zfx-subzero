@@ -14,8 +14,8 @@ pub enum Request {
     // Primary Network
     LastCellId(message::LastCellId),
     // Ice
+    Ping(message::Ping),
     CheckStatus,
-    Ping(ice::Ping),
     // Chain Bootstrapping
     GetLastAccepted,
     GetAncestors,
@@ -41,7 +41,7 @@ pub enum Response {
     // Primary Network
     LastCellIdAck(message::LastCellIdAck),
     // Ice
-    Ack(ice::Ack),
+    PingAck(message::PingAck),
     Status(ice::Status),
     // Alpha
     AncestorsAck,
