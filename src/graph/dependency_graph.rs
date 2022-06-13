@@ -1,3 +1,4 @@
+//! The [`DependencyGraph`] keeps track of spending dependecies between cells
 use super::{Error, Result};
 use crate::cell::{Cell, CellIds};
 

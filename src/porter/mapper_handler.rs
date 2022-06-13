@@ -50,7 +50,8 @@ impl Mapper {
         }
     }
 
-    async fn add_port_mapping(
+    /// Adds a new port mapping
+    pub async fn add_port_mapping(
         &mut self,
         external_port: u16,
         protocol: Protocol,
@@ -85,7 +86,7 @@ impl Mapper {
     }
 
     /// Refreshes port mapping periodically
-    async fn refresh_mapping(
+    pub async fn refresh_mapping(
         &self,
         port_mapping: PortMappingEntry,
         external_ip: Ipv4Addr,

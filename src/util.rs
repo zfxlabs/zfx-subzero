@@ -14,6 +14,7 @@ pub fn percent_of(qty: u64, total: u64) -> f64 {
     qty as f64 / total as f64
 }
 
+/// Sum the positive query outcomes by weight
 #[inline]
 pub fn sum_outcomes(outcomes: Vec<(Id, Weight, bool)>) -> f64 {
     outcomes
@@ -21,6 +22,7 @@ pub fn sum_outcomes(outcomes: Vec<(Id, Weight, bool)>) -> f64 {
         .fold(0.0, |acc, (_id, weight, result)| if *result { acc + *weight } else { acc })
 }
 
+/// Sample the required weight from a list of validators
 #[inline]
 pub fn sample_weighted(
     min_w: Weight,

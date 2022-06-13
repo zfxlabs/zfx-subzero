@@ -3,6 +3,10 @@ use super::{Error, Result};
 use std::collections::VecDeque;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
+/// Directed acyclic graph for [`sleet`][crate::sleet]
+///
+/// For `sleet`,  a `DAG<TxHash>` structure holds the consensus graph. that ontains the accepted frontier
+///  and the undecided transactions.
 #[derive(Debug)]
 pub struct DAG<V> {
     /// `g` defines a directed acyclic graph by the outbound edges from a vertex
@@ -273,7 +277,7 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
     }
 }
 
-/// Iterator for depth-first traversal of the ancestors of a vertex
+/// Iterator for depth-first traversal of the ancestors of a vertex in the [DAG]
 ///
 /// Returned by the [`DAG::dfs`] function.
 pub struct DFS<'a, V> {

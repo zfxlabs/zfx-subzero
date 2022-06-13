@@ -1,5 +1,6 @@
 //! This module contains the code for configuring `tokio_rustls` for a peer-to-peer setting
-//! Client side authenication is enforced, but the server doesn't need a certificate chain,
+//!
+//! Client side authenication is enforced, and the server doesn't need a certificate chain,
 //! as both use single self-signed certificates.
 
 use lazy_static::lazy_static;
@@ -11,11 +12,12 @@ use tokio_rustls::rustls::{
 };
 
 lazy_static! {
+    /// Dummy server name ("example.org"), used by client-initiated connections
     pub static ref DUMMY_DOMAIN: ServerName = ServerName::try_from("example.org").unwrap();
 }
 
 /// Client verification: enforce the presence and check a single certificate
-struct ZfxClientCertVerifier;
+pub struct ZfxClientCertVerifier;
 
 impl ClientCertVerifier for ZfxClientCertVerifier {
     fn verify_client_cert(
@@ -40,7 +42,7 @@ impl ClientCertVerifier for ZfxClientCertVerifier {
 }
 
 /// Server verification: don't check certificate chain and domain name, just the presence of a certificate
-struct ZfxServerCertVerifier;
+pub struct ZfxServerCertVerifier;
 
 impl ServerCertVerifier for ZfxServerCertVerifier {
     fn verify_server_cert(
