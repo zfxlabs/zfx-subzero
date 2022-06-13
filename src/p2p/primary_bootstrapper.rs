@@ -6,6 +6,8 @@
 
 use crate::alpha::{Alpha, LastCellId, ValidatorSet};
 use crate::cell::CellId;
+use crate::ice::Ice;
+use crate::server::{InitIce, Router};
 
 use super::prelude::*;
 
@@ -28,6 +30,8 @@ pub struct PrimaryBootstrapper {
     bootstrap_peers: HashSet<PeerMetadata>,
     /// The number of peers required to bootstrap the chain.
     bootstrap_peer_lim: usize,
+    /// Router which handles external requests.
+    router_address: Addr<Router>,
     /// The `alpha` (primary chain protocol) address.
     alpha_address: Addr<Alpha>,
 }
@@ -38,6 +42,7 @@ impl PrimaryBootstrapper {
         self_peer: PeerMetadata,
         chain_id: Id,
         bootstrap_peer_lim: usize,
+        router_address: Addr<Router>,
         alpha_address: Addr<Alpha>,
     ) -> Self {
         PrimaryBootstrapper {
@@ -46,6 +51,7 @@ impl PrimaryBootstrapper {
             chain_id,
             bootstrap_peers: HashSet::default(),
             bootstrap_peer_lim,
+            router_address,
             alpha_address,
         }
     }
@@ -151,12 +157,33 @@ impl Handler<ReceiveSynchronised> for PrimaryBootstrapper {
         info!("--- bootststrap synchronisation complete ---");
         info!("fetching latest validator set from `alpha`");
         let arbiter = Arbiter::new();
+        let upgrader = self.upgrader.clone();
+        let self_peer = self.self_peer.clone();
+        let bootstrap_peers = self.bootstrap_peers.clone();
+        let router_address = self.router_address.clone();
         let alpha_address = self.alpha_address.clone();
         arbiter.spawn(async move {
             match alpha_address.send(ValidatorSet { cell_id: msg.last_cell_id }).await.unwrap() {
-                Ok(validators) => {
-                    info!("received validators =>\n{:?}", validators.clone());
-                    info!("initialising `ice`");
+                Ok(alpha_validators) => {
+                    info!("received validators =>\n{:?}", alpha_validators.clone());
+                    // if should_spawn_ice {
+                    let mut validators = vec![];
+                    for (id, capacity) in alpha_validators.iter() {
+                        for peer_meta in bootstrap_peers.iter() {
+                            if *id == peer_meta.id {
+                                validators.push((peer_meta.clone(), *capacity));
+                                break;
+                            }
+                        }
+                    }
+                    info!("initialising `ice` with delay = 3s");
+                    let ice_address = Ice::new(upgrader, self_peer, validators).start();
+                    let () =
+                        router_address.send(InitIce { addr: ice_address.clone() }).await.unwrap();
+                    let backoff =
+                        LinearBackoff::new(ice_address.recipient(), Duration::from_millis(10000))
+                            .start();
+                    backoff.do_send(Start);
                 }
                 Err(err) => error!("{:?}", err),
             }
