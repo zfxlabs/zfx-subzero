@@ -79,7 +79,6 @@ pub struct TestNodes {
 }
 
 impl TestNodes {
-
     /// Instantiate and run 6 nodes for testing.
     /// Each node is assigned with id, starting from `0` to `5`.
     /// This `id` can be used to manage the node when running [TestNodes] functions.
