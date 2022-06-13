@@ -49,6 +49,10 @@ pub const BETA2: u8 = 20;
 const QUERY_RESPONSE_TIMEOUT_MS: u64 = 5000;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
+/// The purpose of sleet is to resolve conflicts between [cell-based](crate::cell::Cell) transactions
+/// and ensure that a double spending transaction never becomes live.
+///
+/// It runs as an [Actor], having [request handlers](Handler) for receiving and processing [cells](crate::cell::Cell)
 pub struct Sleet {
     /// The client used to make external requests.
     sender: Recipient<ClientRequest>,
@@ -198,8 +202,7 @@ impl Sleet {
     // Adaptive Parent Selection
 
     /// Starts at the live edges (the leaf nodes) of the `DAG` and does a depth first
-    /// search until `p` preferrential parents are accumulated (or none if there are
-    /// none).
+    /// search until `p` preferential parents are accumulated (or none if there are none).
     fn select_parents(&self, p: usize) -> Result<Vec<TxHash>> {
         if self.dag.is_empty() {
             return Ok(vec![]);

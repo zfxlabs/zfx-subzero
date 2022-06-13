@@ -13,8 +13,11 @@ use futures::FutureExt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-/// Client is responsible for making oneshot or fanout requests to nodes in the network.
+/// Client is responsible for making requests to one or many nodes in the network.
 /// Its main handler is [ClientRequest] which accepts [ClientRequest::Oneshot] or [ClientRequest::Fanout]
+///
+/// ## Properties
+/// * `upgrader` - for upgrading a [TcpStream] to a [ConnectionStream](crate::tls::connection_stream::ConnectionStream)
 pub struct Client {
     upgrader: Arc<dyn Upgrader>,
 }
@@ -71,10 +74,10 @@ impl Handler<ClientRequest> for Client {
 // TODO this shouldn't be `pub` but `client_test` is using it
 
 /// Send a request to a node with Id and IP-address and returns a response.
-/// * `id` - Id of a node, usually known at startup.
-/// * `ip` - IP-address of a node, corresponding to the node Id.
+/// * `id` - Id of a node, usually known at startup
+/// * `ip` - IP-address of a node, corresponding to the node Id
 /// * `request` - Request to send
-/// * `upgrader` - an upgrader for the node (ex. TCP or TLS) [see here](crate::tls::upgrader::Upgrader) for more details.
+/// * `upgrader` - an [upgrader](crate::tls::upgrader::Upgrader) for the node (ex. TCP or TLS)
 ///
 /// This function is mainly used by the [Client] actor inside its handler for requests.
 pub async fn oneshot(
