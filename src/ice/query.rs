@@ -1,4 +1,4 @@
-use crate::p2p::id::Id;
+use crate::p2p::peer_meta::PeerMetadata;
 
 use crate::colored::Colorize;
 use crate::ice::Choice;
@@ -9,37 +9,35 @@ use std::net::SocketAddr;
 /// that peer.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Query {
-    pub peer_id: Id,
-    pub peer_ip: SocketAddr,
+    pub peer_meta: PeerMetadata,
     pub choice: Choice,
 }
 
 impl std::fmt::Debug for Query {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            fmt,
-            "QUERY({} ({}), {:?})",
-            format!("{}", self.peer_ip).yellow(),
-            self.peer_id,
-            self.choice,
-        )
+        write!(fmt, "QUERY({}, {:?})", format!("{:?}", self.peer_meta).yellow(), self.choice,)
     }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub struct Outcome {
-    pub peer_id: Id,
+    pub peer_meta: PeerMetadata,
     pub choice: Choice,
 }
 
 impl Outcome {
-    pub fn new(peer_id: Id, choice: Choice) -> Outcome {
-        Outcome { peer_id, choice }
+    pub fn new(peer_meta: PeerMetadata, choice: Choice) -> Outcome {
+        Outcome { peer_meta, choice }
     }
 }
 
 impl std::fmt::Debug for Outcome {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "OUTCOME({}, {:?})", format!("{}", self.peer_id).yellow(), self.choice.clone(),)
+        write!(
+            fmt,
+            "OUTCOME({}, {:?})",
+            format!("{:?}", self.peer_meta).yellow(),
+            self.choice.clone(),
+        )
     }
 }

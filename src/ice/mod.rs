@@ -2,9 +2,10 @@
 mod choice;
 mod constants;
 mod ice;
-mod query;
+pub mod query;
 mod quorum;
 mod reservoir;
+mod sampleable_map;
 
 pub use choice::Choice;
 pub use constants::*;

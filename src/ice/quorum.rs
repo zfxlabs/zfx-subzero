@@ -1,4 +1,5 @@
 use crate::p2p::id::Id;
+use crate::p2p::peer_meta::PeerMetadata;
 
 use super::choice::Choice;
 use super::constants::*;
@@ -9,32 +10,32 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct Quorum {
-    pub ids: HashSet<Id>,
+    pub peers: HashSet<PeerMetadata>,
     pub choices: Vec<Choice>,
 }
 
 impl std::fmt::Display for Quorum {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "Q {:?} {:?}", self.ids, self.choices)
+        write!(fmt, "Q {:?} {:?}", self.peers, self.choices)
     }
 }
 
 impl Quorum {
     pub fn new() -> Quorum {
-        Quorum { ids: HashSet::new(), choices: vec![] }
+        Quorum { peers: HashSet::new(), choices: vec![] }
     }
 
     pub fn len(&self) -> usize {
-        self.ids.len()
+        self.peers.len()
     }
 
-    pub fn contains(&self, id: &Id) -> bool {
-        self.ids.contains(id)
+    pub fn contains(&self, peer_meta: &PeerMetadata) -> bool {
+        self.peers.contains(peer_meta)
     }
 
-    pub fn insert(&mut self, observer_id: Id, choice: Choice) {
-        if !self.ids.contains(&observer_id) {
-            let _ = self.ids.insert(observer_id);
+    pub fn insert(&mut self, observer: PeerMetadata, choice: Choice) {
+        if !self.peers.contains(&observer) {
+            let _ = self.peers.insert(observer);
             let _ = self.choices.push(choice);
         }
     }

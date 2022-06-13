@@ -1,4 +1,5 @@
 use crate::p2p::id::Id;
+use crate::p2p::peer_meta::PeerMetadata;
 
 use crate::colored::Colorize;
 
@@ -16,9 +17,9 @@ use std::net::SocketAddr;
 
 #[derive(Debug, Clone)]
 pub struct Reservoir {
-    quorums: HashMap<Id, Quorum>,
-    decisions: HashMap<Id, (SocketAddr, Choice, usize)>,
-    random_queue: Vec<(Id, (SocketAddr, Choice, usize))>,
+    quorums: HashMap<PeerMetadata, Quorum>,
+    decisions: HashMap<PeerMetadata, (Choice, usize)>,
+    random_queue: Vec<(PeerMetadata, (Choice, usize))>,
     nbootstrapped: usize,
 }
 
@@ -38,27 +39,29 @@ impl Reservoir {
     }
 
     /// Fetches a decision.
-    pub fn get_decision(&self, id: &Id) -> Option<(SocketAddr, Choice, usize)> {
+    pub fn get_decision(&self, peer_meta: &PeerMetadata) -> Option<(PeerMetadata, Choice, usize)> {
         self.decisions
-            .get(id)
-            .map(|(ip, choice, conviction)| (ip.clone(), choice.clone(), conviction.clone()))
+            .get(peer_meta)
+            .map(|(choice, conviction)| (peer_meta.clone(), choice.clone(), conviction.clone()))
     }
 
     /// Fetches all decisions.
-    pub fn get_decisions(&self) -> Vec<(SocketAddr, Choice, usize)> {
+    pub fn get_decisions(&self) -> Vec<(PeerMetadata, Choice, usize)> {
         self.decisions
             .iter()
-            .map(|(_, (ip, choice, conviction))| (ip.clone(), choice.clone(), conviction.clone()))
-            .collect::<Vec<(SocketAddr, Choice, usize)>>()
+            .map(|(peer_meta, (choice, conviction))| {
+                (peer_meta.clone(), choice.clone(), conviction.clone())
+            })
+            .collect::<Vec<(PeerMetadata, Choice, usize)>>()
     }
 
     /// Fetches a live peers endpoint designated by `Id` or `None` if the peer is not
     /// `Live`.
-    pub fn get_live_endpoint(&self, id: &Id) -> Option<SocketAddr> {
-        match self.decisions.get(id) {
-            Some((ip, choice, conviction)) => {
+    pub fn get_live_endpoint(&self, peer_meta: &PeerMetadata) -> Option<PeerMetadata> {
+        match self.decisions.get(peer_meta) {
+            Some((choice, conviction)) => {
                 if *choice == Choice::Live && *conviction >= BETA1 {
-                    Some(ip.clone())
+                    Some(peer_meta.clone())
                 } else {
                     None
                 }
@@ -68,10 +71,10 @@ impl Reservoir {
     }
 
     /// Fetches all live peers.
-    pub fn get_live_peers(&self) -> Vec<(Id, SocketAddr)> {
-        self.decisions.iter().fold(vec![], |mut live_peers, (id, (ip, choice, conviction))| {
+    pub fn get_live_peers(&self) -> Vec<PeerMetadata> {
+        self.decisions.iter().fold(vec![], |mut live_peers, (peer_meta, (choice, conviction))| {
             if *choice == Choice::Live && *conviction >= BETA1 {
-                live_peers.push((id.clone(), ip.clone()));
+                live_peers.push(peer_meta.clone());
                 live_peers
             } else {
                 live_peers
@@ -80,23 +83,21 @@ impl Reservoir {
     }
 
     /// Inserts an entry into the reservoir decisions, updating the previous entry.
-    pub fn insert(&mut self, peer_id: Id, ip: SocketAddr, choice: Choice, conviction: usize) {
-        let v = (ip.clone(), choice.clone(), conviction);
-        let _ = self.decisions.insert(peer_id.clone(), v);
+    pub fn insert(&mut self, peer_meta: PeerMetadata, choice: Choice, conviction: usize) {
+        let _ = self.decisions.insert(peer_meta.clone(), (choice.clone(), conviction));
     }
 
     /// Inserts an entry into the reservoir if none is already present.
-    pub fn insert_new(&mut self, peer_id: Id, ip: SocketAddr, choice: Choice, conviction: usize) {
-        let v = (ip.clone(), choice.clone(), conviction.clone());
-        if let Entry::Vacant(slot) = self.decisions.entry(peer_id.clone()) {
-            slot.insert(v);
+    pub fn insert_new(&mut self, peer_meta: PeerMetadata, choice: Choice, conviction: usize) {
+        if let Entry::Vacant(slot) = self.decisions.entry(peer_meta.clone()) {
+            slot.insert((choice.clone(), conviction.clone()));
         }
     }
 
     /// Sets a peers choice with 0 conviction in the reservoir.
-    pub fn set_choice(&mut self, peer_id: Id, new_choice: Choice) {
-        if let Entry::Occupied(mut o) = self.decisions.entry(peer_id.clone()) {
-            let (_, choice, conviction) = o.get_mut();
+    pub fn set_choice(&mut self, peer_meta: PeerMetadata, new_choice: Choice) {
+        if let Entry::Occupied(mut o) = self.decisions.entry(peer_meta.clone()) {
+            let (choice, conviction) = o.get_mut();
             *choice = new_choice;
             *conviction = 0;
         }
@@ -104,9 +105,9 @@ impl Reservoir {
 
     /// Updates the choice for a given entry and returns whether the reservoir
     /// has obtained a bootstrap quorum (where `k` entries are decided).
-    pub fn update_choice(&mut self, peer_id: Id, new_choice: Choice) -> bool {
-        if let Entry::Occupied(mut o) = self.decisions.entry(peer_id.clone()) {
-            let (_, choice, conviction) = o.get_mut();
+    pub fn update_choice(&mut self, peer_meta: PeerMetadata, new_choice: Choice) -> bool {
+        if let Entry::Occupied(mut o) = self.decisions.entry(peer_meta.clone()) {
+            let (choice, conviction) = o.get_mut();
             if choice.clone() != new_choice.clone() {
                 // Switch to the new choice and set initial conviction to 0
                 *choice = new_choice.clone();
@@ -119,16 +120,17 @@ impl Reservoir {
     /// Regenerates the random queue based on the current decisions.
     pub fn permute(&mut self) -> bool {
         let mut rng = rand::thread_rng();
-        let queue = self.decisions.iter().fold(vec![], |mut v, (id, (ip, choice, conviction))| {
-            // If the conviction >= BETA1 then omit the entry from the queue
-            if *conviction >= BETA1 {
-                v
-            } else {
-                let entry = (id.clone(), (ip.clone(), choice.clone(), conviction.clone()));
-                v.push(entry);
-                v
-            }
-        });
+        let queue =
+            self.decisions.iter().fold(vec![], |mut v, (peer_meta, (choice, conviction))| {
+                // If the conviction >= BETA1 then omit the entry from the queue
+                if *conviction >= BETA1 {
+                    v
+                } else {
+                    let entry = (peer_meta.clone(), (choice.clone(), conviction.clone()));
+                    v.push(entry);
+                    v
+                }
+            });
         if queue.len() > 0 {
             self.random_queue = queue;
             self.random_queue.shuffle(&mut rng);
@@ -141,7 +143,7 @@ impl Reservoir {
     /// Samples up to `k` choices for querying.
     /// Sampling for querying is done over the decisions rather than the local network
     /// connecions since otherwise querying would only involve `Live` peers.
-    pub fn sample(&mut self) -> Vec<(Id, (SocketAddr, Choice, usize))> {
+    pub fn sample(&mut self) -> Vec<(PeerMetadata, (Choice, usize))> {
         if self.decisions.len() > 0 {
             // The current arity of the sample.
             let mut i = 0;
@@ -173,99 +175,106 @@ impl Reservoir {
 
     /// Resets the conviction of a `Faulty` decision and sets it to `Live`. This is
     /// used when a peer has responded to a query but was previously marked as `Faulty`.
-    fn reset_faulty_decision(&mut self, id: Id) {
-        self.decisions.entry(id.clone()).and_modify(|(_ip, decision, conviction)| match decision {
-            Choice::Faulty => {
-                *decision = Choice::Live;
-                *conviction = 0;
-            }
-            Choice::Live => (),
-        });
+    fn reset_faulty_decision(&mut self, peer_meta: PeerMetadata) {
+        self.decisions.entry(peer_meta.clone()).and_modify(
+            |(decision, conviction)| match decision {
+                Choice::Faulty => {
+                    *decision = Choice::Live;
+                    *conviction = 0;
+                }
+                Choice::Live => (),
+            },
+        );
     }
 
     /// If a decision does not obtain a quorum, then the conviction in this entry is
     /// reset to 0.
-    fn reset_conviction(&mut self, id: Id) {
-        if let Entry::Occupied(mut o) = self.decisions.entry(id) {
-            let (_, _, c) = o.get_mut();
+    fn reset_conviction(&mut self, peer_meta: PeerMetadata) {
+        if let Entry::Occupied(mut o) = self.decisions.entry(peer_meta) {
+            let (_, c) = o.get_mut();
             *c = 0;
         }
     }
 
     /// Creates a new choice and adds it to the quorums in the reservoir.
-    fn process_quorum(&mut self, responder_id: Id, peer_id: Id, choice: Choice) -> Quorum {
+    fn process_quorum(
+        &mut self,
+        responder: PeerMetadata,
+        peer: PeerMetadata,
+        choice: Choice,
+    ) -> Quorum {
         // Fetch the quorum corresponding to the `id`s current consensus instance.
-        if let Entry::Occupied(mut o) = self.quorums.entry(peer_id.clone()) {
+        if let Entry::Occupied(mut o) = self.quorums.entry(peer.clone()) {
             let quorum = o.get_mut();
             // If the responder has already influenced the outcome of this quorum
             // then skip this `responder`.
-            if quorum.contains(&responder_id) {
+            if quorum.contains(&responder) {
                 return quorum.clone();
             }
             // Add the choice supplied by this `responder` to the quorum.
-            quorum.insert(responder_id, choice);
+            quorum.insert(responder, choice);
             quorum.clone()
         } else {
             // If no quorum exists then include the choice of the proposed outcome
             // as a new quorum set.
             let mut quorum = Quorum::new();
-            quorum.insert(responder_id, choice);
-            let _ = self.quorums.insert(peer_id.clone(), quorum.clone());
+            quorum.insert(responder, choice);
+            let _ = self.quorums.insert(peer.clone(), quorum.clone());
             quorum
         }
     }
 
     /// If a decision was made under quorum, then the entry is modified to reflect the
     /// new decision.
-    fn process_decision(&mut self, id: Id, quorum: Quorum) -> bool {
+    fn process_decision(&mut self, peer_meta: PeerMetadata, quorum: Quorum) -> bool {
         let new_decision = quorum.decide();
         if let Some(decision) = new_decision {
-            if let Entry::Occupied(mut o) = self.decisions.entry(id.clone()) {
-                let (_, d, c) = o.get_mut();
+            if let Entry::Occupied(mut o) = self.decisions.entry(peer_meta.clone()) {
+                let (d, c) = o.get_mut();
                 if decision.clone() != d.clone() {
                     *d = decision.clone();
                     *c = 0;
                 } else {
                     *c += 1;
                     if *d == Choice::Faulty && *c >= BETA1 {
-                        info!("[peer] {} confirmed: {}", id.clone(), "Faulty".red());
+                        info!("[peer] {:?} confirmed: {}", peer_meta.clone(), "Faulty".red());
                         self.nbootstrapped -= 1;
                     } else if *d == Choice::Live && *c >= BETA1 {
-                        info!("[peer] {} confirmed: {}", id.clone(), "Live".green());
+                        info!("[peer] {:?} confirmed: {}", peer_meta.clone(), "Live".green());
                         self.nbootstrapped += 1;
                     }
                 }
             }
             // Clear the quorum since it was previously decided.
-            let _ = self.quorums.remove(&id);
+            let _ = self.quorums.remove(&peer_meta);
             // Return the `ice` bootstrap status.
             self.nbootstrapped >= K
         } else {
             // Clear the quorum since it was previously decided.
-            let _ = self.quorums.remove(&id);
+            let _ = self.quorums.remove(&peer_meta);
             // Reset conviction & return the `ice` bootstrap status.
-            self.reset_conviction(id.clone());
+            self.reset_conviction(peer_meta.clone());
             false
         }
     }
 
-    /// Processes an outcome from the peer designated by `responder_id`.
+    /// Processes an outcome from the peer designated by `responder`.
     ///
     /// Each outcome corresponds to the response to a query previously initiated by
-    /// this peer and each `peer_id` mentioned in an `Outcome` corresponds to a
+    /// this peer and each `peer_meta` mentioned in an `Outcome` corresponds to a
     /// consensus instance for a decision of `Live` or `Faulty`.
     ///
     /// TODO: match query to outcome.
-    fn process_outcome(&mut self, responder_id: Id, outcome: Outcome) {
-        let peer_id = outcome.peer_id.clone();
+    fn process_outcome(&mut self, responder: PeerMetadata, outcome: Outcome) {
+        let peer_meta = outcome.peer_meta.clone();
         let choice = outcome.choice.clone();
 
-        let q = self.process_quorum(responder_id.clone(), peer_id.clone(), choice.clone());
+        let q = self.process_quorum(responder.clone(), peer_meta.clone(), choice.clone());
 
         // If the quorum length == `k` then the quorum is complete and a decision
         // has been made.
         if q.len() >= K {
-            if self.process_decision(peer_id.clone(), q.clone()) {
+            if self.process_decision(peer_meta.clone(), q.clone()) {
                 info!("[{}] bootstrapped {}", "ice".magenta(), "✓".magenta());
             }
         }
@@ -273,14 +282,14 @@ impl Reservoir {
 
     /// Processes a series of outcomes which 'fill' the reservoir with choices concerning
     /// the peer designated in the outcome.
-    pub fn fill(&mut self, responder_id: Id, outcomes: Vec<Outcome>) -> bool {
+    pub fn fill(&mut self, responder: PeerMetadata, outcomes: Vec<Outcome>) -> bool {
         // If a peer was pinged which was considered `Faulty` yet responded a set of
         // outcomes, the peers reservoir entry is reset in order to allow for
         // re-integration.
-        self.reset_faulty_decision(responder_id.clone());
+        self.reset_faulty_decision(responder.clone());
 
         for outcome in outcomes.iter() {
-            self.process_outcome(responder_id.clone(), outcome.clone());
+            self.process_outcome(responder.clone(), outcome.clone());
         }
 
         self.nbootstrapped >= K
@@ -292,13 +301,12 @@ impl Reservoir {
         // for (id, quorum) in self.quorums.iter() {
         //     s = format!("{}{:?}{}\n", s, id, quorum);
         // }
-        for (id, (ip, choice, conviction)) in self.decisions.iter() {
+        for (peer_meta, (choice, conviction)) in self.decisions.iter() {
             s = format!(
-                "{}{} {} {} | {:?} | {:?} {}\n",
+                "{}{} {:?} | {:?} | {:?} {}\n",
                 s,
                 "⦑".cyan(),
-                ip.to_string().yellow(),
-                id,
+                peer_meta.clone(),
                 choice,
                 conviction,
                 "⦒".cyan(),
