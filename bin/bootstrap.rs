@@ -142,8 +142,7 @@ fn main() -> Result<()> {
 
     let sys = actix::System::new();
     sys.block_on(async move {
-        let self_peer_meta_clone_1 = self_peer_meta.clone();
-        let self_peer_meta_clone_2 = self_peer_meta.clone();
+        let self_peer_meta = self_peer_meta.clone();
         let send_timeout = Duration::from_millis(1000);
 
 	// Primary chain configuration
@@ -154,16 +153,21 @@ fn main() -> Result<()> {
 	let chain_db_path = vec!["/tmp/", &node_id_str, "/", &primary_chain_id_s, "/alpha.sled"].concat();
 	// Primary chain initialisation (alpha chain protocol)
 	let alpha_address = Alpha::new(primary_chain_id.clone(), chain_db_path).start();
-	let alpha_address_clone = alpha_address.clone();
+
+	// Setup the initial router (actors should add themselves to the router as they spawn)
+        let router = Router::new(self_peer_meta.clone(), alpha_address.clone());
+        let router_address = router.start();
+	let router_address_clone = router_address.clone();
 
         let client_execution = async move {
 	    // Primary bootstrapper init
 	    info!("initialising primary bootstrapper");
 	    let mut primary_bootstrapper = PrimaryBootstrapper::new(
 		client_upgrader.clone(),
-		self_peer_meta_clone_1.clone(),
+		self_peer_meta.clone(),
 		primary_chain_id,
 		bootstrap_peer_lim,
+		router_address.clone(),
 		alpha_address.clone(),
 	    );
 	    let primary_bootstrapper_address = primary_bootstrapper.start();
@@ -196,9 +200,7 @@ fn main() -> Result<()> {
             let () = backoff.do_send(Start);
         };
         let server_execution = async move {
-            let router = Router::new(self_peer_meta_clone_2, alpha_address_clone);
-            let router_address = router.start();
-            let server = Server::new(self_ip, router_address, server_upgrader);
+            let server = Server::new(self_ip, router_address_clone, server_upgrader);
             server.listen().await.unwrap()
         };
         let arbiter = Arbiter::new();
