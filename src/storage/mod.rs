@@ -1,10 +1,15 @@
+//! Database storage layer using [`sled`](http://docs.rs/sled/) as backend
 use crate::alpha;
 use crate::cell as inner_cell;
 use crate::hail;
 
+/// Block storage related routines
 pub mod block;
+/// Cell storage related routines
 pub mod cell;
+/// Code for [Hail][crate::hail] storage
 pub mod hail_block;
+/// Storage routines for [Sleet][crate::sleet] transactions
 pub mod tx;
 
 #[derive(Debug, Eq, PartialEq)]

@@ -57,7 +57,7 @@ impl AddMappingEntry {
 
 #[derive(Debug, Clone)]
 pub struct RefreshMappingEntry {
-    /// Port mapping is refresh every [mapping_update_interval]
+    /// Port mapping is refresh every `mapping_update_interval`
     pub mapping_update_interval: Duration,
     pub external_ip: Ipv4Addr,
     pub add_params: AddMappingEntry,

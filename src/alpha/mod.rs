@@ -1,3 +1,8 @@
+//! `alpha` chain functionality
+//!
+//! The `alphas chain's purpose is to define very simple primitives which allow for an economic model
+//! to exist (primitives for transfers and staking namely), so that there is a notion of state
+//! capacity on the network (this is necessary in order to provide sybil resistance).
 mod alpha;
 pub mod types;
 

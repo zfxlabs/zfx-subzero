@@ -1,3 +1,5 @@
+//! A `O(1`) reservoir sampling based consensus algorithm for transiently establishing the liveness
+//! of peers and performing a safe network bootstrap.
 mod choice;
 mod constants;
 mod ice;

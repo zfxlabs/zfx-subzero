@@ -1,3 +1,10 @@
+//! Hail is a consensus algorithm based on Snowman but augmented with cryptographic sortition.
+//!
+//! It is specialised to blocks and ensures that no two conflicting blocks can be accepted at the same height.
+//! Similar to [`sleet`][crate::sleet], no inner verification of the block contents nor execution
+//! of state transitions is done besides on alpha primitive cells (such as staking cells).
+
+
 pub mod block;
 mod committee;
 mod conflict_map;
