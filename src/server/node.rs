@@ -20,7 +20,8 @@ use rand::rngs::OsRng;
 use tracing::info;
 
 /// Runs a node with all components and connects to the network from `bootstrap_peers`.
-/// * `ip` - IP address of the node (ex. 127.0.0.1)
+/// On startup, it stores the provided keypair into `/tmp/<node_id>/<node_id>.keypair`
+/// * `ip` - IP address and port of the node (ex. 127.0.0.1:1234)
 /// * `bootstrap_peers` - a list of peers which this node will use for bootstrapping,
 /// in the format <node_id>@<node_ip_address> (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1)
 /// * `keypair` - a hex keypair for the node in String format. Error is thrown if not provided

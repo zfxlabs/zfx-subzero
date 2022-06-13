@@ -9,11 +9,11 @@ use zfx_subzero::Result;
 
 use std::str::FromStr;
 
-/// An entrypoint for starting up a node.
+/// An entrypoint for starting up a [node](zfx_subzero::server::node::run).
 /// When running from a terminal, accepts the following list of parameters:
-/// * `--listener-ip` or `-a` - IP address of the node (ex. 127.0.0.1).
+/// * `--listener-ip` or `-a` - IP address and port of the node (ex. 127.0.0.1:1234).
 /// * `--bootstrap-peer` or `-b` - one or more addresses of running nodes of the network for bootstrapping
-/// in format <node_id>@<node_ip_address> (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1).
+/// in format <node_id>@<node_ip_address> (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1234).
 /// * `--keypair` or `-k` - a hex keypair for the node in String format.
 /// * `--use-tls` or `-t` (optional) - indicates whether to use TLS connection.
 /// If true, then `cert_path` and `pk_path` are mandatory parameters.

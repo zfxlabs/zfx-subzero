@@ -143,17 +143,18 @@ async fn test_send_cell_to_recipient_with_random_key(
     Result::Ok(())
 }
 
+/// Try to spend balance from a forged Coinbase
+/// and validate that the transfer is failed
 async fn test_send_cell_to_recipient_with_non_existing_coinbase(
     nodes: &TestNodes,
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
-    info!("Run test_send_cell_with_invalid_hash: Transfer balance to node with random public key");
+    info!("Run test_send_cell_to_recipient_with_non_existing_coinbase: Transfer balance from non-exiting coinbase");
 
     let from = nodes.get_node(0).unwrap();
     let to = nodes.get_node(1).unwrap();
     let spend_amount = 150 as u64;
 
-    let cell = get_cell(spend_amount, context, from).await?.unwrap();
     let coinbase_op = CoinbaseOperation::new(vec![(from.public_key.clone(), 500)]);
     let coinbase_tx = coinbase_op.try_into().unwrap();
 
@@ -172,7 +173,7 @@ async fn test_send_cell_with_modified_owner(
     context: &mut IntegrationTestContext,
 ) -> Result<()> {
     info!(
-        "Run test_send_cell_back_from_recipient_with_more_amount: \
+        "Run test_send_cell_with_modified_owner: \
         Return back balance when not sufficient funds"
     );
 
@@ -338,6 +339,7 @@ async fn assert_cell_presence_in_all_running_nodes(
     Ok(spent_cell)
 }
 
+/// Fully assert all properties from the `spent_cell`
 fn assert_cell(
     spent_cell: Cell,
     cell_hash: CellHash,

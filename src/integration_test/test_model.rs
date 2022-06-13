@@ -30,8 +30,10 @@ pub const NODE_ID_5: &str = "12KyV3nz5wJhqFSfEFsKAhEqMGaPD88JeeS7LA4Qsjbyf2Yqp87
 pub const NON_EXISTING_NODE : &str = "9f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b";
 pub const NODE_ADDRESS: &str = "127.0.0.1:123";
 
+/// A structure to store some information between integration test runs
 pub struct IntegrationTestContext {
     pub test_run_counter: u32,
+    /// A map to store a chain of spent and next available cell to spend
     old_to_new_cell_hashes: HashMap<CellHash, CellHash>,
 }
 
@@ -70,11 +72,17 @@ impl IntegrationTestContext {
     }
 }
 
+/// A structure to store a list of test nodes for integration tests.
+/// Contains functions to manage the nodes.
 pub struct TestNodes {
     pub nodes: Vec<TestNode>,
 }
 
 impl TestNodes {
+
+    /// Instantiate and run 6 nodes for testing.
+    /// Each node is assigned with id, starting from `0` to `5`.
+    /// This `id` can be used to manage the node when running [TestNodes] functions.
     pub fn new() -> Self {
         let mut nodes = vec![];
         nodes.push(TestNode::new(0, 1, NODE_ID_1, KEYPAIR_NODE_0, NODE_ID_0));
@@ -127,6 +135,7 @@ impl TestNodes {
         }
     }
 
+    /// Starts 3 nodes - minimum required to compose a test network
     pub async fn start_minimal_and_wait(&mut self) -> std::result::Result<(), Error> {
         self.start_all(vec![NODE_ID_0, NODE_ID_1, NODE_ID_2]);
         wait_until_nodes_start(self).await
@@ -149,6 +158,8 @@ impl Drop for TestNodes {
     }
 }
 
+/// A structure to store information about test node and
+/// contains functions to manage it.
 pub struct TestNode {
     pub keypair: Keypair,
     pub public_key: [u8; 32],
@@ -191,6 +202,7 @@ impl TestNode {
         }
     }
 
+    /// Start a test node, running it as a separate process and returns immediately
     pub fn start(&mut self) {
         match self.state {
             ProcessNodeState::Stopped => {
@@ -203,6 +215,7 @@ impl TestNode {
         }
     }
 
+    /// Shutdowns the process of running node
     pub fn kill(&mut self) {
         match self.state {
             ProcessNodeState::Running(ref mut child) => {
@@ -225,7 +238,7 @@ impl TestNode {
     }
 
     /// Side effect: writes chain spec file
-    pub fn get_start_node_command(&self) -> Command {
+    fn get_start_node_command(&self) -> Command {
         let cargo_path =
             format!("{}/.cargo/bin/cargo", dirs::home_dir().unwrap().to_str().unwrap().to_string());
         let mut command = Command::new(cargo_path);

@@ -15,7 +15,7 @@ use std::net::SocketAddr;
 
 /// Implements a server for handling incoming connections.
 pub struct Server {
-    /// The ip address which this server binds to.
+    /// The ip address and port which this server binds to.
     ip: SocketAddr,
     /// The address of the router.
     router: Addr<Router>,

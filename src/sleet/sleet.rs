@@ -89,7 +89,7 @@ impl Sleet {
     /// to other nodes in the network.
     /// * `hail_recipient` - a recipient of the [hail](crate::hail) component for sending the accepted cells
     /// * `node_id` - node ID
-    /// * `node_ip` - node IP address
+    /// * `node_ip` - node IP address and port
     /// * `bootstrap_peers` - a list of peers which are used for bootstrapping the node, to be able to
     pub fn new(
         sender: Recipient<ClientRequest>,
@@ -117,8 +117,14 @@ impl Sleet {
         }
     }
 
-    /// Called for all newly discovered transactions.
+    /// Called for all newly discovered transactions, sets its status to [TxStatus::Pending]
+    /// and [inserts](Sleet::insert) it in [Sleet] state and database.
+    ///
+    /// Throws [Error::MissingAncestry] if `sleet_tx` has no parents.
+    ///
     /// Returns `true` if the transaction haven't been encountered before
+    ///
+    /// * `sleet_tx` - a [Tx] to record in [Sleet]
     fn on_receive_tx(&mut self, mut sleet_tx: Tx) -> Result<bool> {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
@@ -295,7 +301,7 @@ impl Sleet {
         return true;
     }
 
-    /// Memoising version of `is_accepted`.
+    /// Memorising version of `is_accepted`.
     /// Rationale: `is_accepted` itself contains a DFS loop; also, its callsites are DFS loops
     /// walking the graph "upwards", so most values have already been calculated in previous iterations
     pub fn is_accepted_memo(&self, tx_hash: &TxHash, memo: &mut HashMap<TxHash, bool>) -> bool {
@@ -613,9 +619,8 @@ impl Handler<GetLiveFrontier> for Sleet {
 }
 
 /// When the committee is initialised in [Alpha](crate::alpha::Alpha) or when it comes back online due to a
-/// [FaultyNetwork](crate:alpha::FaultyNetwork) message received in
-/// [Alpha](crate::alpha::Alpha), [Sleet] is updated with the latest relevant
-/// chain state.
+/// [FaultyNetwork](crate:alpha::FaultyNetwork) received message in
+/// [Alpha](crate::alpha::Alpha), [Sleet] is updated with the latest relevant chain state.
 ///
 /// ##Properties:
 /// * `validators` - a list of validators in the `committee`
@@ -753,6 +758,7 @@ impl Handler<QueryComplete> for Sleet {
 pub struct NewAccepted {
     pub tx_hashes: Vec<TxHash>,
 }
+
 impl Handler<NewAccepted> for Sleet {
     type Result = ();
 
@@ -839,6 +845,7 @@ impl Handler<FreshTx> for Sleet {
 }
 
 /// A request structure for generating a new transaction from the received [Cell](crate::cell::Cell).
+/// Its handler is an entrypoint for transactions, received by node.
 /// To generate a [Tx], it selects a [min number of parents](NPARENTS) and calls [Sleet::on_receive_tx]
 /// to record it properly in the state and if it's successful then notifies the component with [FreshTx]
 /// and returns [GenerateTxAck]
