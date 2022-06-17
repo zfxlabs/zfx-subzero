@@ -8,7 +8,8 @@ use crate::cell::Cell;
 use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
 use crate::graph::DAG;
-use crate::protocol::{Request, Response};
+use crate::message::{QueryBlock, QueryBlockAck};
+use crate::protocol::chain::{ChainRequest, ChainResponse};
 use crate::storage::hail_block as block_storage;
 use crate::util;
 
@@ -21,7 +22,7 @@ use super::{Error, Result};
 use tracing::{debug, error, info};
 
 use actix::{Actor, AsyncContext, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture};
+use actix::{ActorFutureExt, ResponseFuture};
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -314,7 +315,7 @@ impl Handler<LiveCommittee> for Hail {
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
     pub block: HailBlock,
-    pub acks: Vec<Response>,
+    pub acks: Vec<ChainResponse>,
 }
 
 impl Handler<QueryIncomplete> for Hail {
@@ -329,7 +330,7 @@ impl Handler<QueryIncomplete> for Hail {
 #[rtype(result = "()")]
 pub struct QueryComplete {
     pub block: HailBlock,
-    pub acks: Vec<Response>,
+    pub acks: Vec<ChainResponse>,
 }
 
 impl Handler<QueryComplete> for Hail {
@@ -340,7 +341,7 @@ impl Handler<QueryComplete> for Hail {
         let mut outcomes = vec![];
         for ack in msg.acks.iter() {
             match ack {
-                Response::QueryBlockAck(qb_ack) => match self.committee.get(&qb_ack.id) {
+                ChainResponse::QueryAck(qb_ack) => match self.committee.get(&qb_ack.id) {
                     Some((_, w)) => outcomes.push((qb_ack.id, w.clone(), qb_ack.outcome)),
                     None => (),
                 },
@@ -420,57 +421,45 @@ pub struct FreshBlock {
 }
 
 impl Handler<FreshBlock> for Hail {
-    type Result = ResponseActFuture<Self, Result<()>>;
+    type Result = ResponseFuture<Result<()>>;
 
     fn handle(&mut self, msg: FreshBlock, _ctx: &mut Context<Self>) -> Self::Result {
-        let validators = self.sample(ALPHA).unwrap();
-        info!("[{}] sampled {:?}", "hail".blue(), validators.clone());
+        // let validators = self.sample(ALPHA).unwrap();
+        // info!("[{}] sampled {:?}", "hail".blue(), validators.clone());
 
-        // Fanout queries to sampled validators
-        let send_to_client = self.sender.send(ClientRequest::Fanout {
-            peers: validators.clone(),
-            request: Request::QueryBlock(QueryBlock {
-                id: self.node_id.clone(),
-                block: msg.block.clone(),
-            }),
-        });
+        // // Fanout queries to sampled validators
+        // let send_to_client = self.sender.send(ClientRequest::Fanout {
+        //     peers: validators.clone(),
+        //     request: ChainRequest::Query(QueryBlock {
+        //         id: self.node_id.clone(),
+        //         block: msg.block.clone(),
+        //     }),
+        // });
 
-        // Wrap the future so that subsequent chained handlers can access te actor.
-        let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
+        // // Wrap the future so that subsequent chained handlers can access te actor.
+        // let send_to_client = actix::fut::wrap_future::<_, Self>(send_to_client);
 
-        let update_self = send_to_client.map(move |result, _actor, ctx| {
-            match result {
-                Ok(ClientResponse::Fanout(acks)) => {
-                    // If the length of responses is the same as the length of the sampled ips,
-                    // then every peer responded.
-                    if acks.len() == validators.len() {
-                        Ok(ctx.notify(QueryComplete { block: msg.block.clone(), acks }))
-                    } else {
-                        Ok(ctx.notify(QueryIncomplete { block: msg.block.clone(), acks }))
-                    }
-                }
-                Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
-                // FIXME
-                Err(_) => Err(Error::ActixMailboxError),
-            }
-        });
+        // let update_self = send_to_client.map(move |result, _actor, ctx| {
+        //     match result {
+        //         Ok(ClientResponse::Fanout(acks)) => {
+        //             // If the length of responses is the same as the length of the sampled ips,
+        //             // then every peer responded.
+        //             if acks.len() == validators.len() {
+        //                 Ok(ctx.notify(QueryComplete { block: msg.block.clone(), acks }))
+        //             } else {
+        //                 Ok(ctx.notify(QueryIncomplete { block: msg.block.clone(), acks }))
+        //             }
+        //         }
+        //         Ok(ClientResponse::Oneshot(_)) => panic!("unexpected response"),
+        //         // FIXME
+        //         Err(_) => Err(Error::ActixMailboxError),
+        //     }
+        // });
 
-        Box::pin(update_self)
+        // Box::pin(update_self)
+
+        Box::pin(async { Ok(()) })
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "QueryBlockAck")]
-pub struct QueryBlock {
-    pub id: Id,
-    pub block: HailBlock,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct QueryBlockAck {
-    pub id: Id,
-    pub block_hash: BlockHash,
-    pub outcome: bool,
 }
 
 impl Handler<QueryBlock> for Hail {
