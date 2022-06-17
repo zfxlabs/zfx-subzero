@@ -6,11 +6,11 @@ use crate::p2p::{sender, sender::Sender};
 
 use crate::message::{Ping, PingAck};
 
+use crate::protocol::network::{NetworkRequest, NetworkResponse};
+
 use crate::alpha::{self, Alpha};
 use crate::cell::types::Capacity;
-use crate::client::{ClientRequest, ClientResponse};
 use crate::colored::Colorize;
-use crate::protocol::{Request, Response};
 use crate::util;
 use crate::{Error, Result};
 
@@ -19,8 +19,6 @@ use super::constants::*;
 use super::query::{Outcome, Query};
 use super::reservoir::Reservoir;
 use super::sampleable_map::SampleableMap;
-
-use tracing::{debug, error, info};
 
 use std::collections::HashMap;
 
@@ -78,44 +76,7 @@ impl Ice {
 
 impl Actor for Ice {
     type Context = Context<Self>;
-
-    fn started(&mut self, _ctx: &mut Context<Self>) {
-        debug!(": started");
-    }
 }
-
-// pub async fn run(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>) {
-//     loop {
-//         let () = ice.send(PrintReservoir).await.unwrap();
-
-//         // Sample a random peer from the view
-//         // let view::SampleResult { sample } = view.send(view::SampleOne).await.unwrap();
-
-//         for (id, ip) in sample.iter().cloned() {
-//             // Sample up to `k` peers from the reservoir and collect ping queries
-//             let Queries { queries } =
-//                 ice.send(SampleQueries { sample: (id.clone(), ip.clone()) }).await.unwrap();
-
-//             // Ping the designated peer
-//             match ice
-//                 .send(DoPing { self_id, id: id.clone(), ip: ip.clone(), queries })
-//                 .await
-//                 .unwrap()
-//             {
-//                 Ok(ack) => {
-//                     send_ping_success(self_id.clone(), ice.clone(), alpha.clone(), ack.clone())
-//                         .await
-//                 }
-//                 Err(_) => {
-//                     send_ping_failure(ice.clone(), alpha.clone(), id.clone(), ip.clone()).await
-//                 }
-//             }
-//         }
-
-//         // Sleep for the protocol period duration.
-//         actix::clock::sleep(PROTOCOL_PERIOD).await;
-//     }
-// }
 
 impl Handler<Execute> for Ice {
     type Result = ResponseActFuture<Self, bool>;
@@ -130,13 +91,16 @@ impl Handler<Execute> for Ice {
         // Sample the pending queries in the reservoir
         let queries = self.sample_queries(peer_meta.clone());
         // Ping the peer
-        //let self_recipient = ctx.address().recipient().clone();
         let ping_handler = PingHandler::new(ctx.address());
         let sender_address = Sender::new(self.upgrader.clone(), ping_handler).start();
-        let request = Request::Ping(Ping::new(self.self_peer.clone(), queries));
+        let request = NetworkRequest::Ping(Ping::new(self.self_peer.clone(), queries));
         // Wrap the future and box
-        let send_fut =
-            sender::send(sender_address, peer_meta.clone(), request, self.protocol_period.clone());
+        let send_fut = sender::send::<NetworkRequest, NetworkResponse>(
+            sender_address,
+            peer_meta.clone(),
+            request,
+            self.protocol_period.clone(),
+        );
         let send_wrapped = actix::fut::wrap_future::<_, Self>(send_fut);
         Box::pin(
             // TODO: Returning false here implies `ice` never shuts down
@@ -200,92 +164,21 @@ impl Handler<Ping> for Ice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Bootstrapped")]
-pub struct Bootstrap {
-    pub peers: Vec<PeerMetadata>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Bootstrapped(pub bool);
-
-impl Handler<Bootstrap> for Ice {
-    type Result = Bootstrapped;
-
-    fn handle(&mut self, msg: Bootstrap, _ctx: &mut Context<Self>) -> Self::Result {
-        debug!("received bootstrap peers {:?}", msg.peers);
-        for peer_meta in msg.peers.iter() {
-            self.reservoir.insert(peer_meta.clone(), Choice::Live, 0);
-        }
-        Bootstrapped(true)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Queries")]
-pub struct SampleQueries {
-    /// Used to add new entries to the reservoir.
-    sample: PeerMetadata,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Queries {
-    queries: Vec<Query>,
-}
-
-impl Handler<SampleQueries> for Ice {
-    type Result = Queries;
-
-    fn handle(&mut self, msg: SampleQueries, _ctx: &mut Context<Self>) -> Self::Result {
-        let peer_meta = msg.sample.clone();
-
-        // If the ip address is not in the reservoir, insert it
-        let () = self.reservoir.insert_new(peer_meta.clone(), Choice::Live, 0);
-
-        let mut queries = vec![];
-        if self.reservoir.len() > 0 {
-            let sample = self.reservoir.sample();
-            for (peer_meta, (choice, _conviction)) in sample.iter() {
-                queries.push(Query { peer_meta: peer_meta.clone(), choice: choice.clone() });
-            }
-        } else {
-            error!("! reservoir uninitialised");
-        }
-        Queries { queries }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Switch")]
+#[rtype(result = "()")]
 pub struct ReceivePingSuccess {
     ping_ack: PingAck,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Switch {
-    flipped: bool,
-    bootstrapped: bool,
-}
-
 impl Handler<ReceivePingSuccess> for Ice {
-    type Result = Switch;
+    type Result = ();
 
     // The peer responded successfully
     fn handle(&mut self, msg: ReceivePingSuccess, _ctx: &mut Context<Self>) -> Self::Result {
         let ping_ack = msg.ping_ack.clone();
         if self.reservoir.fill(ping_ack.peer_meta, ping_ack.outcomes) {
-            if self.bootstrapped {
-                Switch { flipped: false, bootstrapped: true }
-            } else {
-                self.bootstrapped = true;
-                Switch { flipped: true, bootstrapped: true }
-            }
+            // When `fill` returns true `ice` is bootstrapped
         } else {
-            if !self.bootstrapped {
-                Switch { flipped: false, bootstrapped: false }
-            } else {
-                self.bootstrapped = false;
-                Switch { flipped: true, bootstrapped: false }
-            }
+            // When `fill` returns false `ice` is not (or no longer) bootstrapped
         }
     }
 }
@@ -312,21 +205,31 @@ impl Handler<ReceivePingFailure> for Ice {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "LivePeers")]
-pub struct GetLivePeers;
-
-#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct LivePeers {
-    pub live_peers: Vec<PeerMetadata>,
+pub struct PingHandler {
+    addr: Addr<Ice>,
 }
 
-impl Handler<GetLivePeers> for Ice {
-    type Result = LivePeers;
+impl PingHandler {
+    pub fn new(addr: Addr<Ice>) -> Arc<dyn ResponseHandler<NetworkResponse>> {
+        Arc::new(PingHandler { addr })
+    }
+}
 
-    // The peer did not respond or responded erroneously
-    fn handle(&mut self, _msg: GetLivePeers, _ctx: &mut Context<Self>) -> Self::Result {
-        LivePeers { live_peers: self.reservoir.get_live_peers() }
+// A `PingAck` is responded when a `Ping` request is made to a per. The `PingAck` sends the peer
+// response to `ice` such that the outcome of the queries may be processed.
+impl ResponseHandler<NetworkResponse> for PingHandler {
+    fn handle_response(
+        &self,
+        response: NetworkResponse,
+    ) -> Pin<Box<dyn Future<Output = Result<()>>>> {
+        let addr = self.addr.clone();
+        match response {
+            NetworkResponse::PingAck(ping_ack) => Box::pin(async move {
+                let () = addr.send(ReceivePingSuccess { ping_ack }).await.unwrap();
+                Ok(())
+            }),
+            _ => Box::pin(async { Ok(()) }),
+        }
     }
 }
 
@@ -383,15 +286,20 @@ impl Handler<GetLivePeers> for Ice {
 // }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "()")]
-pub struct PrintReservoir;
+#[rtype(result = "LivePeers")]
+pub struct GetLivePeers;
 
-impl Handler<PrintReservoir> for Ice {
-    type Result = ();
+#[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
+pub struct LivePeers {
+    pub live_peers: Vec<PeerMetadata>,
+}
+
+impl Handler<GetLivePeers> for Ice {
+    type Result = LivePeers;
 
     // The peer did not respond or responded erroneously
-    fn handle(&mut self, _msg: PrintReservoir, _ctx: &mut Context<Self>) -> Self::Result {
-        info!("{}", self.reservoir.print());
+    fn handle(&mut self, _msg: GetLivePeers, _ctx: &mut Context<Self>) -> Self::Result {
+        LivePeers { live_peers: self.reservoir.get_live_peers() }
     }
 }
 
@@ -412,57 +320,15 @@ impl Handler<CheckStatus> for Ice {
     }
 }
 
-// pub async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, ping_ack: PingAck) {
-//     let switch = ice.send(PingSuccess { ping_ack: ping_ack.clone() }).await.unwrap();
-//     if switch.flipped {
-//         // If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
-//         if !switch.bootstrapped {
-//             // alpha.send(alpha::FaultyNetwork).await.unwrap();
-//         } else {
-//             // Otherwise alert the `Alpha` chain of a `LiveNetwork`.
-//             let LivePeers { live_peers } = ice.send(GetLivePeers {}).await.unwrap();
-//             // alpha.send(alpha::LiveNetwork { self_id, live_peers }).await.unwrap();
-//         }
-//     }
-// }
+#[derive(Debug, Clone, Serialize, Deserialize, Message)]
+#[rtype(result = "()")]
+pub struct PrintReservoir;
 
-// pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, peer_meta: PeerMetadata) {
-//     let flipped = ice.send(PingFailure { peer_meta: peer_meta.clone() }).await.unwrap();
-//     // If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
-//     if flipped {
-//         // alpha.send(alpha::FaultyNetwork).await.unwrap();
-//     }
-// }
+impl Handler<PrintReservoir> for Ice {
+    type Result = ();
 
-pub struct PingHandler {
-    addr: Addr<Ice>,
-}
-
-impl PingHandler {
-    pub fn new(addr: Addr<Ice>) -> Arc<dyn ResponseHandler> {
-        Arc::new(PingHandler { addr })
-    }
-}
-
-// A `PingAck` is responded when a `Ping` request is made to a per. The `PingAck` sends the peer
-// response to `ice` such that the outcome of the queries may be processed.
-impl ResponseHandler for PingHandler {
-    fn handle_response(&self, response: Response) -> Pin<Box<dyn Future<Output = Result<()>>>> {
-        let addr = self.addr.clone();
-        match response {
-            Response::PingAck(ping_ack) => Box::pin(async move {
-                let switch = addr.send(ReceivePingSuccess { ping_ack }).await.unwrap();
-                if !switch.bootstrapped {
-                    // alpha.send(alpha::FaultyNetwork).await.unwrap();
-                    Ok(())
-                } else {
-                    // Otherwise alert the `Alpha` chain of a `LiveNetwork`.
-                    // let LivePeers { live_peers } = ice.send(GetLivePeers {}).await.unwrap();
-                    // alpha.send(alpha::LiveNetwork { self_id, live_peers }).await.unwrap();
-                    Ok(())
-                }
-            }),
-            _ => Box::pin(async { Ok(()) }),
-        }
+    // The peer did not respond or responded erroneously
+    fn handle(&mut self, _msg: PrintReservoir, _ctx: &mut Context<Self>) -> Self::Result {
+        info!("{}", self.reservoir.print());
     }
 }
