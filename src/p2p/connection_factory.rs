@@ -8,17 +8,18 @@ use std::collections::HashMap;
 use super::connection::{self, Connected, Connection, Upgraded};
 use super::connection_handler::ConnectionHandler;
 use super::response_handler::ResponseHandler;
+use crate::protocol::{Request, Response};
 
-pub struct ConnectionFactory {
+pub struct ConnectionFactory<Req: Request, Rsp: Response> {
     pub upgrader: Arc<dyn Upgrader>,
-    pub handler: ConnectionHandler,
+    pub handler: ConnectionHandler<Req, Rsp>,
 }
 
-impl ConnectionFactory {
+impl<Req: Request, Rsp: Response> ConnectionFactory<Req, Rsp> {
     pub fn new(
         upgrader: Arc<dyn Upgrader>,
-        request: Request,
-        response_handler: Arc<dyn ResponseHandler>,
+        request: Req,
+        response_handler: Arc<dyn ResponseHandler<Rsp>>,
     ) -> Self {
         let delta = Duration::from_millis(1000u64);
         ConnectionFactory {
@@ -28,7 +29,7 @@ impl ConnectionFactory {
     }
 }
 
-impl Actor for ConnectionFactory {
+impl<Req: Request, Rsp: Response> Actor for ConnectionFactory<Req, Rsp> {
     type Context = Context<Self>;
 }
 
@@ -38,7 +39,7 @@ struct HandleConnection {
     pub connection: Connection<Upgraded>,
 }
 
-impl Handler<HandleConnection> for ConnectionFactory {
+impl<Req: Request, Rsp: Response> Handler<HandleConnection> for ConnectionFactory<Req, Rsp> {
     type Result = ResponseActFuture<Self, Result<()>>;
 
     fn handle(&mut self, msg: HandleConnection, ctx: &mut Context<Self>) -> Self::Result {
@@ -55,7 +56,7 @@ struct UpgradeConnection {
     pub connection: Connection<Connected>,
 }
 
-impl Handler<UpgradeConnection> for ConnectionFactory {
+impl<Req: Request, Rsp: Response> Handler<UpgradeConnection> for ConnectionFactory<Req, Rsp> {
     type Result = ResponseActFuture<Self, Result<()>>;
 
     fn handle(&mut self, msg: UpgradeConnection, ctx: &mut Context<Self>) -> Self::Result {
@@ -87,7 +88,7 @@ impl Connect {
     }
 }
 
-impl Handler<Connect> for ConnectionFactory {
+impl<Req: Request, Rsp: Response> Handler<Connect> for ConnectionFactory<Req, Rsp> {
     type Result = ResponseActFuture<Self, Result<()>>;
 
     fn handle(&mut self, msg: Connect, ctx: &mut Context<Self>) -> Self::Result {
