@@ -1,7 +1,8 @@
-use crate::alpha::types::TxHash;
 use crate::cell::Cell;
 
 use crate::colored::Colorize;
+
+pub type TxHash = [u8; 32];
 
 /// The `Tx` is a consensus specific representation of a transaction, containing a
 /// chain specific transaction as its `cell` field.
