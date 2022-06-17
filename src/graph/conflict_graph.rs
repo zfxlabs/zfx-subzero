@@ -4,7 +4,7 @@ use crate::cell::types::CellHash;
 use crate::cell::{Cell, CellIds};
 
 use crate::sleet::conflict_set::ConflictSet;
-use crate::sleet::BETA2;
+use crate::sleet::constants::BETA2;
 
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 

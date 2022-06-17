@@ -1,11 +1,12 @@
 //! A graph based consensus algorithm over cells.
 
-mod sleet;
+//mod sleet;
 pub mod tx;
 
 pub mod conflict_set;
+pub mod constants;
 
-pub use sleet::*;
+//pub use sleet::*;
 
 use crate::alpha::types::TxHash;
 use crate::cell;
