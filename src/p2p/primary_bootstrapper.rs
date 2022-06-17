@@ -7,7 +7,7 @@
 use crate::alpha::{Alpha, LastCellId, ValidatorSet};
 use crate::cell::CellId;
 use crate::ice::Ice;
-use crate::server::{InitIce, Router};
+use crate::server::{InitIce, Router, TransitionReady};
 
 use super::prelude::*;
 
@@ -93,6 +93,7 @@ impl Handler<ReceivePeerSet> for PrimaryBootstrapper {
     type Result = ();
 
     fn handle(&mut self, msg: ReceivePeerSet, ctx: &mut Context<Self>) -> Self::Result {
+        info!("received peer_set");
         // Collects the peers which support the primary chain and tries to insert them into the
         // primary bootstrappers
         let mut primary_peers = HashSet::new();
@@ -163,6 +164,7 @@ impl Handler<ReceiveSynchronised> for PrimaryBootstrapper {
         let router_address = self.router_address.clone();
         let alpha_address = self.alpha_address.clone();
         arbiter.spawn(async move {
+            let () = router_address.send(TransitionReady).await.unwrap();
             match alpha_address.send(ValidatorSet { cell_id: msg.last_cell_id }).await.unwrap() {
                 Ok(alpha_validators) => {
                     info!("received validators =>\n{:?}", alpha_validators.clone());
@@ -181,7 +183,7 @@ impl Handler<ReceiveSynchronised> for PrimaryBootstrapper {
                     let () =
                         router_address.send(InitIce { addr: ice_address.clone() }).await.unwrap();
                     let backoff =
-                        LinearBackoff::new(ice_address.recipient(), Duration::from_millis(10000))
+                        LinearBackoff::new(ice_address.recipient(), Duration::from_millis(3000))
                             .start();
                     backoff.do_send(Start);
                 }
