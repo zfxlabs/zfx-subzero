@@ -1,7 +1,7 @@
 //! A client used to make external requests to the `node`.
 use crate::channel::Channel;
 use crate::p2p::id::Id;
-use crate::protocol::{Request, Response};
+use crate::protocol::network::{NetworkRequest, NetworkResponse};
 use crate::tls::upgrader::Upgrader;
 use crate::{Error, Result};
 
@@ -39,18 +39,18 @@ pub enum ClientRequest {
     Oneshot {
         id: Id,
         ip: SocketAddr,
-        request: Request,
+        request: NetworkRequest,
     },
     Fanout {
         peers: Vec<(Id, SocketAddr)>,
-        request: Request,
+        request: NetworkRequest,
     },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientResponse {
-    Oneshot(Option<Response>),
-    Fanout(Vec<Response>),
+    Oneshot(Option<NetworkResponse>),
+    Fanout(Vec<NetworkResponse>),
 }
 
 impl Handler<ClientRequest> for Client {
@@ -78,9 +78,9 @@ impl Handler<ClientRequest> for Client {
 pub async fn oneshot(
     id: Id,
     ip: SocketAddr,
-    request: Request,
+    request: NetworkRequest,
     upgrader: Arc<dyn Upgrader>,
-) -> Result<Option<Response>> {
+) -> Result<Option<NetworkResponse>> {
     let socket = TcpStream::connect(&ip).await.map_err(Error::IO)?;
     let connection = upgrader.upgrade(socket).await?;
     if connection.is_tls()
@@ -89,7 +89,7 @@ pub async fn oneshot(
         warn!("connected peer id doesn't match expected id");
         return Err(Error::UnexpectedPeerConnected);
     }
-    let mut channel: Channel<Request, Response> = Channel::wrap(connection)?;
+    let mut channel: Channel<NetworkRequest, NetworkResponse> = Channel::wrap(connection)?;
     let (mut sender, mut receiver) = channel.split();
     // send a message to a peer
     let () = sender.send(request).await?;
@@ -110,9 +110,9 @@ pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Resp
 /// A gentle fanout function which sends requests to peers and collects responses.
 async fn fanout(
     peers: Vec<(Id, SocketAddr)>,
-    request: Request,
+    request: NetworkRequest,
     upgrader: Arc<dyn Upgrader>,
-) -> Vec<Response> {
+) -> Vec<NetworkResponse> {
     let mut client_futs = vec![];
     // fanout oneshot requests to the ips designated in `ips` and collect the client
     // futures.
