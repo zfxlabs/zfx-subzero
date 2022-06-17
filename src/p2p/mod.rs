@@ -3,6 +3,8 @@ pub mod connection;
 pub mod connection_factory;
 pub mod connection_handler;
 pub mod id;
+pub mod multicast;
+pub mod multicast_executor;
 pub mod peer_meta;
 pub mod prelude;
 pub mod response_handler;

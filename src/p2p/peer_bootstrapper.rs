@@ -1,17 +1,20 @@
-//! The `PeerBootstrapper` receives `Execute` messages periodically and multicasts `Version`
-//! messages to neighboring peers. Peers share known `metadata` with one another via the
-//! handshake, which also serves to identify nodes according to their `id`s.
+//! The `PeerBootstrapper` receives `Execute` messages periodically and multicasts `Version` messages
+//! to neighboring peers. Peers share known `metadata` with one another via the handshake, which also
+//! serves to identify nodes according to their `id`s.
 //!
-//! Once a vector of `PeerMetadata` is received the `PeerBootstrapper` forwards the peers
-//! to a recipient for further processing.
+//! Once a vector of `PeerMetadata` is received the `PeerBootstrapper` forwards the peers to a
+//! recipient for further processing.
+//!
+//! Note: The peer bootstrapper can be improved by using e.g. `gradecast` for adding byzantine fault
+//! tolerance.
 
 use super::prelude::*;
 
 use crate::message::{Version, CURRENT_VERSION};
+use crate::protocol::network::{NetworkRequest, NetworkResponse};
 
 use super::linear_backoff::Execute;
-use super::sender::{multicast, Sender};
-
+use super::multicast::{Multicast, MulticastRequest, MulticastResult};
 use super::response_handler::ResponseHandler;
 
 use std::collections::HashSet;
@@ -25,22 +28,22 @@ pub struct PeerBootstrapper {
     self_peer_meta: PeerMetadata,
     /// An initial trusted set of remote peers.
     trusted_peers: Vec<PeerMetadata>,
+    /// The amount of peers which are allowed to be discovered from other trusted peers.
+    trusted_peer_discovery_limit: usize,
+    /// The amount of trusted peers which have been discovered from receiving peer metadata.
+    trusted_peers_discovered: usize,
     /// A connection upgrader (e.g. upgrade plain TCP / upgrade TLS).
     upgrader: Arc<dyn Upgrader>,
     /// The recipient `Actor` of the `peer_set` (`HashSet<PeerMetada>`).
     peer_set_recipient: Recipient<ReceivePeerSet>,
-    /// The maximum length of a peer vector.
-    peer_set_lim: usize,
-    /// The maximum number of peer vectors to share.
-    peer_set_share_lim: usize,
-    /// The current peer set.
-    current_peer_set: HashSet<PeerMetadata>,
-    /// The epoch duration.
-    delta: Duration,
-    /// The number of peer vectors sent in total.
-    sent_peer_sets: Arc<AtomicUsize>,
-    /// Whether the `PeerBootstrapper` is bootstrapped.
-    bootstrapped: Arc<AtomicBool>,
+    /// Extent of time which a single send is allowed to take.
+    timeout: Duration,
+    /// The current multicast iteration.
+    iteration: usize,
+    /// The number of retries to perform.
+    iteration_limit: usize,
+    /// Whether the peer bootstrapper has finished.
+    finished: bool,
 }
 
 impl PeerBootstrapper {
@@ -48,29 +51,23 @@ impl PeerBootstrapper {
         upgrader: Arc<dyn Upgrader>,
         self_peer_meta: PeerMetadata,
         trusted_peers: Vec<PeerMetadata>,
+        trusted_peer_discovery_limit: usize,
+        iteration_limit: usize,
         peer_set_recipient: Recipient<ReceivePeerSet>,
-        peer_set_lim: usize,
-        peer_set_share_lim: usize,
-        delta: Duration,
+        timeout: Duration,
     ) -> Self {
         PeerBootstrapper {
             upgrader,
             self_peer_meta,
             trusted_peers,
+            trusted_peer_discovery_limit,
+            trusted_peers_discovered: 0,
             peer_set_recipient,
-            peer_set_lim,
-            peer_set_share_lim,
-            current_peer_set: HashSet::default(),
-            delta,
-            sent_peer_sets: Arc::new(AtomicUsize::new(0)),
-            bootstrapped: Arc::new(AtomicBool::new(false)),
+            timeout,
+            iteration: 0,
+            iteration_limit,
+            finished: false,
         }
-    }
-
-    fn update_peer_set(&mut self, new_peer_set: HashSet<PeerMetadata>) -> HashSet<PeerMetadata> {
-        let old_peer_set = self.current_peer_set.clone();
-        self.current_peer_set = new_peer_set;
-        old_peer_set
     }
 }
 
@@ -79,30 +76,82 @@ impl Actor for PeerBootstrapper {
 }
 
 impl Handler<Execute> for PeerBootstrapper {
-    type Result = ResponseActFuture<Self, bool>;
+    type Result = ResponseFuture<bool>;
 
     fn handle(&mut self, msg: Execute, ctx: &mut Context<Self>) -> Self::Result {
-        // The peer handler uses this actor and sends `ReceivePeer` to it once a peer has
-        // been handled.
         let self_recipient = ctx.address().recipient().clone();
-        let peer_handler = PeerHandler::new(self_recipient);
-        let sender_address = Sender::new(self.upgrader.clone(), peer_handler).start();
         let peer_set = self.trusted_peers.iter().cloned().collect::<HashSet<PeerMetadata>>();
-        let request = Request::Version(Version::new(self.self_peer_meta.clone(), peer_set.clone()));
-        let multicast_fut = multicast(sender_address, peer_set, request, self.delta.clone());
-        let multicast_wrapped = actix::fut::wrap_future::<_, Self>(multicast_fut);
-        Box::pin(
-            multicast_wrapped
-                .map(move |responses, actor, ctx| actor.bootstrapped.load(Ordering::Relaxed)),
+        let multicast = Multicast::<NetworkResponse>::new(
+            self.upgrader.clone(),
+            peer_set.clone(),
+            self_recipient,
+            self.timeout.clone(),
         )
+        .start();
+        let request = NetworkRequest::Version(Version::new(self.self_peer_meta.clone(), peer_set));
+        if !self.finished {
+            if self.iteration > self.iteration_limit {
+                warn!("multicast repeated beyond the iteration limit");
+                Box::pin(async { true })
+            } else if self.iteration == self.iteration_limit {
+                info!("reached iteration limit");
+                self.iteration += 1;
+                self.finished = true;
+                Box::pin(async { true })
+            } else {
+                self.iteration += 1;
+                Box::pin(async move {
+                    info!("multicasting {:?}", request.clone());
+                    let _ = multicast.send(MulticastRequest { request }).await.unwrap();
+                    false
+                })
+            }
+        } else {
+            Box::pin(async { false })
+        }
     }
 }
 
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "()")]
-pub struct ReceivePeer {
-    pub peer_meta: PeerMetadata,
-    pub peer_set: HashSet<PeerMetadata>,
+impl Handler<MulticastResult<NetworkResponse>> for PeerBootstrapper {
+    type Result = ResponseFuture<()>;
+
+    fn handle(
+        &mut self,
+        msg: MulticastResult<NetworkResponse>,
+        ctx: &mut Context<Self>,
+    ) -> Self::Result {
+        info!("multicast result: {:?}", msg);
+        // Save the trusted peers length prior to discovery since it may extend the vector
+        let undiscovered_trusted_peer_len = self.trusted_peers.len();
+        // Peers are accumulated in a `HashSet` to prevent duplicates
+        let mut peer_set = HashSet::default();
+        for response in msg.result.iter().cloned() {
+            match response {
+                NetworkResponse::VersionAck(version_ack) => {
+                    if version_ack.version == CURRENT_VERSION {
+                        // Peers discover new peers based on version ack responses
+                        if self.trusted_peers_discovered < self.trusted_peer_discovery_limit {
+                            for peer_meta in version_ack.peer_set.iter().cloned() {
+                                if peer_meta != self.self_peer_meta {
+                                    self.trusted_peers.push(peer_meta);
+                                    self.trusted_peers_discovered += 1;
+                                }
+                            }
+                        }
+                        // The responding peer is added to the final peer set
+                        let _ = peer_set.insert(version_ack.peer);
+                        ()
+                    }
+                }
+                _ => (),
+            }
+        }
+        if peer_set.len() == undiscovered_trusted_peer_len {
+            self.finished = true;
+        }
+        let peer_set_recipient = self.peer_set_recipient.clone();
+        Box::pin(async move { peer_set_recipient.send(ReceivePeerSet { peer_set }).await.unwrap() })
+    }
 }
 
 #[derive(Debug, Clone, Message)]
@@ -111,74 +160,6 @@ pub struct ReceivePeerSet {
     pub peer_set: HashSet<PeerMetadata>,
 }
 
-impl Handler<ReceivePeer> for PeerBootstrapper {
-    type Result = ResponseFuture<()>;
-
-    fn handle(&mut self, msg: ReceivePeer, ctx: &mut Context<Self>) -> Self::Result {
-        // TODO: check the peer metadata more thoroughly
-
-        // If the `peer_bootstrapper` has already completed the bootstrap, ignore messages
-        let bootstrapped = self.bootstrapped.clone().load(Ordering::Relaxed);
-        if bootstrapped {
-            return Box::pin(async {});
-        }
-
-        if self.current_peer_set.len() >= self.peer_set_lim {
-            let peer_set = self.update_peer_set(HashSet::default());
-            let peer_set_recipient = self.peer_set_recipient.clone();
-            let peer_set_lim = self.peer_set_lim.clone();
-            let sent_peer_sets = self.sent_peer_sets.clone();
-            let bootstrapped = self.bootstrapped.clone();
-            Box::pin(async move {
-                peer_set_recipient.send(ReceivePeerSet { peer_set }).await;
-                let n_sent_peer_sets = sent_peer_sets.load(Ordering::Relaxed);
-                sent_peer_sets.store(n_sent_peer_sets + 1, Ordering::Relaxed);
-                if n_sent_peer_sets + 1 >= peer_set_lim {
-                    bootstrapped.store(true, Ordering::Relaxed);
-                }
-            })
-        } else {
-            self.current_peer_set.insert(msg.peer_meta);
-            Box::pin(async {})
-        }
-    }
-}
-
-pub struct PeerHandler {
-    recipient: Recipient<ReceivePeer>,
-}
-
-impl PeerHandler {
-    pub fn new(recipient: Recipient<ReceivePeer>) -> Arc<dyn ResponseHandler> {
-        Arc::new(PeerHandler { recipient })
-    }
-}
-
-// A `VersionAck` is reponded when a `Version` request is made to a peer. The `PeerHandler`
+// A `VersionAck` is reponded when a `Version` request is made to a peer. The `VersionAckHandler`
 // sends the peers response to the `PeerBootstrapper` such that the contained metadata may
 // be aggregated.
-impl ResponseHandler for PeerHandler {
-    fn handle_response(&self, response: Response) -> Pin<Box<dyn Future<Output = Result<()>>>> {
-        let recipient = self.recipient.clone();
-        match response {
-            Response::VersionAck(version_ack) => Box::pin(async move {
-                if version_ack.version == CURRENT_VERSION {
-                    if version_ack.peer_set.len() > RECEIVED_PEER_VEC_LIM {
-                        Err(Error::PeerListOverflow)
-                    } else {
-                        recipient
-                            .send(ReceivePeer {
-                                peer_meta: version_ack.peer,
-                                peer_set: version_ack.peer_set,
-                            })
-                            .await
-                            .map_err(|err| err.into())
-                    }
-                } else {
-                    Err(Error::IncompatibleVersion)
-                }
-            }),
-            _ => Box::pin(async { Err(Error::InvalidResponse) }),
-        }
-    }
-}
