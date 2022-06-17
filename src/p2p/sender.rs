@@ -12,48 +12,49 @@ use super::response_handler::ResponseHandler;
 
 use crate::channel::Channel;
 
+use crate::protocol::{Request, Response};
+
 use std::collections::HashSet;
 use std::net::SocketAddr;
 
-pub struct Sender {
+pub struct Sender<Rsp: Response> {
     /// Upgrades the connection to TLS or plain TCP according to configuration.
     upgrader: Arc<dyn Upgrader>,
     /// Handles a response from a peer after processing a `Send` request.
-    response_handler: Arc<dyn ResponseHandler>,
+    response_handler: Arc<dyn ResponseHandler<Rsp>>,
 }
 
-impl Sender {
-    pub fn new(upgrader: Arc<dyn Upgrader>, response_handler: Arc<dyn ResponseHandler>) -> Self {
+impl<Rsp: Response> Sender<Rsp> {
+    pub fn new(
+        upgrader: Arc<dyn Upgrader>,
+        response_handler: Arc<dyn ResponseHandler<Rsp>>,
+    ) -> Self {
         Sender { upgrader, response_handler }
     }
 }
 
-impl Actor for Sender {
+impl<Rsp: Response> Actor for Sender<Rsp> {
     type Context = Context<Self>;
-
-    fn stopped(&mut self, ctx: &mut Context<Self>) {
-        debug!("stopped");
-    }
 }
 
 #[derive(Clone, Message)]
 #[rtype(result = "Result<()>")]
-pub struct Send {
+pub struct Send<Req: Request> {
     pub peer_meta: PeerMetadata,
-    pub request: Request,
+    pub request: Req,
     pub delta: Duration,
 }
 
-impl Send {
-    pub fn new(peer_meta: PeerMetadata, request: Request, delta: Duration) -> Self {
+impl<Req: Request> Send<Req> {
+    pub fn new(peer_meta: PeerMetadata, request: Req, delta: Duration) -> Self {
         Send { peer_meta, request, delta }
     }
 }
 
-impl Handler<Send> for Sender {
+impl<Req: Request, Rsp: Response> Handler<Send<Req>> for Sender<Rsp> {
     type Result = ResponseFuture<Result<()>>;
 
-    fn handle(&mut self, msg: Send, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Send<Req>, ctx: &mut Context<Self>) -> Self::Result {
         let upgrader = self.upgrader.clone();
         let response_handler = self.response_handler.clone();
         let execution = async move {
@@ -67,20 +68,20 @@ impl Handler<Send> for Sender {
     }
 }
 
-pub async fn send(
-    sender: Addr<Sender>,
+pub async fn send<Req: Request, Rsp: Response>(
+    sender: Addr<Sender<Rsp>>,
     peer_meta: PeerMetadata,
-    request: Request,
+    request: Req,
     delta: Duration,
 ) -> Result<()> {
     let send = Send::new(peer_meta, request, delta);
     sender.send(send).await.map_err(|_| Error::ActixMailboxError)?
 }
 
-pub async fn multicast(
-    sender: Addr<Sender>,
+pub async fn multicast<Req: Request, Rsp: Response>(
+    sender: Addr<Sender<Rsp>>,
     peer_metas: HashSet<PeerMetadata>,
-    request: Request,
+    request: Req,
     delta: Duration,
 ) -> Result<()> {
     for peer_meta in peer_metas.iter().cloned() {
