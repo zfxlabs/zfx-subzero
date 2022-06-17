@@ -10,8 +10,6 @@ pub use actix::{Addr, Arbiter, AsyncContext, Context};
 pub use crate::tls::connection_stream::ConnectionStream;
 pub use crate::tls::upgrader::Upgrader;
 
-pub use crate::protocol::{Request, Response};
-
 pub use tokio::time::{timeout, Duration};
 
 pub use std::pin::Pin;
