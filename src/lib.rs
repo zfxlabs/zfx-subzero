@@ -72,7 +72,7 @@ pub mod view;
 
 pub mod alpha;
 
-use protocol::{Request, Response};
+use serde::{de::DeserializeOwned, Serialize};
 
 #[derive(Debug)]
 pub enum Error {
@@ -83,6 +83,11 @@ pub enum Error {
 
     // client errors
     InvalidResponse,
+
+    // router errors
+    Bootstrapping,
+    IceUninitialised,
+    UnknownRequest,
 
     // channel errors
     ChannelError(String),
@@ -116,6 +121,7 @@ pub enum Error {
     EmptyConnection,
     Timeout,
     IncompatibleVersion,
+    MulticastOverflow,
 }
 
 impl std::error::Error for Error {}
@@ -144,24 +150,12 @@ impl std::convert::From<sled::Error> for Error {
     }
 }
 
-impl std::convert::From<channel::Error<Request, Response>> for Error {
-    fn from(error: channel::Error<Request, Response>) -> Self {
-        match error {
-            channel::Error::IO(io_err) => Error::IO(io_err),
-            channel::Error::ReadError(err) => {
-                let s = format!("{:?}", err);
-                Error::ChannelError(s)
-            }
-            channel::Error::WriteError(err) => {
-                let s = format!("{:?}", err);
-                Error::ChannelError(s)
-            }
-        }
-    }
-}
-
-impl std::convert::From<channel::Error<Response, Request>> for Error {
-    fn from(error: channel::Error<Response, Request>) -> Self {
+impl<Req, Rsp> std::convert::From<channel::Error<Req, Rsp>> for Error
+where
+    Req: Serialize + DeserializeOwned,
+    Rsp: Serialize + DeserializeOwned,
+{
+    fn from(error: channel::Error<Req, Rsp>) -> Self {
         match error {
             channel::Error::IO(io_err) => Error::IO(io_err),
             channel::Error::ReadError(err) => {
