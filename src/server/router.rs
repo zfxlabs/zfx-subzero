@@ -1,21 +1,23 @@
+use crate::p2p::prelude::*;
+
 //use crate::hail::Hail;
 use crate::ice::Ice;
 use crate::message::{LastCellIdAck, Version, VersionAck, CURRENT_VERSION};
 use crate::p2p::id::Id;
 use crate::p2p::peer_meta::PeerMetadata;
-use crate::protocol::{Request, Response};
-use crate::sleet::Sleet;
-//use crate::view::View;
+use crate::protocol::graph::{GraphRequest, GraphResponse};
+use crate::protocol::network::{NetworkRequest, NetworkResponse};
+//use crate::sleet::Sleet;
 use crate::{alpha, alpha::Alpha};
 
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::RwLock;
 
-use crate::sleet;
-use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
+//use crate::sleet;
+//use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
 
 const MAX_PEER_SET: usize = 32;
 
@@ -76,9 +78,21 @@ impl Handler<InitIce> for Router {
     }
 }
 
+#[derive(Clone, Message)]
+#[rtype(result = "()")]
+pub struct TransitionReady;
+
+impl Handler<TransitionReady> for Router {
+    type Result = ();
+
+    fn handle(&mut self, msg: TransitionReady, _ctx: &mut Context<Self>) -> Self::Result {
+        self.state = RouterState::Ready;
+    }
+}
+
 /// Wrapper for a `Request`, augmenting it with the peer's ID
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
-#[rtype(result = "Response")]
+#[rtype(result = "Result<NetworkResponse>")]
 pub struct RouterRequest {
     /// ID of the peer. meaningful only when using TLS where the ID is generated from the certificate
     /// presented during handshake
@@ -86,11 +100,11 @@ pub struct RouterRequest {
     /// Whether the peer ID needs to be checked
     pub check_peer: bool,
     /// The request received
-    pub request: Request,
+    pub request: NetworkRequest,
 }
 
 impl Handler<RouterRequest> for Router {
-    type Result = ResponseFuture<Response>;
+    type Result = ResponseFuture<Result<NetworkResponse>>;
 
     fn handle(
         &mut self,
@@ -103,15 +117,10 @@ impl Handler<RouterRequest> for Router {
         let ice_address = self.ice_address.clone();
         let state = self.state.clone();
         Box::pin(async move {
-            trace!(
-                "Handling incoming msg: needs_checking: {}, id: {}", // ", validator: {}",
-                check_peer,
-                peer_id,
-                //validators.contains(&peer_id)
-            );
+            trace!("handling incoming msg: needs_checking: {}, id: {}", check_peer, peer_id,);
             match request {
                 // Handshake
-                Request::Version(version) => match state {
+                NetworkRequest::Version(version) => match state {
                     RouterState::Bootstrapping => {
                         let mut peer_set = peer_set.write().unwrap();
                         if version.peer_set.len() <= MAX_PEER_SET {
@@ -125,44 +134,47 @@ impl Handler<RouterRequest> for Router {
                                 }
                             }
                         }
-                        Response::VersionAck(VersionAck::new(self_peer, peer_set.clone()))
+                        Ok(NetworkResponse::VersionAck(VersionAck::new(
+                            self_peer,
+                            peer_set.clone(),
+                        )))
                     }
                     RouterState::Ready => {
-                        info!("Router reached ready state ...");
                         let peer_set = peer_set.read().unwrap();
-                        Response::VersionAck(VersionAck::new(self_peer, peer_set.clone()))
+                        Ok(NetworkResponse::VersionAck(VersionAck::new(
+                            self_peer,
+                            peer_set.clone(),
+                        )))
                     }
                 },
-                // State Bootstrapping
-                Request::LastCellId(last_cell_id) => {
-                    let ack = alpha_address.send(alpha::LastCellId).await.unwrap().unwrap();
-                    Response::LastCellIdAck(LastCellIdAck::new(self_peer, ack))
-                }
 
                 // Ice external requests
-                Request::Ping(ping) => {
-                    match state {
-                        RouterState::Bootstrapping =>
-                        // TODO:FIXME
-                        {
-                            Response::Unknown
-                        }
-                        RouterState::Ready => {
-                            match ice_address {
-                                Some(ice_address) => {
-                                    debug!("routing Ping -> Ice");
-                                    let ping_ack = ice_address.send(ping).await.unwrap();
-                                    Response::PingAck(ping_ack)
-                                }
-                                None =>
-                                // TODO:FIXME
-                                {
-                                    Response::Unknown
-                                }
-                            }
-                        }
+                NetworkRequest::Ping(ping) => match state {
+                    RouterState::Bootstrapping => {
+                        warn!("ice: router_state == Bootstrapping");
+                        Err(Error::Bootstrapping)
                     }
-                }
+                    RouterState::Ready => match ice_address {
+                        Some(ice_address) => {
+                            debug!("routing Ping -> Ice");
+                            let ping_ack = ice_address.send(ping).await.unwrap();
+                            Ok(NetworkResponse::PingAck(ping_ack))
+                        }
+                        None => Err(Error::IceUninitialised),
+                    },
+                },
+
+                // Alpha state bootstrapping
+                NetworkRequest::GraphRequest(graph_request) => match graph_request {
+                    GraphRequest::LastCellId(last_cell_id) => {
+                        let ack = alpha_address.send(alpha::LastCellId).await.unwrap().unwrap();
+                        Ok(NetworkResponse::GraphResponse(GraphResponse::LastCellIdAck(
+                            LastCellIdAck::new(self_peer, ack),
+                        )))
+                    }
+                    _ => Err(Error::UnknownRequest),
+                },
+
                 // Request::GetLastAccepted => {
                 //     debug!("routing GetLastAccepted -> Alpha");
                 //     let last_accepted = alpha.send(alpha::GetLastAccepted).await.unwrap();
@@ -246,10 +258,7 @@ impl Handler<RouterRequest> for Router {
                 //     let status = ice.send(CheckStatus).await.unwrap();
                 //     Response::Status(status)
                 // }
-                req => {
-                    error!("received unknown request / not implemented = {:?}", req);
-                    Response::Unknown
-                }
+                req => Err(Error::UnknownRequest),
             }
         })
     }

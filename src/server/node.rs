@@ -8,7 +8,7 @@ use crate::client::Client;
 use crate::hail::Hail;
 use crate::ice::{self, Ice, Reservoir};
 use crate::server::{Router, Server};
-use crate::sleet::Sleet;
+//use crate::sleet::Sleet;
 use crate::tls;
 use crate::util;
 //use crate::view::{self, View};

@@ -1,6 +1,6 @@
 use super::router::{Router, RouterRequest};
 use crate::channel::Channel;
-use crate::protocol::{Request, Response};
+use crate::protocol::network::{NetworkRequest, NetworkResponse};
 use crate::tls::upgrader::Upgrader;
 use crate::{Error, Result};
 use tracing::{error, info};
@@ -63,17 +63,24 @@ impl Server {
         // however for TLS it safely identifies the peer
         let check_peer = upgrader.is_tls();
         let peer_id = connection.get_id().unwrap();
-        let mut channel: Channel<Response, Request> = Channel::wrap(connection).unwrap();
+        let mut channel: Channel<NetworkResponse, NetworkRequest> =
+            Channel::wrap(connection).unwrap();
         let (mut sender, mut receiver) = channel.split();
         let request = receiver.recv().await.unwrap();
         match request.clone() {
             Some(request) => {
-                let response = router
+                let response: Result<NetworkResponse> = router
                     .send(RouterRequest { peer_id, check_peer, request: request.clone() })
                     .await
                     .unwrap();
-                //debug!("sending response = {:?}", response);
-                sender.send(response).await.unwrap();
+                match response {
+                    Ok(response) =>
+                    //debug!("sending response = {:?}", response);
+                    {
+                        sender.send(response).await.unwrap()
+                    }
+                    Err(err) => error!("{:?}", err),
+                }
             }
             None => error!("received None"),
         }
