@@ -20,9 +20,10 @@ use super::prelude::*;
 use super::primary_bootstrapper::ReceiveSynchronised;
 use super::response_handler::ResponseHandler;
 use super::sender::{multicast, Sender};
-
 use crate::cell::CellId;
 use crate::message::LastCellId;
+use crate::protocol::graph::{GraphRequest, GraphResponse};
+use crate::protocol::network::{NetworkRequest, NetworkResponse};
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -96,9 +97,15 @@ impl Handler<Execute> for PrimarySynchroniser {
         let self_recipient = ctx.address().recipient().clone();
         let last_cell_id_handler = LastCellIdHandler::new(self_recipient);
         let sender_addr = Sender::new(self.upgrader.clone(), last_cell_id_handler).start();
-        let request = Request::LastCellId(LastCellId::new(self.self_peer.clone()));
-        let multicast_fut =
-            multicast(sender_addr, self.primary_peers.clone(), request, self.delta.clone());
+        let request = NetworkRequest::GraphRequest(GraphRequest::LastCellId(LastCellId::new(
+            self.self_peer.clone(),
+        )));
+        let multicast_fut = multicast::<NetworkRequest, NetworkResponse>(
+            sender_addr,
+            self.primary_peers.clone(),
+            request,
+            self.delta.clone(),
+        );
         let multicast_wrapped = actix::fut::wrap_future::<_, Self>(multicast_fut);
         Box::pin(
             multicast_wrapped
@@ -181,7 +188,9 @@ pub struct LastCellIdHandler {
 }
 
 impl LastCellIdHandler {
-    pub fn new(recipient: Recipient<ReceiveLastCellId>) -> Arc<dyn ResponseHandler> {
+    pub fn new(
+        recipient: Recipient<ReceiveLastCellId>,
+    ) -> Arc<dyn ResponseHandler<NetworkResponse>> {
         Arc::new(LastCellIdHandler { recipient })
     }
 }
@@ -189,19 +198,25 @@ impl LastCellIdHandler {
 // A `LastAck` is responded when a `GetLast` request is made to a peer. The `LastHandler` sends the
 // peers responses to the `PrimarySynchroniser` which aggregates the last cell ids in order to
 // establish what the network believes is the last accepted cell.
-impl ResponseHandler for LastCellIdHandler {
-    fn handle_response(&self, response: Response) -> Pin<Box<dyn Future<Output = Result<()>>>> {
+impl ResponseHandler<NetworkResponse> for LastCellIdHandler {
+    fn handle_response(
+        &self,
+        response: NetworkResponse,
+    ) -> Pin<Box<dyn Future<Output = Result<()>>>> {
         let recipient = self.recipient.clone();
         match response {
-            Response::LastCellIdAck(last_cell_id_ack) => Box::pin(async move {
-                recipient
-                    .send(ReceiveLastCellId {
-                        peer_meta: last_cell_id_ack.peer,
-                        last_cell_id: last_cell_id_ack.last_cell_id,
-                    })
-                    .await
-                    .map_err(|err| err.into())
-            }),
+            NetworkResponse::GraphResponse(graph_response) => match graph_response {
+                GraphResponse::LastCellIdAck(last_cell_id_ack) => Box::pin(async move {
+                    recipient
+                        .send(ReceiveLastCellId {
+                            peer_meta: last_cell_id_ack.peer,
+                            last_cell_id: last_cell_id_ack.last_cell_id,
+                        })
+                        .await
+                        .map_err(|err| err.into())
+                }),
+                _ => Box::pin(async { Err(Error::InvalidResponse) }),
+            },
             _ => Box::pin(async { Err(Error::InvalidResponse) }),
         }
     }
