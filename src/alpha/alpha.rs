@@ -1,13 +1,10 @@
 //! The `alpha` primary chain protocol actor. This actor is responsible for handling requests for
 //! the primary graph state as well as requests for the latest validator set post bootstrap.
 
+use crate::p2p::prelude::*;
+
 use crate::cell::types::Capacity;
 use crate::cell::CellId;
-use crate::p2p::id::Id;
-
-use actix::{Actor, Addr, Arbiter, AsyncContext, Context, Handler, Recipient};
-use actix::{ActorFutureExt, ResponseActFuture, WrapFuture};
-use tracing::{debug, info};
 
 use super::genesis;
 use super::state::State;
@@ -86,25 +83,6 @@ impl Handler<LastCellId> for Alpha {
     }
 }
 
-/// The `alpha` actor receives `Ancestors` requests from other peers and the bootstrap actor. `alpha`
-/// will respond all of the ancestors which relate to the `CellId`.
-#[derive(Debug, Clone, Message)]
-#[rtype(result = "Result<()>")]
-pub struct Ancestors {
-    pub cell_id: CellId,
-}
-
-impl Handler<Ancestors> for Alpha {
-    type Result = Result<()>;
-
-    fn handle(&mut self, msg: Ancestors, ctx: &mut Context<Self>) -> Self::Result {
-        match &self.chain_db {
-            Some(db) => Err(Error::AlphaDbUninitialised),
-            None => Err(Error::AlphaDbUninitialised),
-        }
-    }
-}
-
 /// The `alpha` actor receives `ValidatorSet` requests from the bootstrapper. `alpha` will respond
 /// the validator set corresponding to the `LastCellId` provided.
 #[derive(Debug, Clone, Message)]
@@ -123,6 +101,25 @@ impl Handler<ValidatorSet> for Alpha {
                 None => Err(Error::AlphaInvalidChainState),
             },
             None => Err(Error::AlphaOutOfSync),
+        }
+    }
+}
+
+/// The `alpha` actor receives `Ancestors` requests from other peers and the bootstrap actor. `alpha`
+/// will respond all of the ancestors which relate to the `CellId`.
+#[derive(Debug, Clone, Message)]
+#[rtype(result = "Result<()>")]
+pub struct Ancestors {
+    pub cell_id: CellId,
+}
+
+impl Handler<Ancestors> for Alpha {
+    type Result = Result<()>;
+
+    fn handle(&mut self, msg: Ancestors, ctx: &mut Context<Self>) -> Self::Result {
+        match &self.chain_db {
+            Some(db) => Err(Error::AlphaDbUninitialised),
+            None => Err(Error::AlphaDbUninitialised),
         }
     }
 }
