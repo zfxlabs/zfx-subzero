@@ -145,54 +145,50 @@ fn main() -> Result<()> {
         let self_peer_meta = self_peer_meta.clone();
         let send_timeout = Duration::from_millis(1000);
 
-	// Primary chain configuration
-	let primary_chain_id = Id::one();
-	let primary_chain_id_s = format!("{}", primary_chain_id);
-	let bootstrap_peer_lim = 2;
-	let node_id_str = hex::encode(node_id.as_bytes());
-	let chain_db_path = vec!["/tmp/", &node_id_str, "/", &primary_chain_id_s, "/alpha.sled"].concat();
-	// Primary chain initialisation (alpha chain protocol)
-	let alpha_address = Alpha::new(primary_chain_id.clone(), chain_db_path).start();
+        // Primary chain configuration
+        let primary_chain_id = Id::one();
+        let primary_chain_id_s = format!("{}", primary_chain_id);
+        let bootstrap_peer_lim = 2;
+        let node_id_str = hex::encode(node_id.as_bytes());
+        let chain_db_path =
+            vec!["/tmp/", &node_id_str, "/", &primary_chain_id_s, "/alpha.sled"].concat();
+        // Primary chain initialisation (alpha chain protocol)
+        let alpha_address = Alpha::new(primary_chain_id.clone(), chain_db_path).start();
 
-	// Setup the initial router (actors should add themselves to the router as they spawn)
+        // Setup the initial router (actors should add themselves to the router as they spawn)
         let router = Router::new(self_peer_meta.clone(), alpha_address.clone());
         let router_address = router.start();
-	let router_address_clone = router_address.clone();
+        let router_address_clone = router_address.clone();
 
         let client_execution = async move {
-	    // Primary bootstrapper init
-	    info!("initialising primary bootstrapper");
-	    let mut primary_bootstrapper = PrimaryBootstrapper::new(
-		client_upgrader.clone(),
-		self_peer_meta.clone(),
-		primary_chain_id,
-		bootstrap_peer_lim,
-		router_address.clone(),
-		alpha_address.clone(),
-	    );
-	    let primary_bootstrapper_address = primary_bootstrapper.start();
-	    let primary_bootstrapper_recipient = primary_bootstrapper_address.recipient().clone();
+            // Primary bootstrapper init
+            info!("initialising primary bootstrapper");
+            let mut primary_bootstrapper = PrimaryBootstrapper::new(
+                client_upgrader.clone(),
+                self_peer_meta.clone(),
+                primary_chain_id,
+                bootstrap_peer_lim,
+                router_address.clone(),
+                alpha_address.clone(),
+            );
+            let primary_bootstrapper_address = primary_bootstrapper.start();
+            let primary_bootstrapper_recipient = primary_bootstrapper_address.recipient().clone();
 
-            // The length of an individual peer vector
-            let peer_set_len = 2;
-            // The number of vectors successfully required to be delivered prior to completion
-            let peer_set_lim = 1;
-	    info!("initialized network bootstrapper with {{peer_set_len = {:?}, peer_set_lim = {:?}}}",
-		  peer_set_len, peer_set_lim);
-
-	    let mut trusted_peers = remote_peer_metas.clone();
-	    trusted_peers.push(self_peer_meta.clone());
+            let mut trusted_peers = remote_peer_metas.clone();
+            trusted_peers.push(self_peer_meta.clone());
+            let trusted_peer_discovery_limit = 3;
+            let iteration_limit = 5;
             let peer_bootstrapper_address = PeerBootstrapper::new(
                 client_upgrader,
                 self_peer_meta,
                 trusted_peers,
+                trusted_peer_discovery_limit,
+                iteration_limit,
                 primary_bootstrapper_recipient,
-                peer_set_len,
-                peer_set_lim,
                 send_timeout,
             )
             .start();
-	    info!("initial backoff delay = 1s");
+            info!("initial backoff delay = 1s");
             let init_backoff_delay = Duration::from_millis(1000);
             let backoff =
                 LinearBackoff::new(peer_bootstrapper_address.recipient(), init_backoff_delay)
