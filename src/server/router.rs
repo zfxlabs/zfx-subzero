@@ -22,7 +22,7 @@ use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
 /// receives a wrapped response from [protocol](crate::protocol). The wrapped requests and responses may use requests
 /// and response from a specific component (ex. [sleet], [hail](crate::hail), etc.)
 ///
-/// For examples, see [oneshot](crate::client::oneshot) or [fanout](crate::client::fanout) function of [client.rs](crate::client)
+/// For examples, see [oneshot](crate::client::oneshot) or [fanout][crate::client::fanout] function of [client.rs](crate::client)
 pub struct Router {
     view: Addr<View>,
     ice: Addr<Ice>,
@@ -80,7 +80,7 @@ impl Handler<ValidatorSet> for Router {
 
 /// Wrapper for a [Request](crate::protocol::Request), augmenting it with the peer's ID.
 /// Its handler is responsible for taking a request and route it to a relevant component from the [Router].
-/// This request is passed from the [Server::process_stream](crate::server::Server::process_stream)
+/// This request is passed from the [Server::process_stream][crate::server::Server::process_stream]
 /// when a listener received a message.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]

@@ -34,7 +34,7 @@ pub enum Request {
     QueryBlock(hail::QueryBlock),
 }
 
-/// Response returned for the [Request], used in the [Router](crate::server::router::Router)
+/// Response returned for the [Request], used in the [Router][crate::server::Router]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub enum Response {
     // Handshake

@@ -134,7 +134,7 @@ pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Resp
 /// * `upgrader` - an upgrader for the node (ex. TCP or TLS) [see here](crate::tls::upgrader::Upgrader) for more details.
 ///
 /// This function is mainly used by the [Client] actor inside its handler for requests.
-async fn fanout(
+pub async fn fanout(
     peers: Vec<(Id, SocketAddr)>,
     request: Request,
     upgrader: Arc<dyn Upgrader>,
