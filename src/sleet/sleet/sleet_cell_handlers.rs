@@ -4,7 +4,8 @@ use crate::sleet::Sleet;
 use crate::storage::tx as tx_storage;
 use actix::{Context, Handler};
 
-// Allow clients to fetch transactions for testing.
+/// A message to get a cell by its hash.
+/// If found, the requested cell is returned from in-memory live-cells which were accepted by consensus (sleet-component).
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "CellAck")]
 pub struct GetCell {
@@ -24,6 +25,8 @@ impl Handler<GetCell> for Sleet {
     }
 }
 
+/// A message to get all in-memory live-cell hashes, accepted by consensus (sleet-component).
+/// `GetCell` request can be used individually, to get a specific cell from these cell hashes.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "CellHashes")]
 pub struct GetCellHashes;

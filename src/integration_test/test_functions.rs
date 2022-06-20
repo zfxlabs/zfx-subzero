@@ -25,7 +25,7 @@ use crate::zfx_id::Id;
 use crate::Result;
 use crate::{client, sleet, Request};
 
-/// Register cell and it's parent to identify later which tx can be spent
+/// Register cell and it's parent to identify later which tx can be spent.
 pub fn register_cell_in_test_context(
     original_cell_hash: CellHash,
     spent_cell_hash: CellHash,
@@ -228,7 +228,7 @@ pub async fn spend_many_from_accepted_cells(
 }
 
 /// Attempt to spend many invalid cells and send from one node to another.
-/// This function is useful in a stress testing when you need to mix valid transfers with invalid,
+/// This function is useful in a stress testing when valid transfers need to be mixed with invalid ones,
 /// as every attempt of cell transfer here will fail.
 ///
 /// `Iteration` indicates number of transfers and `delay` - is a delay between transfers of cells.
@@ -455,6 +455,7 @@ pub async fn get_cell_hashes_with_max_capacity(node: &TestNode) -> Vec<(CellHash
     initial_cells_hashes
 }
 
+/// For each `cell_hash`, request the `node` to get cell if it has at least `min_amount` to spend
 async fn get_cell_with_min_amount(
     min_amount: u64,
     node: &TestNode,
@@ -463,6 +464,7 @@ async fn get_cell_with_min_amount(
     get_cell_in_amount_range(min_amount, u64::MAX, node, cell_hashes).await
 }
 
+/// For each `cell_hash`, request the `node` to get cell if it has at balance between `min_amount` and `max_amount`
 async fn get_cell_in_amount_range(
     min_amount: u64,
     max_amount: u64,

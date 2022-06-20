@@ -19,6 +19,20 @@ use ed25519_dalek::Keypair;
 use rand::rngs::OsRng;
 use tracing::info;
 
+/// Runs a node with all components and connects to the network from `bootstrap_peers`.
+/// On startup, it stores the provided keypair into `/tmp/<node_id>/<node_id>.keypair`
+/// * `ip` - IP address and port of the node (ex. 127.0.0.1:1234)
+/// * `bootstrap_peers` - a list of peers which this node will use for bootstrapping,
+/// in the format <node_id>@<node_ip_address> (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1)
+/// * `keypair` - a hex keypair for the node in String format. Error is thrown if not provided
+/// * `use_tls` - indicate whether to use TLS connection.
+/// If true, then `cert_path` and `pk_path` are mandatory parameters.
+/// If false, then plain TCP connection is used.
+/// * `cert_path` - path to a certificate used in TLS connection. Mandatory parameter if `use_tls` flag is true.
+/// A sample of certificate can be found in `./deployment/test-certs/*.crt`.
+/// * `pk_path` - path to a private key for the node. Mandatory parameter if `use_tls` flag is true.
+/// A sample of private key can be found in `./deployment/test-certs/*.key`
+/// * `node_id` - Id of a node in a hex String format (ex. 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf).
 pub fn run(
     ip: String,
     bootstrap_peers: Vec<String>,

@@ -11,7 +11,7 @@ The `alpha` primitives are the only exception to this rule. `alpha`s purpose is 
 
 The network is comprised of `cell` based transactions, which is an extension to the `utxo` model to include a `data` field and a cell type. This enables transactions to contain arbitrary data where the cell type defines the interpretation of the cell and is only relevant to clients which support that specific cell type.
 
-The `alpha` primitives are the only types of `cell` which must be executed as part of connsensus in order to determine whether validator staking times become invalid or when new validators begin staking on the network.
+The `alpha` primitives are the only types of `cell` which must be executed as part of consensus in order to determine whether validator staking times become invalid or when new validators begin staking on the network.
 
 There are three layers of consensus in `subzero`, each of which provide a vital role enabling the subsequent consensus mechanisms to operate.
 
@@ -57,7 +57,7 @@ How the components fit together:
 
 A node's identity is derived from its TLS certificate, and is verified for outgoing and incoming connections.
 
-## Build and test
+## Build, Run and test
 
 Assuming that the standard set of Rust and C build tools are present, the following commands can be used to check out, build the project and run the tests:
 
@@ -81,7 +81,8 @@ cargo run --bin node -- -a 127.0.0.1:1235 -b 12My22AzQQosboCy6TCDFkTQwHTSuHhFN1V
  cargo run --bin node -- -a 127.0.0.1:1236 -b 19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf@127.0.0.1:1235 --keypair 6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b --use-tls --cert-path deployment/test-certs/node2.crt -p deployment/test-certs/node2.key
 ```
 
-There are scripts to simplify node startup in the [`./scripts/`](deployment/scripts) and [`./docker/`](deployment/docker) directories.
+There are scripts to simplify node startup in the [`deployment/scripts/`](deployment/scripts) and [`deployment/docker/`](deployment/docker) directories.
+For more information, please refer [`deployment/README.md`](deployment/README.md).
 
 ### Running the client test
 

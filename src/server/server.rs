@@ -15,7 +15,7 @@ use std::net::SocketAddr;
 
 /// Implements a server for handling incoming connections.
 pub struct Server {
-    /// The ip address which this server binds to.
+    /// The ip address and port which this server binds to.
     ip: SocketAddr,
     /// The address of the router.
     router: Addr<Router>,
@@ -27,8 +27,8 @@ impl Server {
         Server { ip, router, upgrader }
     }
 
-    // Starts an actix server that listens for incoming connections.
-    // Default thread count is the number of logical cpus
+    /// Starts an actix server that listens for incoming connections.
+    /// Default thread count is the number of logical cpus
     pub async fn listen(&self) -> Result<()> {
         let ip = self.ip.clone();
         let router = self.router.clone();
@@ -52,7 +52,7 @@ impl Server {
             .map_err(|err| Error::IO(err))
     }
 
-    // Processes the tcp stream and sends the request to the router
+    /// Processes the tcp stream and sends the request to the router
     async fn process_stream(
         stream: TcpStream,
         router: Addr<Router>,

@@ -12,6 +12,8 @@ pub struct BoundedHashSet<T> {
 }
 
 impl<T: Clone + Eq + Hash> BoundedHashSet<T> {
+    /// Creates a new instance with `size` as max allowed capacity.
+    /// When it reaches the max capacity, the oldest elements must be removed upon insert.
     pub fn new(size: usize) -> Self {
         BoundedHashSet {
             size,
@@ -20,6 +22,8 @@ impl<T: Clone + Eq + Hash> BoundedHashSet<T> {
         }
     }
 
+    /// Insert an element into the hash set.
+    /// When it reaches the max capacity, the first oldest element is removed on FIFO basis.
     pub fn insert(&mut self, elem: T) {
         let duplicate = !self.elems.insert(elem.clone());
         if duplicate {
@@ -49,6 +53,8 @@ pub struct BoundedHashMap<K, V> {
 }
 
 impl<K: Clone + Eq + Hash, V> BoundedHashMap<K, V> {
+    /// Creates a new instance with `size` as max allowed capacity.
+    /// When it reaches the max capacity, the oldest elements must be removed upon insert.
     pub fn new(size: usize) -> Self {
         BoundedHashMap {
             size,
@@ -57,6 +63,8 @@ impl<K: Clone + Eq + Hash, V> BoundedHashMap<K, V> {
         }
     }
 
+    /// Insert an element into the hash map.
+    /// When it reaches the max capacity, the first oldest element is removed on FIFO basis.
     pub fn insert(&mut self, k: K, v: V) {
         if let Some(_) = self.elems.insert(k.clone(), v) {
             return;

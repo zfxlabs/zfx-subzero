@@ -14,6 +14,15 @@ use std::sync::Arc;
 use crate::sleet;
 use actix::{Actor, Addr, AsyncContext, Context, Handler, ResponseFuture};
 
+/// The `Router` has the addresses of all components which are able to receive requests and
+/// its main responsibility is to delegate a request to the correct component.
+/// It's used in [Server](crate::server::Server) which sends a received request to `Router`, wrapped into [RouterRequest].
+///
+/// The `Router` accepts a wrapper request from [protocol](crate::protocol), sends it to a relevant component and
+/// receives a wrapped response from [protocol](crate::protocol). The wrapped requests and responses may use requests
+/// and response from a specific component (ex. [sleet], [hail](crate::hail), etc.)
+///
+/// For examples, see [oneshot](crate::client::oneshot) or [fanout](crate::client::fanout) function of [client.rs](crate::client)
 pub struct Router {
     view: Addr<View>,
     ice: Addr<Ice>,
@@ -50,6 +59,7 @@ pub struct InitRouter {
     pub addr: Addr<Router>,
 }
 
+/// A request structure for updating the list of validators
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct ValidatorSet {
@@ -68,7 +78,10 @@ impl Handler<ValidatorSet> for Router {
     }
 }
 
-/// Wrapper for a `Request`, augmenting it with the peer's ID
+/// Wrapper for a [Request](crate::protocol::Request), augmenting it with the peer's ID.
+/// Its handler is responsible for taking a request and route it to a relevant component from the [Router].
+/// This request is passed from the [Server::process_stream](crate::server::Server::process_stream)
+/// when a listener received a message.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Response")]
 pub struct RouterRequest {

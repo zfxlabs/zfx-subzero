@@ -1,24 +1,21 @@
 # Deployment of the zfx-subzero nodes
 
 ## Docker
-_(tested only on amd64 Win10 and Ubuntu)_
+Run the script `startup-nodes.sh` or `startup-nodes.bat`. It will build the image and start up the 3 nodes on docker containers.
 
-Run the script `startup-nodes.sh` or `startup-nodes.bat`. It will build the image and start up the nodes on docker containers.
-
-_NOTE: the containers run nodes with TLS only, therefore if you use `testclient.sh` to send some transactions, you must not use `USE_TCP=1` var._
+_NOTE: the containers run nodes with TLS only, therefore if you use [`testclient.sh`](scripts/testclient.sh) to send some transactions, you **must not** use `USE_TCP=1` var._
 
 
 ## Test scripts
 
-## `testnode.sh`
+### `testnode.sh`
 
-This script simplifies starting up a three-node testnet. The nodes use the certificates from the `test-certs/` directory, and their identity is currently part of the genesis.
+This script simplifies starting up a three-node testnet. The nodes use the certificates from the [`test-certs/`](test-certs) directory, 
+and their identity is currently part of the genesis block.
 
 ```sh
 zfx-subzero $ ./deployment/scripts/testnode.sh 0
-
 zfx-subzero $ ./deployment/scripts/testnode.sh 1
-
 zfx-subzero $ ./deployment/scripts/testnode.sh 2
 ```
 
@@ -26,13 +23,13 @@ By default, TLS connections are used. In order to set up a testnet with plain TC
 
 ```sh
 zfx-subzero $ USE_TCP=1 ./deployment/scripts/testnode.sh 0
-
 . . .
 ```
 
-## `testclient.sh`
+### `testclient.sh`
 
-Sends transactions to a node in the tesnet. By default, a TLS connection is used, the `USE_TCP` environment variable can be used the same way as with the test nodes.
+This is a test script to sends some transactions to a node in the testnet.
+By default, a TLS connection is used. The `USE_TCP` environment variable can be used the same way as when running the test nodes _(see above)_.
 
 ```sh
 # Send a single transaction

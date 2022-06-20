@@ -10,7 +10,7 @@ pub enum TxStatus {
     Pending,
     /// Transaction was queried
     Queried,
-    /// Transaction was accepted as fina;
+    /// Transaction was accepted as final
     Accepted,
     /// Transaction rejected as it conflicted with an accepted transaction
     Rejected,

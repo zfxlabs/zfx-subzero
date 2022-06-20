@@ -56,7 +56,7 @@ fn generate_transfer_whith_recipient(
     }
 }
 
-// For debugging: the output can be fed to `dot` to draw the graph
+/// For debugging: the output can be fed to `dot` to draw the graph
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct DumpDAG;
@@ -90,6 +90,7 @@ pub struct SleetStatus {
     dag_len: usize,
     accepted_frontier: HashSet<TxHash>,
 }
+
 impl Handler<GetStatus> for Sleet {
     type Result = SleetStatus;
 
@@ -136,7 +137,7 @@ struct DummyClient {
     pub ancestors: Vec<Tx>,
 }
 
-// Client substitute for answering `QueryTx` queries
+/// Client substitute for answering `QueryTx` queries
 impl DummyClient {
     pub fn new() -> Self {
         Self { responses: vec![], ancestors: vec![] }
@@ -227,7 +228,7 @@ impl Handler<ClientRequest> for DummyClient {
     }
 }
 
-// Receives accepted transactions from Sleet and stores them in a vector
+/// Receives accepted transactions from Sleet and stores them in a vector
 struct HailMock {
     pub accepted: Vec<Cell>,
 }
