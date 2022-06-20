@@ -1,3 +1,7 @@
+//! Sleet is a consensus algorithm based on Avalanche and the closest one to the original papers.
+//!
+//! The purpose of sleet is to resolve conflicts between cell-based transactions and ensure
+//! that a double spending transaction never becomes live, nor adopted in a subsequent block.
 use crate::colored::Colorize;
 use crate::zfx_id::Id;
 

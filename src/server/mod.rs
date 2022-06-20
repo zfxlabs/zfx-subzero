@@ -1,3 +1,4 @@
+//! Server-side code
 pub mod node;
 mod router;
 mod server;

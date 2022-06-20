@@ -1,3 +1,4 @@
+//! [`run`] starts a node executable
 use std::io::{BufReader, Read, Write};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::Path;
