@@ -13,6 +13,8 @@
 //! As it is developed using Actix, actor messages and behaviour are often documented with the
 //! message structure.
 
+#![doc(html_logo_url = "https://avatars.githubusercontent.com/zfxlabs")]
+
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]

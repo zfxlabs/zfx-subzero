@@ -118,7 +118,6 @@ pub struct Upgraders {
     pub server: Arc<dyn Upgrader>,
 }
 
-
 /// Return a pair of (client and server) upgraders for TLS
 ///
 /// Takes the certificate and private key as parameters.
