@@ -33,7 +33,7 @@ mod sleet_utils;
 // Parent selection
 
 /// Max number of parents to assign for a received transaction
-const NPARENTS: usize = 3;
+pub const NPARENTS: usize = 3;
 
 // Safety parameters
 
@@ -130,7 +130,7 @@ impl Sleet {
     /// Returns `true` if the transaction haven't been encountered before
     ///
     /// * `sleet_tx` - a [Tx] to record in [Sleet]
-    fn on_receive_tx(&mut self, mut sleet_tx: Tx) -> Result<bool> {
+    pub fn on_receive_tx(&mut self, mut sleet_tx: Tx) -> Result<bool> {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
         if util::has_coinbase_output(&sleet_tx.cell) {
@@ -620,8 +620,8 @@ impl Handler<GetLiveFrontier> for Sleet {
     }
 }
 
-/// When the committee is initialised in [Alpha](crate::alpha::Alpha) or when it comes back online due to a
-/// [FaultyNetwork](crate:alpha::FaultyNetwork) received message in
+/// When the committee is initialised in [Alpha][crate::alpha::Alpha] or when it comes back online due to a
+/// [FaultyNetwork][crate::alpha::FaultyNetwork] received message in
 /// [Alpha](crate::alpha::Alpha), [Sleet] is updated with the latest relevant chain state.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
@@ -745,7 +745,7 @@ impl Handler<QueryComplete> for Sleet {
 
 /// A message to notify for new accepted transactions in [Sleet].
 /// Upon receipt, it removes conflicts for each of these transactions
-/// and notifies [Hail](crate::hail::Hail] about them.
+/// and notifies [Hail][crate::hail::Hail] about them.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
@@ -838,7 +838,7 @@ impl Handler<FreshTx> for Sleet {
 
 /// A request structure for generating a new transaction from the received [Cell](crate::cell::Cell).
 /// Its handler is an entrypoint for transactions, received by node.
-/// To generate a [Tx], it selects a [min number of parents](NPARENTS) and calls [Sleet::on_receive_tx]
+/// To generate a [Tx], it selects a [min number of parents][NPARENTS] and calls [Sleet::on_receive_tx]
 /// to record it properly in the state and if it's successful then notifies the component with [FreshTx]
 /// and returns [GenerateTxAck]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
