@@ -4,7 +4,6 @@
 //! Similar to [`sleet`][crate::sleet], no inner verification of the block contents nor execution
 //! of state transitions is done besides on alpha primitive cells (such as staking cells).
 
-
 pub mod block;
 mod committee;
 mod conflict_map;

@@ -50,16 +50,9 @@ impl Actor for Client {
 #[rtype(result = "ClientResponse")]
 pub enum ClientRequest {
     /// Sends a single request and waits for a response
-    Oneshot {
-        id: Id,
-        ip: SocketAddr,
-        request: Request,
-    },
+    Oneshot { id: Id, ip: SocketAddr, request: Request },
     /// Multicast message
-    Fanout {
-        peers: Vec<(Id, SocketAddr)>,
-        request: Request,
-    },
+    Fanout { peers: Vec<(Id, SocketAddr)>, request: Request },
 }
 
 /// Response message from the client actor
