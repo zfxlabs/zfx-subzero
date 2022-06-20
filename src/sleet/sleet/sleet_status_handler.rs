@@ -4,7 +4,7 @@ use crate::zfx_id::Id;
 use actix::{Context, Handler};
 use std::net::SocketAddr;
 
-/// A request structure to get information about the [sleet](crate::sleet) component.
+/// A message to get information about the [sleet](crate::sleet) component.
 /// Returns [Status] on successful receipt of the request.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Status")]

@@ -49,6 +49,7 @@ pub const BETA2: u8 = 20;
 const QUERY_RESPONSE_TIMEOUT_MS: u64 = 5000;
 
 /// Sleet is a consensus bearing `mempool` for transactions conflicting on spent inputs.
+///
 /// The purpose of sleet is to resolve conflicts between [cell-based](crate::cell::Cell) transactions
 /// and ensure that a double spending transaction never becomes live.
 ///
@@ -304,7 +305,7 @@ impl Sleet {
         return true;
     }
 
-    /// Memorising version of `is_accepted`.
+    /// Memoising version of `is_accepted`.
     /// Rationale: `is_accepted` itself contains a DFS loop; also, its callsites are DFS loops
     /// walking the graph "upwards", so most values have already been calculated in previous iterations
     pub fn is_accepted_memo(&self, tx_hash: &TxHash, memo: &mut HashMap<TxHash, bool>) -> bool {
@@ -428,7 +429,7 @@ impl Actor for Sleet {
     }
 }
 
-/// A request structure to start the bootstrapping process of the node for [Sleet].
+/// A message to start the bootstrapping process of the node for [Sleet].
 /// The handler of this request communicates with `bootstrap_peers` of [Sleet]
 /// to synchronize it with other nodes.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
@@ -543,13 +544,11 @@ impl Handler<FetchWithAncestry> for Sleet {
     }
 }
 
-/// A request structure to get [Tx] from the storage.
-///
-/// ##Properties:
-/// * `tx_hash` - hash of [Tx] to search in storage
+/// A message to get [Tx] from the storage.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "FetchedTx")]
 pub struct FetchTx {
+    /// Hash of [Tx] to search in storage
     tx_hash: TxHash,
 }
 
@@ -624,14 +623,12 @@ impl Handler<GetLiveFrontier> for Sleet {
 /// When the committee is initialised in [Alpha](crate::alpha::Alpha) or when it comes back online due to a
 /// [FaultyNetwork](crate:alpha::FaultyNetwork) received message in
 /// [Alpha](crate::alpha::Alpha), [Sleet] is updated with the latest relevant chain state.
-///
-/// ##Properties:
-/// * `validators` - a list of validators in the `committee`
-/// * `live_cells` - live cells in the [State](crate::alpha::state::State)
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
+    /// a list of validators in the `committee`
     pub validators: HashMap<Id, (SocketAddr, f64)>,
+    /// live cells in the [State](crate::alpha::state::State)
     pub live_cells: HashMap<CellHash, Cell>,
 }
 
@@ -675,14 +672,12 @@ impl Handler<LiveCommittee> for Sleet {
 /// and setting status back to [TxStatus::Queried].
 /// This request is send in [Sleet] when not all validators responded successfully to [QueryTx]
 /// when a [Cell](crate::cell::Cell) is received.
-///
-/// ##Properties:
-/// * `tx` - transaction to process
-/// * `acks` - a list of responses from sampled validators for this transaction
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
+    /// transaction to process
     pub tx: Tx,
+    /// a list of responses from sampled validators for this transaction
     pub acks: Vec<Response>,
 }
 
@@ -702,14 +697,12 @@ impl Handler<QueryIncomplete> for Sleet {
 /// This request is send in [Sleet] when all validators responded successfully to [QueryTx]
 /// when a [Cell](crate::cell::Cell) is received. The `DAG` of [Sleet] sets chit = 1 for
 /// this transaction and looks for the old transactions with required [confidence level](BETA1) which can be accepted.
-///
-/// ##Properties:
-/// * `tx` - transaction to process
-/// * `acks` - a list of responses from sampled validators for this transaction
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryComplete {
+    /// transaction to process
     pub tx: Tx,
+    /// a list of responses from sampled validators for this transaction
     pub acks: Vec<Response>,
 }
 
@@ -750,15 +743,13 @@ impl Handler<QueryComplete> for Sleet {
     }
 }
 
-/// A request structure to notify for new accepted transactions in [Sleet].
+/// A message to notify for new accepted transactions in [Sleet].
 /// Upon receipt, it removes conflicts for each of these transactions
 /// and notifies [Hail](crate::hail::Hail] about them.
-///
-/// ##Properties:
-/// * `tx_hashes` - transaction hashes which were accepted
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
+    /// transaction hashes which were accepted
     pub tx_hashes: Vec<TxHash>,
 }
 
@@ -789,20 +780,18 @@ impl Handler<NewAccepted> for Sleet {
     }
 }
 
-/// A request structure to handle a new transaction received in [Sleet]
+/// A message to handle a new transaction received in [Sleet]
 /// by sampling validators with [min required weight](ALPHA).
 /// Depending on the outcome of the sampling, it sends [QueryComplete] or [QueryIncomplete] within the component.
 ///
 /// Instead of having an infinite loop as per the paper which receives and processes
-/// inbound unqueried transactions, we instead use the `Actor` and use `notify` whenever
+/// inbound un-queried transactions, we instead use the `Actor` and use `notify` whenever
 /// a fresh transaction is received - either externally in [GenerateTx] or as an internal
 /// consensus message via [QueryTx].
-///
-/// ##Properties:
-/// * `tx` - transaction to process
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 pub struct FreshTx {
+    /// transaction to process
     pub tx: Tx,
 }
 
@@ -852,12 +841,10 @@ impl Handler<FreshTx> for Sleet {
 /// To generate a [Tx], it selects a [min number of parents](NPARENTS) and calls [Sleet::on_receive_tx]
 /// to record it properly in the state and if it's successful then notifies the component with [FreshTx]
 /// and returns [GenerateTxAck]
-///
-/// ##Properties:
-/// * `cell` - received cell to use for generating a [Tx]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "GenerateTxAck")]
 pub struct GenerateTx {
+    /// received cell to use for generating a [Tx]
     pub cell: Cell,
 }
 
@@ -912,30 +899,25 @@ impl Handler<GenerateTx> for Sleet {
 ///
 /// Otherwise the functionality is identical but `QueryTx` returns a consensus response -
 /// whether the transaction is strongly preferred or not.
-///
-///
-/// ##Properties:
-/// * `id` - the node's own Id
-/// * `ip` - the node's own listening address, for sending queries back ([GetTxAncestors] in particular)
-/// * `tx` - generated transaction to sample in a node (validator) `id@ip`
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryTxAck")]
 pub struct QueryTx {
+    /// the node's own Id
     pub id: Id,
+    /// the node's own listening address, for sending queries back ([GetTxAncestors] in particular)
     pub ip: SocketAddr,
+    /// generated transaction to sample in a node (validator) `id@ip`
     pub tx: Tx,
 }
 
 /// Response for [QueryTx]
-///
-/// ##Properties:
-/// * `id` - the node Id which responded
-/// * `tx_hash` - hash of generated [Tx]
-/// * `outcome` - true if the validator considered this [Tx] to be strongly preferred
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct QueryTxAck {
+    /// the node Id which responded
     pub id: Id,
+    /// hash of generated [Tx]
     pub tx_hash: TxHash,
+    /// true if the validator considered this [Tx] to be strongly preferred
     pub outcome: bool,
 }
 
@@ -1062,16 +1044,14 @@ impl Handler<CheckPending> for Sleet {
 
 /// A request structure for getting ancestors of a selected transaction from a node.
 /// Notifies [Sleet] with [FreshTx] for each newly received ancestor.
-///
-/// ##Properties:
-/// * `tx_hash` - hash of [Tx] to find ancestors for
-/// * `id` - the node's own ID
-/// * `ip` - the node's own listening address
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct AskForAncestors {
+    /// hash of [Tx] to find ancestors for
     pub tx_hash: TxHash,
+    /// the node's own ID
     pub id: Id,
+    /// the node's own listening address
     pub ip: SocketAddr,
 }
 
@@ -1159,11 +1139,11 @@ impl Handler<GetTxAncestors> for Sleet {
     }
 }
 
-// Message handlers used in testing
+/// Message handlers used in testing
 pub mod sleet_cell_handlers;
 pub mod sleet_status_handler;
 
-// Re-export message types
+/// Re-export message types
 pub use sleet_cell_handlers::*;
 
 #[cfg(test)]

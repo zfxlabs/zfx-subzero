@@ -15,10 +15,8 @@ use std::sync::Arc;
 
 /// Client is responsible for making requests to one or many nodes in the network.
 /// Its main handler is [ClientRequest] which accepts [ClientRequest::Oneshot] or [ClientRequest::Fanout]
-///
-/// ## Properties
-/// * `upgrader` - for upgrading a [TcpStream] to a [ConnectionStream](crate::tls::connection_stream::ConnectionStream)
 pub struct Client {
+    /// For upgrading a [TcpStream] to a [ConnectionStream](crate::tls::connection_stream::ConnectionStream)
     upgrader: Arc<dyn Upgrader>,
 }
 
