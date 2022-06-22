@@ -1,3 +1,9 @@
+//! The [DisseminationComponent] actor is responsible for disseminating gossip throughout the network
+//!
+//! Gossip is created by sending a [`Gossip`] message to the actor.
+//!
+//! [`ice`][crate::ice] pulls and piggy-backs gossip in the [`Ping`][crate::ice::Ping] messages, by pulling
+//! them using [`pull_rumours`].
 use crate::zfx_id::Id;
 
 use crate::colored::Colorize;
@@ -13,6 +19,7 @@ const GOSSIP_LIMIT: usize = 3; // Amount of gossip allowed to be passed
 
 type GossipId = u64;
 
+/// Pulls the gossip messages from the [DisseminationComponent]
 pub async fn pull_rumours(
     dc_recipient: Recipient<GossipQuery>,
     network_size: usize,
@@ -21,21 +28,30 @@ pub async fn pull_rumours(
     rumours
 }
 
+/// Defines a gossig message
+///
+/// The message is sent to the actor to create a new gossip message
 #[derive(Debug, Clone, Message, Serialize, Deserialize)]
 #[rtype(result = "GossipAck")]
 pub enum Gossip {
+    /// Newly joined node in the network
     Joiner { id: Id },
 }
 
+/// Acknowledgement for a [`Gossip`] message
 #[derive(Debug, Clone, MessageResponse)]
 pub struct GossipAck {}
 
+/// Actor message for receiving gossip to disseminate
+///
+/// This message is used by [`pull_rumours`], use that function to get gossip to disseminate
 #[derive(Debug, Clone, Message)]
 #[rtype(result = "Rumours")]
 pub struct GossipQuery {
     pub network_size: usize,
 }
 
+/// A collection of gossip messages
 #[derive(Debug, Clone, MessageResponse)]
 pub struct Rumours {
     pub rumours: Vec<Gossip>,
@@ -106,6 +122,9 @@ impl PriorityMap {
     }
 }
 
+/// Main actor to keep track and serve gossip messages
+///
+/// See the [module-level documentation][crate::ice::dissemination] for its behaviour
 pub struct DisseminationComponent {
     rumours: PriorityMap,
 }

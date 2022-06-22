@@ -1,5 +1,6 @@
 use crate::colored::Colorize;
 
+/// Status of a network peer
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
 pub enum Choice {
     Live,
