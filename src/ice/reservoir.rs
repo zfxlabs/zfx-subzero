@@ -14,6 +14,7 @@ use rand::seq::SliceRandom;
 use std::collections::{hash_map::Entry, HashMap};
 use std::net::SocketAddr;
 
+/// Reservoir used to sample peers for queries and store outcomes
 #[derive(Debug, Clone)]
 pub struct Reservoir {
     quorums: HashMap<Id, Quorum>,
