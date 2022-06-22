@@ -2,6 +2,11 @@ use super::inputs::Inputs;
 use super::outputs::{Output, Outputs};
 use super::types::*;
 
+/// Cell is an extension to the UTXO model used by [sleet] and [hail] components
+/// when they interact with transactions by wrapping it inside [transactions](crate::sleet::tx::Tx).
+///
+/// The main information withing a transaction is stored in its 2 properties:
+/// [inputs][Input] and [outputs][Output].
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Cell {
     inputs: Inputs,
@@ -15,18 +20,26 @@ impl std::fmt::Display for Cell {
 }
 
 impl Cell {
+    /// Create new instance from `inputs` and `outputs`.
     pub fn new(inputs: Inputs, outputs: Outputs) -> Self {
         Cell { inputs, outputs }
     }
 
+    /// Return sorted cloned `inputs`.
     pub fn inputs(&self) -> Inputs {
         self.inputs.clone()
     }
 
+    /// Return sorted cloned `outputs`.
     pub fn outputs(&self) -> Outputs {
         self.outputs.clone()
     }
 
+    /// Return all outputs of the `owner` in the cell. The function checks [Output::lock] property
+    /// whether it equals to `owner`.
+    ///
+    /// ## Parameters
+    /// * `owner` - owner (account's public key) to retrieve the outputs
     pub fn outputs_of_owner(&self, owner: &PublicKeyHash) -> Vec<&Output> {
         self.outputs
             .iter()
@@ -34,6 +47,7 @@ impl Cell {
             .collect::<Vec<&Output>>()
     }
 
+    /// Serialize the cell and return its hash as a byte array.
     pub fn hash(&self) -> CellHash {
         let encoded = bincode::serialize(self).unwrap();
         blake3::hash(&encoded).as_bytes().clone()

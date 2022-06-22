@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 use ed25519_dalek::{PublicKey, Signature};
 
 /// A cells unlocking script (simple).
+/// _not in use at the moment, as transactions are not signed_
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CellUnlockScript {
     pub public_key: PublicKey,

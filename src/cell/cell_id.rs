@@ -6,7 +6,8 @@ use std::ops::{Deref, DerefMut};
 
 use crate::colored::Colorize;
 
-// The hash of a cells output index.
+/// An unique id of a [Cell], which is usually derived from serialization result
+/// of a hash of the cell and a position of [Output] in [Outputs] list of the cell.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct CellId([u8; 32]);
 
@@ -44,10 +45,21 @@ impl Into<[u8; 32]> for CellId {
 }
 
 impl CellId {
+    /// Create an instance of CellId from serialized data.
+    ///
+    /// ## Parameters
+    /// * `cell_id` - serialized data (ex. combination of cell hash and output position,
+    /// see. [CellId::from_output])
     pub fn new(cell_id: [u8; 32]) -> Self {
         CellId(cell_id)
     }
 
+    /// Create an instance of CellId from a hash of [Cell] and
+    /// position of [Output] in [Outputs] list of the [Cell].
+    ///
+    /// ## Parameters
+    /// * `cell_hash` - hash of [Cell]
+    /// * `i` - position of [Output] in [Outputs] list of the [Cell]
     // TODO check if we need the `output` argument
     pub fn from_output(cell_hash: CellHash, i: u8, _output: Output) -> Result<Self> {
         let bytes = vec![cell_hash.to_vec(), vec![i]].concat();

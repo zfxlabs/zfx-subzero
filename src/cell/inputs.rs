@@ -8,6 +8,7 @@ use std::cmp::{Eq, Ord, Ordering, PartialEq};
 use std::hash::{Hash, Hasher};
 use std::ops::{Deref, DerefMut};
 
+/// An aggregated structure for storing a set of [Input]s.
 #[derive(Clone, Deserialize)]
 pub struct Inputs {
     pub inputs: HashSet<Input>,
@@ -121,6 +122,10 @@ impl PartialOrd for Inputs {
 }
 
 impl Inputs {
+    /// Create new instance from a list of [Input]s.
+    ///
+    /// ## Parameters
+    /// * `outputs` - list of [Input]s for assigning to a single Inputs
     pub fn new(inputs: Vec<Input>) -> Self {
         Inputs { inputs: inputs.iter().cloned().collect() }
     }

@@ -11,13 +11,19 @@ use ed25519_dalek::Keypair;
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TransferState;
 
-/// A transfer output transfers tokens to the designated public key hash.
+/// Create a new [Output] of type [CellType::Transfer] by setting
+/// the indicated capacity to the account.
+/// The output will have `data` property as a serialized [transfer state][TransferState].
+///
+/// ## Parameters
+/// * `pkh` - public key hash of account which will receive the tokens (transferred amount)
+/// * `capacity`- amount to transfer to the account and assign it to [Output]
 pub fn transfer_output(pkh: PublicKeyHash, capacity: Capacity) -> Result<Output> {
     let data = bincode::serialize(&TransferState {})?;
     Ok(Output { capacity, cell_type: CellType::Transfer, data, lock: pkh })
 }
 
-/// A transfer operation transfers capacity from an owner to another.
+/// Transfers capacity from one account to another.
 pub struct TransferOperation {
     /// The cell being spent in this transfer operation.
     cell: Cell,
@@ -30,6 +36,17 @@ pub struct TransferOperation {
 }
 
 impl TransferOperation {
+    /// Create a transfer operation from the provided [Cell] to the new account
+    /// with `recipient_address`.
+    ///
+    /// The method [transfer][TransferOperation::transfer] should be called to complete the transfer.
+    ///
+    /// ## Parameters
+    /// * `cell` - the requested `capacity` will be taken out from this cell,
+    /// if it has outputs with enough balance for the owner with `change_address`.
+    /// * `recipient_address` - account's public key where to transfer `capacity` to.
+    /// * `change_address` - account's public key where to transfer `capacity` from.
+    /// * `capacity` - a balance to transfer from `change_address` to `recipient_address`.
     pub fn new(
         cell: Cell,
         recipient_address: PublicKeyHash,
@@ -39,7 +56,24 @@ impl TransferOperation {
         TransferOperation { cell, recipient_address, change_address, capacity }
     }
 
-    /// Create a new set of transfer outputs from the supplied transfer operation.
+    /// Transfer balance and create a new [Cell] with list of outputs
+    /// from the supplied transfer operation.
+    /// In order to construct the new cell with correct list of [inputs][Input] and [outputs][Output],
+    /// it calls [consume_from_cell][crate::cell::cell_operation::consume_from_cell] to
+    /// take out the provided `capacity` from the owner's [outputs][Output] of the cell and
+    /// return consumed and remaining balance, as well as the new inputs.
+    ///
+    /// If the remaining balance has more capacity than [FEE], then
+    /// the new cell will have:
+    /// * 1 [Output] with the transferred balance for the new owner (`recipient_address`).
+    /// * 1 [Output] with the remaining balance minus [FEE] for the owner (`change_address`).
+    ///
+    /// If the remaining balance has less capacity than [FEE], then
+    /// only 1 [Output] with the transferred balance is returned
+    /// for the new owner (`recipient_address`).
+    ///
+    /// ## Parameters
+    /// * `keypair` - the account's keypair for identifying outputs for transfer.
     pub fn transfer(&self, keypair: &Keypair) -> Result<Cell> {
         let ConsumeResult { consumed, residue, inputs } =
             consume_from_cell(&self.cell, self.capacity, keypair)?;

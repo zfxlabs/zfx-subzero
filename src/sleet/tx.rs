@@ -18,16 +18,26 @@ pub enum TxStatus {
     Removed,
 }
 
-/// The `Tx` is a consensus specific representation of a transaction, containing a
-/// chain specific transaction as its `cell` field.
+/// Consensus specific representation of a transaction, containing a
+/// chain specific transaction as its [cell](crate::cell::Cell) field.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
+    /// Parents of the transaction represented in DAG
     pub parents: Vec<TxHash>,
+    /// UTXO data containing information about transferred, staked or remaining balances
+    /// for accounts
     pub cell: Cell,
+    /// Transaction status
     pub status: TxStatus,
 }
 
 impl Tx {
+    /// Create new transaction with [TxStatus::Pending] status.
+    ///
+    /// * `parents` - a list of parent transactions, represented in [hash][Tx::hash].
+    /// Parent transactions can be obtained, for example, from the DAG of [Sleet]
+    /// to form a strong connection between new transaction and parent ones.
+    /// * `cell` - a cell to enclose in this transaction
     pub fn new(parents: Vec<TxHash>, cell: Cell) -> Self {
         Tx { parents, cell, status: TxStatus::Pending }
     }
