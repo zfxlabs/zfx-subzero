@@ -238,31 +238,44 @@ impl<V: Clone + Eq + std::hash::Hash + std::fmt::Debug> DAG<V> {
 
     /// Get all the ancestors, partially ordered (parents precede children)
     pub fn get_ancestors(&self, v: &V) -> Vec<V> {
-        let mut result: Vec<V> = vec![];
-        let mut visited = HashSet::new();
-        let _ = visited.insert(v.clone());
+        let mut sorted = self.topological_sort();
+        let mut ancestors: HashSet<V> = self.dfs(v).cloned().collect();
+        ancestors.remove(v);
+        sorted.retain(|e| ancestors.contains(e));
+        return sorted;
+    }
 
-        let mut parents = self.g.get(v).unwrap_or(&vec![]).clone();
-        loop {
-            let mut grandparents = vec![];
-            for a in parents.iter() {
-                if !visited.contains(a) {
-                    result.push(a.clone());
-                    let _ = visited.insert(a.clone());
-                }
-                grandparents.extend(self.g.get(a).unwrap().iter().cloned());
-            }
-            if grandparents.is_empty() {
-                break;
-            }
-            parents = grandparents;
+    /// Return the elements topologically sorted in a vector
+    ///
+    /// Kahn's alhorithm is used. Ancestors precede children in the result.
+    pub fn topological_sort(&self) -> Vec<V> {
+        let mut result = vec![];
+        let mut queue: VecDeque<V> = VecDeque::new();
+        // Working with the inverted DAG
+        let mut dag = self.invert();
+        for v in dag.leaves() {
+            queue.push_back(v.clone());
         }
-        result.reverse();
+
+        while !queue.is_empty() {
+            let vx = queue.pop_front().unwrap();
+            result.push(vx.clone());
+
+            let edges = dag.get(&vx).unwrap().clone();
+            for edge in edges {
+                dag.inv.get_mut(&edge).unwrap().retain(|e| e != &vx);
+                if dag.inv.get(&edge).unwrap().is_empty() {
+                    queue.push_back(edge);
+                }
+            }
+        }
         result
     }
 }
 
 /// Iterator for depth-first traversal of the ancestors of a vertex
+///
+/// Returned by the [`DAG::dfs`] function.
 pub struct DFS<'a, V> {
     /// The underlying DAG
     dag: &'a DAG<V>,
@@ -601,6 +614,20 @@ mod test {
     }
 
     #[actix_rt::test]
+    async fn test_topological() {
+        #[rustfmt::skip]
+        let dag = make_dag(&[
+            (0, &[]),
+            (1, &[0]), (2, &[0]), (42, &[0,1]),
+            (3, &[1]), (4, &[1]),
+            (5, &[3,4,2])
+        ]);
+
+        let sorted = dag.topological_sort();
+        assert_eq!(sorted, [0, 1, 2, 42, 3, 4, 5]);
+    }
+
+    #[actix_rt::test]
     async fn test_get_ancestors() {
         #[rustfmt::skip]
         let dag = make_dag(&[
@@ -623,5 +650,32 @@ mod test {
 
         let anc = dag.get_ancestors(&1);
         assert!(anc.is_empty());
+    }
+
+    #[actix_rt::test]
+    async fn test_double_ancestry() {
+        let mut dag = DAG::new();
+        dag.insert_vx(0, vec![]).unwrap();
+        dag.insert_vx(1, vec![0]).unwrap();
+        for i in 2..11 {
+            dag.insert_vx(i, vec![i - 1, i - 2]).unwrap();
+        }
+
+        let ancestors = dag.get_ancestors(&10);
+        assert_eq!(ancestors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
+
+    #[actix_rt::test]
+    async fn test_deep_ancestry() {
+        let mut dag = DAG::new();
+        dag.insert_vx(0, vec![]).unwrap();
+        dag.insert_vx(1, vec![0]).unwrap();
+        for i in 2..10 {
+            dag.insert_vx(i, vec![i - 1, i - 2]).unwrap();
+        }
+        dag.insert_vx(10, vec![0, 9]).unwrap();
+
+        let ancestors = dag.get_ancestors(&10);
+        assert_eq!(ancestors, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 }
