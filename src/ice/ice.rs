@@ -26,6 +26,12 @@ use std::net::SocketAddr;
 use actix::WrapFuture;
 
 /// The main actor
+///
+/// `Ice` actor is responsible for dissemination and gossiping of peers. It holds information about the bootstrapping
+/// status of current node, as well as a list of connected nodes in the network ([Reservoir]) with their statuses
+/// (ex. [Live][Choice::Live] or [Faulty][Choice::Faulty] in order to identify whether there is sufficient number of
+/// connected nodes (quorum) in the network prior to bootstrapping the [alpha][crate::alpha] chain (making it
+/// available to accept requests).
 pub struct Ice {
     /// The client used to make external requests.
     sender: Recipient<ClientRequest>,
@@ -133,6 +139,7 @@ impl Handler<Ping> for Ice {
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Bootstrapped")]
 pub struct Bootstrap {
+    /// Trusted bootstrap peers (from the node's configuration)
     pub peers: Vec<(Id, SocketAddr)>,
 }
 
@@ -467,6 +474,8 @@ async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: Socke
 
 /// Run the protocol in rounds
 ///
+/// This function drives the `Ice` component in a loop (see [PROTOCOL_PERIOD]).
+/// It samples peers to query and handles the results.
 ///
 pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alpha>) {
     loop {

@@ -36,7 +36,7 @@ struct VertexData {
     status: OutputStatus,
 }
 
-/// Status of a/ output
+/// Status of an output
 pub enum OutputStatus {
     /// The transaction generating this output is pending
     Pending,

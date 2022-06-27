@@ -5,7 +5,7 @@ use tokio::time::Duration;
 // TODO: currently not used
 // pub const ROUND_TRIP_TIME: Duration = Duration::from_secs(3);
 
-/// One protocol rounds (6 seconds)
+/// One protocol round (6 seconds)
 pub const PROTOCOL_PERIOD: Duration = Duration::from_secs(6);
 
 // Gossip settings

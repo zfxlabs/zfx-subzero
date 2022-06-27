@@ -134,7 +134,7 @@ impl Sleet {
     /// Returns `true` if the transaction haven't been encountered before
     ///
     /// * `sleet_tx` - a [Tx] to record in [Sleet]
-    pub fn on_receive_tx(&mut self, mut sleet_tx: Tx) -> Result<bool> {
+    fn on_receive_tx(&mut self, mut sleet_tx: Tx) -> Result<bool> {
         // Skip adding coinbase transactions (block rewards / initial allocations) to the
         // mempool.
         if util::has_coinbase_output(&sleet_tx.cell) {
@@ -165,7 +165,7 @@ impl Sleet {
     }
 
     /// Insert transaction into the DAG and Conflict Graph
-    pub fn insert(&mut self, tx: Tx) -> Result<()> {
+    fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
         let parents = self.remove_accepted_parents(tx.parents.clone());
@@ -842,7 +842,8 @@ impl Handler<FreshTx> for Sleet {
 
 /// A request structure for generating a new transaction from the received [Cell](crate::cell::Cell).
 /// Its handler is an entrypoint for transactions, received by node.
-/// To generate a [Tx], it selects a [min number of parents][NPARENTS] and calls [Sleet::on_receive_tx]
+/// To generate a [Tx], it selects a [min number of parents][NPARENTS] and inserts it
+/// into the database and the DAG
 /// to record it properly in the state and if it's successful then notifies the component with [FreshTx]
 /// and returns [GenerateTxAck]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]

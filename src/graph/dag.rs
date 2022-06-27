@@ -5,8 +5,10 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 /// Directed acyclic graph for [`sleet`][crate::sleet]
 ///
-/// For `sleet`,  a `DAG<TxHash>` structure holds the consensus graph. that ontains the accepted frontier
+/// For `sleet`,  a `DAG<TxHash>` structure holds the consensus graph. that contains the accepted frontier
 ///  and the undecided transactions.
+/// The accepted frontier contains the last accepted transactions (the frontier of the finalised part of the DAG), below that
+/// there are only undecided transactions in the graph.
 #[derive(Debug)]
 pub struct DAG<V> {
     /// `g` defines a directed acyclic graph by the outbound edges from a vertex
