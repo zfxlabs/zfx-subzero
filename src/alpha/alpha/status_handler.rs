@@ -7,15 +7,21 @@ use crate::{ice, sleet};
 use actix::{ActorFutureExt, Context, Handler, ResponseActFuture, WrapFuture};
 use std::net::SocketAddr;
 
+/// Get status of the node from the  [alpha][crate::alpha::Alpha] component
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<NodeStatus>")]
 pub struct GetNodeStatus;
 
+/// Response to [GetNodeStatus]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct NodeStatus {
+    /// True if node is bootstrapped
     pub bootstrapped: bool,
+    /// Height of the latest block
     pub height: u64,
+    /// Peers connected to the node
     pub peers: Vec<(Id, SocketAddr, Choice)>,
+    /// Available validators in the node
     pub validators: Vec<(Id, SocketAddr, Weight)>,
 }
 
