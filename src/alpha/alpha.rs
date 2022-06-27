@@ -27,7 +27,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 /// The [actor][actix::actor::Actor] for `alpha` chain component which
-/// defines all chains known to nodes in the network and implements `Proof-ofStake`.
+/// defines all chains known to nodes in the network and implements `Proof-of-Stake`.
 ///
 /// Upon instantiation, builds a genesis [Block][crate::storage::block::Block] if doesn't exist
 /// in the `tree` (storage), and applies it into the `state`.
