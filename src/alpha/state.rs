@@ -12,6 +12,9 @@ use crate::graph::dependency_graph::DependencyGraph;
 
 use std::collections::HashMap;
 
+/// Data structure for storing state of the [alpha][crate::alpha::Alpha] component.
+///
+/// The state is updated with a new block, calling its main function [apply][State::apply].
 #[derive(Debug, Clone)]
 pub struct State {
     /// The current block height.
@@ -27,6 +30,10 @@ pub struct State {
 }
 
 impl State {
+    /// Create new instance with empty validators and default values:
+    /// * `height` = 0
+    /// * `total_spending_capacity` = 0
+    /// * `total_staking_capacity` = 0
     pub fn new() -> Self {
         State {
             height: 0,
@@ -37,6 +44,10 @@ impl State {
         }
     }
 
+    /// Apply a new block to the state.
+    ///
+    /// _NOTE: at the moment, this function is used only when constructing a genesis block
+    /// when [alpha][crate::alpha::Alpha] component is started up._
     pub fn apply(&self, block: Block) -> Result<State> {
         let mut state = self.clone();
 
@@ -161,6 +172,10 @@ impl State {
         Ok(state)
     }
 
+    /// Return a new map of cells from `self.live_cells` without cells from `cell_ids`
+    ///
+    /// ## Parameters
+    /// * `cell_ids` - cell ids to exclude from `self.live_cells`
     fn remove_intersection(&self, cell_ids: CellIds) -> Result<HashMap<CellIds, Cell>> {
         let mut live_cells = HashMap::default();
         for (live_cell_ids, live_cell) in self.live_cells.iter() {

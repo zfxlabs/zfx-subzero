@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
+/// Defines an id for the whole [Cell][crate::cell::Cell] by combining all [CellId]s for each of its [Output].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CellIds {
     pub inner: HashSet<CellId>,
@@ -99,14 +100,25 @@ impl std::cmp::PartialOrd for CellIds {
 }
 
 impl CellIds {
+    /// Create new instance from a set of [CellId]s.
+    ///
+    /// ## Parameters
+    /// * `hs` - set of [CellId]s for joining to a single id
     pub fn new(hs: HashSet<CellId>) -> Self {
         CellIds { inner: hs }
     }
 
+    /// Create an instance with no [CellId]s.
     pub fn empty() -> Self {
         CellIds { inner: HashSet::new() }
     }
 
+    /// Create an instance from [Inputs] of a [Cell][crate::cell::Cell].
+    /// For each input, the function [OutputIndex::cell_id] is called in order
+    /// to compose an Id and assign it to the final instance.
+    ///
+    /// ## Parameters
+    /// * `inputs` - inputs of a [Cell][crate::cell::Cell]
     pub fn from_inputs(inputs: Inputs) -> Result<Self> {
         let mut cell_ids = HashSet::new();
         for input in inputs.iter() {
@@ -115,6 +127,13 @@ impl CellIds {
         Ok(CellIds { inner: cell_ids })
     }
 
+    /// Create an instance from a [CellHash] and [Outputs] of the [Cell][crate::cell::Cell].
+    /// For each output, the function [CellId::from_output] is called in order
+    /// to compose an Id and assign it to the final instance.
+    ///
+    /// ## Parameters
+    /// * `cell_hash` - hash of a [Cell][crate::cell::Cell]
+    /// * `outputs` - outputs of a [Cell][crate::cell::Cell]
     pub fn from_outputs(cell_hash: CellHash, outputs: Outputs) -> Result<Self> {
         let mut cell_ids = HashSet::new();
         for i in 0..outputs.len() {
@@ -123,15 +142,18 @@ impl CellIds {
         Ok(CellIds { inner: cell_ids })
     }
 
+    /// Returns `true` if `self` has no elements in common with `other`.
     #[inline]
     pub fn intersects_with(&self, other: &CellIds) -> bool {
         !self.is_disjoint(other)
     }
 
+    /// Returns a new [CellIds] having values presented in `self` and `other`.
     pub fn intersect(&self, other: &CellIds) -> CellIds {
         CellIds { inner: self.intersection(other).cloned().collect() }
     }
 
+    /// Returns a new [CellIds] having values presented in `self` but not in `other`.
     pub fn left_difference(&self, other: &CellIds) -> CellIds {
         CellIds { inner: self.difference(other).cloned().collect() }
     }

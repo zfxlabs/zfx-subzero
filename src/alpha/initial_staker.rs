@@ -7,14 +7,27 @@ use ed25519_dalek::Keypair;
 
 use std::str::FromStr;
 
+/// Data structure for keeping information about a node (keypair + node id) and
+/// its balance (total allocated and staked)
 pub struct InitialStaker {
+    /// Keypair of the node
     pub keypair: Keypair,
+    /// Id of the node
     pub node_id: Id,
+    /// Total allocated balance for the node
     pub total_allocation: Capacity,
+    /// Staked balance which can be used to transfer to other accounts
     pub staked_allocation: Capacity,
 }
 
 impl InitialStaker {
+    /// Create a new instance.
+    ///
+    /// ## Parameters
+    /// * `kps` - keypair of the node
+    /// * `node_id` - id of the node
+    /// * `total_allocation` - total allocated balance for the node
+    /// * `staked_allocation` - staked balance which can be used to transfer to other accounts
     pub fn from_hex(
         kps: String,
         node_id: Id,
@@ -26,12 +39,16 @@ impl InitialStaker {
         Ok(InitialStaker { keypair, node_id, total_allocation, staked_allocation })
     }
 
+    /// Get a hash code of the staker
     pub fn public_key_hash(&self) -> Result<PublicKeyHash> {
         let encoded = bincode::serialize(&self.keypair.public)?;
         Ok(blake3::hash(&encoded).as_bytes().clone())
     }
 }
 
+/// Get a list of initial stakers (keypair + node id) with their starting staked balance and total allocation.
+///
+/// This list of stakers can be used to create a genesis block.
 pub fn genesis_stakers() -> Vec<InitialStaker> {
     vec![
 	InitialStaker::from_hex(
