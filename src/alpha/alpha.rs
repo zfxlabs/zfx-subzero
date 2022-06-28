@@ -47,7 +47,7 @@ pub struct Alpha {
     pub sleet: Addr<Sleet>,
     /// The address of the [Hail][crate::hail] actor.
     pub hail: Addr<Hail>,
-    /// The address of the [Router][crate::server::router::Router] actor.
+    /// The address of the [Router][crate::server::Router] actor.
     router: Option<Addr<Router>>,
     /// The `alpha` chain state.
     pub state: State,
