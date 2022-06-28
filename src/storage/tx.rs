@@ -119,6 +119,7 @@ where
     }
 }
 
+/// Set transaction status
 pub fn set_status(db: &sled::Db, tx_hash: &TxHash, status: TxStatus) -> Result<()> {
     let result = update_and_fetch(db, tx_hash, |tx| {
         if let Some(mut tx) = tx {
