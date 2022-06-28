@@ -1,3 +1,4 @@
+//! [Tx] represents a transaction in [`sleet`][crate::sleet]
 use crate::alpha::types::TxHash;
 use crate::cell::Cell;
 
@@ -18,8 +19,8 @@ pub enum TxStatus {
     Removed,
 }
 
-/// Consensus specific representation of a transaction, containing a
-/// chain specific transaction as its [cell](crate::cell::Cell) field.
+/// The `Tx` is a consensus specific representation of a transaction, containing a
+/// chain specific transaction as its `cell` field, and its parents in the Sleet [DAG][crate::graph::DAG] in its `parents` field.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Tx {
     /// Parents of the transaction represented in DAG

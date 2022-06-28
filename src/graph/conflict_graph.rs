@@ -13,7 +13,7 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 /// Keeps track of conflicts between transactions.
 ///
 /// `ConflictGraph` is a hypergraph with the vertices being the spendable outputs,
-/// while cells form the hyperarcs.
+/// while [cells][crate::cell::Cell] form the hyperarcs.
 /// An individual [conflict set][crate::sleet::conflict_set::ConflictSet] is maintained
 /// for each cell, based on the hypergraph.
 pub struct ConflictGraph {
@@ -48,6 +48,7 @@ pub enum OutputStatus {
 use self::OutputStatus::*;
 
 impl ConflictGraph {
+    /// Create a new conflict graph. The `genesis` cell ids are added as accepted vertices
     pub fn new(genesis: CellIds) -> Self {
         let mut vertices = HashMap::new();
         for g in genesis.iter() {
@@ -61,6 +62,9 @@ impl ConflictGraph {
         }
     }
 
+    /// Add new cell ids as accepted vertices.
+    ///
+    /// _Note: this function doesn't check for duplicates._ The cell ids handled similarly as the genesis ids.
     pub fn append(&mut self, cell_ids: CellIds) {
         for g in cell_ids.iter() {
             if !self.vertices.contains_key(&g) {
@@ -70,6 +74,7 @@ impl ConflictGraph {
         }
     }
 
+    /// Insert a [Cell][crate::cell::Cell] into the conflict graph
     pub fn insert_cell(&mut self, cell: Cell) -> Result<()> {
         let cell_hash = cell.hash();
         match self.cells.insert(cell_hash, cell.clone()) {
@@ -121,9 +126,9 @@ impl ConflictGraph {
         Ok(())
     }
 
-    /// Once a transaction is accepted we wish to remove all the conflicts from the graph
+    /// Once a transaction is accepted we remove all the conflicts from the graph
     /// in order to free up space for future entries.
-    /// The conflicting cells are returned in order to allow Sleet to make
+    /// The conflicting cell hashes are returned in order to allow [`sleet`][crate::sleet] to make
     /// the necessary adjustment to other data structures
     pub fn accept_cell(&mut self, cell: Cell) -> Result<Vec<CellHash>> {
         let cell_hash = cell.hash();
@@ -189,7 +194,7 @@ impl ConflictGraph {
         }
     }
 
-    // Adjust data stored int the vertices when removing a cell
+    // Adjust data stored in the vertices when removing a cell
     fn remove_from_vertices(&mut self, cell_hash: &CellHash) -> Result<()> {
         let cell = self.cells.get(cell_hash).unwrap().clone();
 
@@ -209,10 +214,12 @@ impl ConflictGraph {
         Ok(())
     }
 
+    /// Return the [conflict set][crate::sleet::conflict_set::ConflictSet] belonging to the given `cell_hash`
     pub fn conflicting_cells(&self, cell_hash: &CellHash) -> Option<&ConflictSet<CellHash>> {
         self.cs.get(cell_hash)
     }
 
+    /// Return whether `cell_hash` is a singleton in its conflict set
     pub fn is_singleton(&self, cell_hash: &CellHash) -> Result<bool> {
         match self.conflicting_cells(cell_hash) {
             Some(conflict_set) => Ok(conflict_set.is_singleton()),
@@ -220,6 +227,7 @@ impl ConflictGraph {
         }
     }
 
+    /// Return the preferred elements in  `cell_hash`es conflict set
     pub fn get_preferred(&self, cell_hash: &CellHash) -> Result<CellHash> {
         match self.conflicting_cells(cell_hash) {
             Some(conflict_set) => Ok(conflict_set.pref),
@@ -227,6 +235,7 @@ impl ConflictGraph {
         }
     }
 
+    /// Return whether `cell_hash` is the preferred element in its conflict set
     pub fn is_preferred(&self, cell_hash: &CellHash) -> Result<bool> {
         match self.conflicting_cells(cell_hash) {
             Some(conflict_set) => Ok(conflict_set.is_preferred(cell_hash.clone())),
@@ -234,6 +243,7 @@ impl ConflictGraph {
         }
     }
 
+    /// Return the confidence counter of the conflict set of `cel_hash`
     pub fn get_confidence(&self, cell_hash: &CellHash) -> Result<u8> {
         match self.conflicting_cells(cell_hash) {
             Some(conflict_set) => Ok(conflict_set.cnt),
@@ -241,6 +251,10 @@ impl ConflictGraph {
         }
     }
 
+    /// Update the conflict set of `cell_hash`.
+    ///
+    /// `d1` is the [conviction][crate::graph::DAG::conviction] value of `cell_hash` in the Sleet DAG,
+    /// while `d2` is the conviction of the currently preferred element.
     pub fn update_conflict_set(&mut self, cell_hash: &CellHash, d1: u8, d2: u8) -> Result<()> {
         if self.cs.len() > 0 {
             match self.cs.get_mut(cell_hash) {
@@ -264,7 +278,9 @@ impl ConflictGraph {
         }
     }
 
-    /// Reset the confidence counter for a cell
+    /// Reset the confidence counter for a cell.
+    ///
+    /// This operation is needed for safety in [`sleet`][crate::sleet] after a failed query
     pub fn reset_count(&mut self, cell_hash: &CellHash) -> Result<()> {
         if self.cs.len() > 0 {
             match self.cs.get_mut(cell_hash) {
