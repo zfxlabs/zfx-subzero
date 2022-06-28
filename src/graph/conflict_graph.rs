@@ -1,3 +1,5 @@
+//! [`ConflictGraph` ]keeps track of conflicts between transactions for [`sleet`][crate::sleet]
+
 use super::{Error, Result};
 
 use crate::cell::types::CellHash;
@@ -9,9 +11,11 @@ use crate::sleet::BETA2;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 /// Keeps track of conflicts between transactions.
+///
 /// `ConflictGraph` is a hypergraph with the vertices being the spendable outputs,
 /// while cells form the hyperarcs.
-/// An individual conflict set is maintained for each cell, based on the hypergraph.
+/// An individual [conflict set][crate::sleet::conflict_set::ConflictSet] is maintained
+/// for each cell, based on the hypergraph.
 pub struct ConflictGraph {
     /// The spendable outputs in the system
     vertices: HashMap<CellId, VertexData>,
@@ -32,10 +36,13 @@ struct VertexData {
     status: OutputStatus,
 }
 
-/// Status pf a output
+/// Status of an output
 pub enum OutputStatus {
+    /// The transaction generating this output is pending
     Pending,
+    /// The transaction generating this output has been accepted
     Accepted,
+    /// The transaction generating this output has been rejected
     Rejected,
 }
 use self::OutputStatus::*;

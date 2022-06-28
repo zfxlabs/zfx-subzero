@@ -1,3 +1,7 @@
+//! Sleet is a consensus algorithm based on Avalanche and the closest one to the original papers.
+//!
+//! The purpose of sleet is to resolve conflicts between cell-based transactions and ensure
+//! that a double spending transaction never becomes live, nor adopted in a subsequent block.
 use crate::colored::Colorize;
 use crate::zfx_id::Id;
 
@@ -33,7 +37,7 @@ mod sleet_utils;
 // Parent selection
 
 /// Max number of parents to assign for a received transaction
-const NPARENTS: usize = 3;
+pub const NPARENTS: usize = 3;
 
 // Safety parameters
 
@@ -161,7 +165,7 @@ impl Sleet {
     }
 
     /// Insert transaction into the DAG and Conflict Graph
-    pub fn insert(&mut self, tx: Tx) -> Result<()> {
+    fn insert(&mut self, tx: Tx) -> Result<()> {
         let cell = tx.cell.clone();
         self.conflict_graph.insert_cell(cell.clone())?;
         let parents = self.remove_accepted_parents(tx.parents.clone());
@@ -620,8 +624,8 @@ impl Handler<GetLiveFrontier> for Sleet {
     }
 }
 
-/// When the committee is initialised in [Alpha](crate::alpha::Alpha) or when it comes back online due to a
-/// [FaultyNetwork](crate:alpha::FaultyNetwork) received message in
+/// When the committee is initialised in [Alpha][crate::alpha::Alpha] or when it comes back online due to a
+/// [FaultyNetwork][crate::alpha::FaultyNetwork] received message in
 /// [Alpha](crate::alpha::Alpha), [Sleet] is updated with the latest relevant chain state.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
@@ -745,7 +749,7 @@ impl Handler<QueryComplete> for Sleet {
 
 /// A message to notify for new accepted transactions in [Sleet].
 /// Upon receipt, it removes conflicts for each of these transactions
-/// and notifies [Hail](crate::hail::Hail] about them.
+/// and notifies [Hail][crate::hail::Hail] about them.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct NewAccepted {
@@ -838,7 +842,8 @@ impl Handler<FreshTx> for Sleet {
 
 /// A request structure for generating a new transaction from the received [Cell](crate::cell::Cell).
 /// Its handler is an entrypoint for transactions, received by node.
-/// To generate a [Tx], it selects a [min number of parents](NPARENTS) and calls [Sleet::on_receive_tx]
+/// To generate a [Tx], it selects a [min number of parents][NPARENTS] and inserts it
+/// into the database and the DAG
 /// to record it properly in the state and if it's successful then notifies the component with [FreshTx]
 /// and returns [GenerateTxAck]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]

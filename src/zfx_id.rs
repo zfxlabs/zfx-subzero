@@ -1,3 +1,7 @@
+//! Generic hash-based IDs for use throughout the system
+//!
+//! See the  documentation of [Id] for details.
+
 use std::convert::TryInto;
 use std::fmt;
 use std::net::SocketAddr;
@@ -10,6 +14,10 @@ use blake2::Blake2bVar;
 use rand::{self, Rng};
 
 /// Generic hash-based ID for use throughout the system
+///
+/// The `Id` wraps a 32-byte hash, used as identifier for various objects, for example for network peers.
+///
+/// They are displayed using the Base58check format.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Serialize, Deserialize, Default)]
 pub struct Id([u8; 32]);
 
@@ -61,37 +69,39 @@ impl Id {
         Id::new(format!("{:?}", ip.clone()).as_bytes())
     }
 
+    /// Generate a random `Id`
     pub fn generate() -> Id {
         let mut rng = rand::thread_rng();
         let v: [u8; 32] = rng.gen();
         Id(v)
     }
 
+    /// All-zeroes `Id` (for testing)
     pub fn zero() -> Id {
         Id([0u8; 32])
     }
 
+    /// The maximal (all `0xFF`) value (for testing)
     pub fn max() -> Id {
         Id([255u8; 32])
     }
 
+    /// All-ones `Id` (for testing)
     pub fn one() -> Id {
         Id([1u8; 32])
     }
+
+    /// All-twos `Id` (for testing)
     pub fn two() -> Id {
         Id([2u8; 32])
     }
-    pub fn test_one() -> Id {
-        Id([
-            0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8,
-            0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0x80u8,
-        ])
-    }
 
+    /// Returns the wrapped byte array containing the hash
     pub fn bytes(&self) -> [u8; 32] {
         self.0
     }
 
+    /// Returns a slice to the contained byte array
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -153,7 +163,7 @@ impl Index<std::ops::Range<usize>> for Id {
 }
 
 // This function is the replacement for `zfx_crypto`s `hash!` macro
-pub fn hash(input: &[u8]) -> [u8; 32] {
+fn hash(input: &[u8]) -> [u8; 32] {
     let mut hasher = Blake2bVar::new(32).unwrap();
     hasher.update(input);
     let mut buf = [0u8; 32];

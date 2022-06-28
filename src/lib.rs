@@ -1,3 +1,20 @@
+//! The zfx-subzero project is a unification of the core products which `zero.fx`
+//!  has been working on throughout the year.
+//!
+//! The purpose of subzero is provide a network which can reach consensus for potentially multiple distinct
+//! blockchains. `subzero` acts as a consensus and storage layer,
+//! delegating the task of executing state transitions and verifying the specific contents of operations to other client chains.
+//!
+//! There are three layers of consensus in subzero, each of which provide a vital role enabling
+//! the subsequent consensus mechanisms to operate: [`ice`][crate::ice], [`sleet`][crate::sleet] and [`hail`][crate::hail]
+//!
+//! The product is implemented as a single Rust crate.
+//! For details see the documentation of individual (sub)modules.
+//! As it is developed using Actix, actor messages and behaviour are often documented with the
+//! message structure.
+
+#![doc(html_logo_url = "https://avatars.githubusercontent.com/zfxlabs")]
+
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]

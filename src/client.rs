@@ -1,3 +1,5 @@
+//! Network client
+
 use crate::channel::Channel;
 use crate::protocol::{Request, Response};
 use crate::tls::upgrader::Upgrader;
@@ -13,8 +15,13 @@ use futures::FutureExt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+/// The client actor
+///
 /// Client is responsible for making requests to one or many nodes in the network.
 /// Its main handler is [ClientRequest] which accepts [ClientRequest::Oneshot] or [ClientRequest::Fanout]
+///
+/// It is capable of establishing client connections to other nodes, and upgrade the connection to use TLS
+/// if necessary.
 pub struct Client {
     /// For upgrading a [TcpStream] to a [ConnectionStream](crate::tls::connection_stream::ConnectionStream)
     upgrader: Arc<dyn Upgrader>,
@@ -36,16 +43,19 @@ impl Actor for Client {
     }
 }
 
+/// Actor message triggering client connections
+///
 /// This structure is intended for sending a [Request](crate::protocol::Request) to one or many nodes, passed through the [Client].
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "ClientResponse")]
 pub enum ClientRequest {
-    /// For single request to a node and wait for a response
+    /// Sends a single request and waits for a response
     Oneshot { id: Id, ip: SocketAddr, request: Request },
-    /// For single request to many nodes and wait for all responses
+    /// Multicast message
     Fanout { peers: Vec<(Id, SocketAddr)>, request: Request },
 }
 
+/// Response message from the client actor
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientResponse {
     Oneshot(Option<Response>),
@@ -72,12 +82,17 @@ impl Handler<ClientRequest> for Client {
 // TODO this shouldn't be `pub` but `client_test` is using it
 
 /// Send a request to a node with Id and IP-address and returns a response.
+///
 /// * `id` - Id of a node, usually known at startup
 /// * `ip` - IP-address of a node, corresponding to the node Id
 /// * `request` - Request to send
 /// * `upgrader` - an [upgrader](crate::tls::upgrader::Upgrader) for the node (ex. TCP or TLS)
 ///
 /// This function is mainly used by the [Client] actor inside its handler for requests.
+///
+/// Eventually, all outgoing communication happens through this function, allowing
+/// for the checking of the peer's identity for TLS connections.
+/// It is an error condition, if the IP address doesn't match the ID.
 pub async fn oneshot(
     id: Id,
     ip: SocketAddr,
@@ -112,7 +127,7 @@ pub async fn oneshot_tcp(ip: SocketAddr, request: Request) -> Result<Option<Resp
 /// * `upgrader` - an upgrader for the node (ex. TCP or TLS) [see here](crate::tls::upgrader::Upgrader) for more details.
 ///
 /// This function is mainly used by the [Client] actor inside its handler for requests.
-async fn fanout(
+pub async fn fanout(
     peers: Vec<(Id, SocketAddr)>,
     request: Request,
     upgrader: Arc<dyn Upgrader>,

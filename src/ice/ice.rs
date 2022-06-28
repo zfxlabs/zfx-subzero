@@ -25,13 +25,26 @@ use std::net::SocketAddr;
 
 use actix::WrapFuture;
 
+/// The main actor
+///
+/// `Ice` actor is responsible for dissemination and gossiping of peers. It holds information about the bootstrapping
+/// status of current node, as well as a list of connected nodes in the network ([Reservoir]) with their statuses
+/// (ex. [Live][Choice::Live] or [Faulty][Choice::Faulty] in order to identify whether there is sufficient number of
+/// connected nodes (quorum) in the network prior to bootstrapping the [alpha][crate::alpha] chain (making it
+/// available to accept requests).
 pub struct Ice {
     /// The client used to make external requests.
     sender: Recipient<ClientRequest>,
+    /// Id of this node
     pub id: Id,
+    /// IP address of this node
     pub ip: SocketAddr,
+    /// The [`Reservoir`][super::Reservoir] to sample from
     reservoir: Reservoir,
+    /// Whether `ice` is bootstrapped and ready
     bootstrapped: bool,
+    /// Address of the [`DisseminationComponent`][super::dissemination::DisseminationComponent] to
+    /// pull gossip messages from
     dc_recipient: Recipient<GossipQuery>,
 }
 
@@ -55,6 +68,9 @@ impl Actor for Ice {
     }
 }
 
+/// Network ping message
+///
+/// It carries gossip messages, and [queries][super::Query] about other nodes' liveness.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Ack")]
 pub struct Ping {
@@ -63,6 +79,9 @@ pub struct Ping {
     pub rumours: Vec<Gossip>,
 }
 
+/// Network response to a [`Ping`]
+///
+/// Contains the results for the [queries][super::Query] in the `Ping` message.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Ack {
     pub id: Id,
@@ -116,12 +135,15 @@ impl Handler<Ping> for Ice {
     }
 }
 
+/// Instruct [`Ice`] to start bootstrapping
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Bootstrapped")]
 pub struct Bootstrap {
+    /// Trusted bootstrap peers (from the node's configuration)
     pub peers: Vec<(Id, SocketAddr)>,
 }
 
+/// Response to [`Bootstrap`], whether [`Ice`] finished bootstapping
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Bootstrapped(pub bool);
 
@@ -137,6 +159,7 @@ impl Handler<Bootstrap> for Ice {
     }
 }
 
+/// Actor message to sample a set of peers for querying their status
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Queries")]
 pub struct SampleQueries {
@@ -144,6 +167,7 @@ pub struct SampleQueries {
     sample: (Id, SocketAddr),
 }
 
+/// Message containing the queries sampled
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Queries {
     queries: Vec<Query>,
@@ -177,12 +201,12 @@ impl Handler<SampleQueries> for Ice {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Switch")]
-pub struct PingSuccess {
+struct PingSuccess {
     ack: Ack,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
-pub struct Switch {
+struct Switch {
     flipped: bool,
     bootstrapped: bool,
 }
@@ -214,7 +238,7 @@ impl Handler<PingSuccess> for Ice {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "bool")]
-pub struct PingFailure {
+struct PingFailure {
     id: Id,
     ip: SocketAddr,
 }
@@ -235,10 +259,12 @@ impl Handler<PingFailure> for Ice {
     }
 }
 
+/// Actor message to request a list of live peers
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "LivePeers")]
 pub struct GetLivePeers;
 
+/// Message containing the list of live peers
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct LivePeers {
     pub live_peers: Vec<(Id, SocketAddr)>,
@@ -253,10 +279,11 @@ impl Handler<GetLivePeers> for Ice {
     }
 }
 
-// When the `Alpha` network becomes `Live` and bootstraps the chain state, `Ice` is informed
-// via the `alpha::LiveCommittee` message, which provides the validator set for the current
-// height.
-
+/// Message from [`alpha`][crate::alpha] containing the set of known validators
+///
+/// When the `Alpha` network becomes `Live` and bootstraps the chain state, `Ice` is informed
+/// via the `alpha::LiveCommittee` message, which provides the validator set for the current
+/// height.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Committee")]
 pub struct LiveCommittee {
@@ -264,6 +291,7 @@ pub struct LiveCommittee {
     pub validators: Vec<(Id, u64)>,
 }
 
+/// Reply message to [`LiveCommittee`], containing the validators that are live
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Committee {
     pub self_staking_capacity: u64,
@@ -317,6 +345,7 @@ impl Handler<LiveCommittee> for Ice {
     }
 }
 
+/// Message to print the state of the reservoir
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct PrintReservoir;
@@ -330,6 +359,7 @@ impl Handler<PrintReservoir> for Ice {
     }
 }
 
+/// Actor message to query the reservoir's size
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "usize")]
 pub struct ReservoirSize;
@@ -342,6 +372,7 @@ impl Handler<ReservoirSize> for Ice {
     }
 }
 
+/// Actor message to instruct [`Ice`] to ping a peer
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<Ack>")]
 pub struct DoPing {
@@ -394,10 +425,12 @@ impl Handler<DoPing> for Ice {
     }
 }
 
+/// Actor message to check the status of [`Ice`]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Status")]
 pub struct CheckStatus;
 
+/// Reply for [`CheckStatus`], containing the status of [`Ice`]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct Status {
     pub bootstrapped: bool,
@@ -417,7 +450,7 @@ impl Handler<CheckStatus> for Ice {
     }
 }
 
-pub async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, ack: Ack) {
+async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, ack: Ack) {
     let switch = ice.send(PingSuccess { ack: ack.clone() }).await.unwrap();
     if switch.flipped {
         // If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
@@ -431,7 +464,7 @@ pub async fn send_ping_success(self_id: Id, ice: Addr<Ice>, alpha: Addr<Alpha>, 
     }
 }
 
-pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: SocketAddr) {
+async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: SocketAddr) {
     let flipped = ice.send(PingFailure { id: id.clone(), ip: ip.clone() }).await.unwrap();
     // If flipped from `LiveNetwork` to `FaultyNetwork`, alert the `Alpha` chain.
     if flipped {
@@ -439,6 +472,11 @@ pub async fn send_ping_failure(ice: Addr<Ice>, alpha: Addr<Alpha>, id: Id, ip: S
     }
 }
 
+/// Run the protocol in rounds
+///
+/// This function drives the `Ice` component in a loop (see [PROTOCOL_PERIOD]).
+/// It samples peers to query and handles the results.
+///
 pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alpha>) {
     loop {
         let () = ice.send(PrintReservoir).await.unwrap();
@@ -475,6 +513,7 @@ pub async fn run(self_id: Id, ice: Addr<Ice>, view: Addr<View>, alpha: Addr<Alph
     }
 }
 
-pub fn ping_size(network_size: usize) -> usize {
+/// Determine the number of peers to ping (cater for small testnets)
+fn ping_size(network_size: usize) -> usize {
     std::cmp::min(network_size, PING_MAX_SIZE)
 }

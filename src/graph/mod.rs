@@ -1,3 +1,4 @@
+//! Graph implementations
 mod dag;
 
 pub mod conflict_graph;

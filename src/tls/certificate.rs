@@ -1,3 +1,8 @@
+//! Routines for generating and loading certificates
+//!
+//! The [get_node_cert] function is the main entry point, which either generates or loads the private key and certificate.
+//!
+//! The generated X.509 certificates are self-signed, containing ED25519 keys.
 use derive_more::{Display, Error, From};
 use pem::Pem;
 use pem::PemError;
@@ -9,7 +14,8 @@ use x509_parser::error::X509Error;
 use x509_parser::prelude::FromDer;
 
 /// Checks and returns the identity derived from `cert_file` and `priv_key_file` if found,
-/// otherwise generates it and writes the certificate and key to the supplied paths
+///
+/// Otherwise generates it and writes the certificate and key to the supplied paths
 pub fn get_node_cert(cert_file: &Path, priv_key_file: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
     if cert_file.exists() && priv_key_file.exists() {
         let cert: Vec<u8> = pem::parse(fs::read(cert_file)?)?.contents;

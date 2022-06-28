@@ -1,3 +1,9 @@
+//! Cell handling
+//!
+//! The network is comprised of cell based transactions, which is an extension to the UTXO model
+//! to include a `data` field and a cell type. This enables transactions to contain arbitrary data
+//! where the cell type defines the interpretation of the cell and is only relevant to clients which support that specific cell type.
+
 mod cell;
 mod cell_id;
 mod cell_ids;

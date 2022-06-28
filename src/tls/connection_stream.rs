@@ -1,3 +1,4 @@
+//! [ConnectionStream] provides a unified type for TCP and TLS connections
 use std::io;
 use std::{net::SocketAddr, pin::Pin};
 use tokio::{
@@ -8,6 +9,7 @@ use tokio::{
 use crate::zfx_id::Id;
 
 /// A unified type for TCP and TLS streams for uniform handling of connections
+///
 /// As it implements Tokio's `AsyncWrite` and `AsyncRead` traits, it is usable
 /// with the generic functionality in Tokio and Actix
 #[derive(Debug)]
@@ -58,7 +60,7 @@ impl ConnectionStream {
 // are _not_ identical, as the type of the `state variable differs
 
 /// Hash the presented certificate to an `Id`
-pub fn id_from_server_connection(
+fn id_from_server_connection(
     connection: &tokio_rustls::server::TlsStream<TcpStream>,
 ) -> io::Result<Id> {
     let state = connection.get_ref().1;
@@ -66,7 +68,7 @@ pub fn id_from_server_connection(
 }
 
 /// Hash the presented certificate to an `Id`
-pub fn id_from_client_connection(
+fn id_from_client_connection(
     connection: &tokio_rustls::client::TlsStream<TcpStream>,
 ) -> io::Result<Id> {
     let state = connection.get_ref().1;

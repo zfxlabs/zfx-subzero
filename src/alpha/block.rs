@@ -7,11 +7,16 @@ use crate::cell::Cell;
 
 use std::convert::TryInto;
 
+/// Data structure for storing block-related information
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Block {
+    /// Previous block, linked to this one
     pub predecessor: Option<BlockHash>,
+    /// Height of the block
     pub height: BlockHeight,
+    /// Proof of validity of the block
     pub vrf_out: VrfOutput,
+    /// A list of [Cell]s of this block
     pub cells: Vec<Cell>,
 }
 
@@ -38,6 +43,7 @@ pub fn genesis_vrf_out() -> Result<[u8; 32]> {
     Ok(vrf_out)
 }
 
+/// Create a genesis block with [Cell]s from the [initial stakers](crate::alpha::initial_staker::genesis_stakers).
 pub fn build_genesis() -> Result<Block> {
     let initial_stakers = genesis_stakers();
     // Aggregate the allocations into one coinbase output so that the conflict graph has one genesis

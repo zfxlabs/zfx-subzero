@@ -53,7 +53,7 @@ impl Server {
     }
 
     /// Processes the tcp stream and sends the request to the router
-    async fn process_stream(
+    pub async fn process_stream(
         stream: TcpStream,
         router: Addr<Router>,
         upgrader: Arc<dyn Upgrader>,

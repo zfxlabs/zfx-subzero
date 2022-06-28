@@ -26,26 +26,43 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::Path;
 
+/// The actor for `alpha` chain component which
+/// defines all chains known to nodes in the network and implements `Proof-of-Stake`.
+///
+/// Upon instantiation, builds a genesis [Block] if doesn't exist
+/// in the `tree` (storage), and applies it into the `state`.
+///
+/// Once bootstrapped, it enables [sleet][crate::sleet] component to receive [Cell][crate::cell::Cell]s
+/// and kick off consensus protocol on them.
 pub struct Alpha {
-    /// The client used to make external requests.
+    /// The client for making external requests to other nodes in the network.
     sender: Recipient<ClientRequest>,
     /// The id of the node.
     node_id: Id,
-    /// The database root.
+    /// The database root for storing blocks.
     tree: sled::Db,
-    /// The address of the `Ice` actor.
+    /// The address of the [Ice][crate::ice] actor.
     pub ice: Addr<Ice>,
-    /// The address of the `Sleet` actor.
+    /// The address of the [Sleet][crate::sleet] actor.
     pub sleet: Addr<Sleet>,
-    /// The address of the `Hail` actor.
+    /// The address of the [Hail][crate::hail] actor.
     pub hail: Addr<Hail>,
-    /// The address of the `Router` actor.
+    /// The address of the [Router][crate::server::Router] actor.
     router: Option<Addr<Router>>,
     /// The `alpha` chain state.
     pub state: State,
 }
 
 impl Alpha {
+    /// Create new instance with opening a connection to the `tree` storage.
+    ///
+    /// ## Parameters
+    /// * `sender` - the client for making external requests to other nodes in the network
+    /// * `node_id` - [Id] of the current node
+    /// * `path` - path to a database file where `tree` is stored
+    /// * `ice` - the address of the [Ice][crate::ice] actor
+    /// * `sleet` - the address of the [Sleet][crate::sleet] actor
+    /// * `hail` - he address of the [Hail][crate::hail] actor
     pub fn create(
         sender: Recipient<ClientRequest>,
         node_id: Id,
@@ -58,6 +75,7 @@ impl Alpha {
         Ok(Alpha { sender, node_id, tree, ice, sleet, hail, router: None, state: State::new() })
     }
 
+    /// Return a set of validators (nodes) [Id]s with staked capacity > 0.
     fn get_validator_set(&self) -> HashSet<Id> {
         self.state
             .validators
@@ -103,9 +121,14 @@ impl Handler<InitRouter> for Alpha {
         );
     }
 }
+
+/// A message to initiate a process of fetching the last accepted block from each of the `peers`
+/// and notify the current node sending the [ReceiveLastAccepted] message,
+/// if ([ice::K] * [ice::ALPHA]) - nodes agree to accept the block.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryLastAccepted {
+    /// A list of nodes used for retrieving the last accepted blocks from each of them
     peers: Vec<(Id, SocketAddr)>,
 }
 
@@ -172,6 +195,13 @@ impl Handler<QueryLastAccepted> for Alpha {
     }
 }
 
+/// A message to notify the current node about the last accepted block from another node.
+///
+/// This notification message is triggered from [QueryLastAccepted].
+///
+/// If `last_block_hash` equals to `last_accepted`, then it notifies [Sleet][crate::sleet],
+/// [Ice][crate::ice] and [Hail][crate::hail] components about the updated `state` of the chain,
+/// the validator set of committee, live cells and the last accepted block where applicable.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct ReceiveLastAccepted {
@@ -265,10 +295,16 @@ impl Handler<ReceiveLastAccepted> for Alpha {
     }
 }
 
+/// A message used by [Ice][crate::ice] to notify `alpha` about a change of at least
+/// one node in the network if it's status changed from [Faulty][crate::ice::Choice::Faulty] to [Live][crate::ice::Choice::Live].
+///
+/// It will notify `alpha` with [QueryLastAccepted] to get last accepted blocks from these `peers`.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveNetwork {
+    /// Id of the current node
     pub self_id: Id,
+    /// a list of peers which status changed to [Live][crate::ice::Choice::Live]
     pub live_peers: Vec<(Id, SocketAddr)>,
 }
 
@@ -320,12 +356,15 @@ impl Handler<Bootstrap> for Alpha {
     }
 }
 
+/// A message to request the last accepted block in the `tree` of the current node.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "LastAccepted")]
 pub struct GetLastAccepted;
 
+/// Response to [GetLastAccepted] with a block hash.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct LastAccepted {
+    /// Has of the last accepted block of the current node.
     hash: BlockHash,
 }
 

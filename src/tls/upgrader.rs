@@ -1,3 +1,10 @@
+//! Upgrade a `TcpStream` to a [ConnectionStream]
+//!
+//! [Upgrader]s wrap the connection into the [ConnectionStream] type, which reperents a TCP and TLS
+//! connections.
+//! For the TLS case, it involves the TLS handshake and setting up encrypted communication,
+//! while for TCP, it is practically a no-op.
+
 use std::future::Future;
 use std::{pin::Pin, sync::Arc};
 
@@ -8,22 +15,27 @@ use tokio_rustls::{TlsAcceptor, TlsConnector};
 use super::connection_stream::ConnectionStream;
 
 /// `Upgrader` represents an `async` trait, for upgrading a `TcpStream` to a `ConnectionStream`.
+///
 /// The implementors differ radically in their behaviour:
 /// For the TLS case, it involves the TLS handshake and setting up encrypted communication,
-/// while for TCP, it practically a no-op.
+/// while for TCP, it is practically a no-op.
 pub trait Upgrader: Sync + Send {
-    // === async fn upgrade(..) -> Result<ConnectionStream>;
+    /// `==  async fn upgrade(..) -> Result<ConnectionStream>`
     fn upgrade(&self, conn: TcpStream) -> UpgradeOutput;
 
+    /// True if if the `Upgrader` upgrades to TLS, false for TCP
     fn is_tls(&self) -> bool;
 }
 
+/// Generic [Upgrader] for TCP
 pub struct TcpUpgrader {}
 
+/// TLS [Upgrader] for client connections
 pub struct TlsClientUpgrader {
     connector: TlsConnector,
 }
 
+/// TLS [Upgrader] for server connections
 pub struct TlsServerUpgrader {
     acceptor: TlsAcceptor,
 }
@@ -100,11 +112,15 @@ impl Upgrader for TlsServerUpgrader {
     }
 }
 
+/// A pair of client and server-side upgraders
 pub struct Upgraders {
     pub client: Arc<dyn Upgrader>,
     pub server: Arc<dyn Upgrader>,
 }
 
+/// Return a pair of (client and server) upgraders for TLS
+///
+/// Takes the certificate and private key as parameters.
 pub fn tls_upgraders(certificate: &[u8], private_key: &[u8]) -> Upgraders {
     Upgraders {
         client: TlsClientUpgrader::new(certificate, private_key),
@@ -112,6 +128,10 @@ pub fn tls_upgraders(certificate: &[u8], private_key: &[u8]) -> Upgraders {
     }
 }
 
+/// Return a pair of (client and server) upgraders for TCP
+///
+/// The returned `Upgrader`s `update` method will simply wrap the connection into
+/// a [ConnrrectionStream][super::connection_stream::ConnectionStream].
 pub fn tcp_upgraders() -> Upgraders {
     Upgraders { client: TcpUpgrader::new(), server: TcpUpgrader::new() }
 }
