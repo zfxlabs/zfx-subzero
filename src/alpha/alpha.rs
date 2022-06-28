@@ -26,13 +26,13 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::Path;
 
-/// The [actor][actix::actor::Actor] for `alpha` chain component which
+/// The actor for `alpha` chain component which
 /// defines all chains known to nodes in the network and implements `Proof-of-Stake`.
 ///
-/// Upon instantiation, builds a genesis [Block][crate::storage::block::Block] if doesn't exist
+/// Upon instantiation, builds a genesis [Block] if doesn't exist
 /// in the `tree` (storage), and applies it into the `state`.
 ///
-/// Once bootstrapped, it enables [sleet][crate::sleet] component to receive [Cell]s
+/// Once bootstrapped, it enables [sleet][crate::sleet] component to receive [Cell][crate::cell::Cell]s
 /// and kick off consensus protocol on them.
 pub struct Alpha {
     /// The client for making external requests to other nodes in the network.
@@ -47,7 +47,7 @@ pub struct Alpha {
     pub sleet: Addr<Sleet>,
     /// The address of the [Hail][crate::hail] actor.
     pub hail: Addr<Hail>,
-    /// The address of the [Router][crate::server::router] actor.
+    /// The address of the [Router][crate::server::router::Router] actor.
     router: Option<Addr<Router>>,
     /// The `alpha` chain state.
     pub state: State,
@@ -295,8 +295,8 @@ impl Handler<ReceiveLastAccepted> for Alpha {
     }
 }
 
-/// A message used by [Ice][crete::ice] to notify `alpha` about a change of at least
-/// one node in the network if it's status changed from [Choice::Faulty] to [Choice::Live].
+/// A message used by [Ice][crate::ice] to notify `alpha` about a change of at least
+/// one node in the network if it's status changed from [Faulty][crate::ice::Choice::Faulty] to [Live][crate::ice::Choice::Live].
 ///
 /// It will notify `alpha` with [QueryLastAccepted] to get last accepted blocks from these `peers`.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
@@ -304,7 +304,7 @@ impl Handler<ReceiveLastAccepted> for Alpha {
 pub struct LiveNetwork {
     /// Id of the current node
     pub self_id: Id,
-    /// a list of peers which status changed to [Choice::Live]
+    /// a list of peers which status changed to [Live][crate::ice::Choice::Live]
     pub live_peers: Vec<(Id, SocketAddr)>,
 }
 
