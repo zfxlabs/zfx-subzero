@@ -24,9 +24,13 @@ const BOOTSTRAP_QUORUM: usize = 2;
 pub struct View {
     /// The client used to make external requests.
     sender: Recipient<ClientRequest>,
+    /// Node IP address
     ip: SocketAddr,
+    /// Node Id
     node_id: Id,
+    /// A map of peers for bootstrapping this node
     peers: SampleableMap<Id, SocketAddr>,
+    /// A set of peers for bootstrapping this node
     peer_list: HashSet<(Id, SocketAddr)>,
 }
 
@@ -45,10 +49,17 @@ impl std::ops::DerefMut for View {
 }
 
 impl View {
+    /// Create new instance with empty `peers`.
+    ///
+    /// ## Parameters:
+    /// * `sender` - the client for making external requests
+    /// * `ip` - node IP address
+    /// * `node_id` - node Id
     pub fn new(sender: Recipient<ClientRequest>, ip: SocketAddr, node_id: Id) -> Self {
         Self { sender, ip, node_id, peers: SampleableMap::new(), peer_list: HashSet::new() }
     }
 
+    /// Add `peers` to the current `View`
     pub fn init(&mut self, peers: Vec<(Id, SocketAddr)>) {
         for (id, ip) in peers.iter() {
             if let None = self.insert(id.clone(), ip.clone()) {
@@ -63,7 +74,9 @@ impl View {
         }
     }
 
-    // Returns whether the element was updated or not (if the element was missing)
+    /// Add a new peer to the `View` if it doesn't exist.
+    ///
+    /// Returns whether the element was updated or not (if the element was missing)
     pub fn insert_update(&mut self, id: Id, ip: SocketAddr) -> bool {
         if id == self.node_id {
             return false;
@@ -83,6 +96,7 @@ impl View {
         }
     }
 
+    /// Get random `k`-peers
     pub fn sample_k(&mut self, k: usize) -> Vec<(Id, SocketAddr)> {
         if self.len() >= k {
             self.sample(k)
@@ -118,10 +132,12 @@ impl Handler<Version> for View {
     }
 }
 
+/// Request for getting a list of nodes from the [View]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "PeersResult")]
 pub struct GetPeers;
 
+/// Response to [GetPeers] with a list of nodes from the [View]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct PeersResult {
     pub peers: Vec<(Id, SocketAddr)>,
@@ -139,10 +155,12 @@ impl Handler<GetPeers> for View {
     }
 }
 
+/// Request from [View] to bootstrap other nodes from the list of `peers`.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<BootstrapResult>")]
 pub struct Bootstrap;
 
+/// Response to [Bootstrap] having responses from each node from the list of `peers`.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct BootstrapResult {
     responses: Vec<Response>,
@@ -180,14 +198,15 @@ impl Handler<Bootstrap> for View {
     }
 }
 
-//-- Update the peers when a succesful bootstrap quorum is obtained
-
+/// Request to update the peers in [View] when a successful bootstrap quorum is obtained.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Updated")]
 struct UpdatePeers {
     responses: Vec<Response>,
 }
 
+/// Response to [UpdatePeers] with a list of newly added nodes and
+/// an indicator whether the current node is bootstrapped.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 struct Updated {
     updates: Vec<(Id, SocketAddr)>,
@@ -221,13 +240,14 @@ impl Handler<UpdatePeers> for View {
     }
 }
 
-//-- Sample k random peers from the view
+/// Sample random `k`-peers from the view.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "SampleResult")]
 pub struct SampleK {
     pub k: usize,
 }
 
+/// Response to [SampleK] with a list of nodes for sampling.
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct SampleResult {
     pub sample: Vec<(Id, SocketAddr)>,
@@ -242,8 +262,11 @@ impl Handler<SampleK> for View {
     }
 }
 
-//-- Retry to bootstrap until a quorum is reached
-
+/// Retry to bootstrap until the quorum is reached.
+///
+/// ## Parameters:
+/// * `view` - address of [View] actor
+/// * `ice` - address of [Ice][crate::ice::Ice] actor
 pub async fn bootstrap(view: Addr<View>, ice: Addr<Ice>) {
     let mut i = 3;
     loop {

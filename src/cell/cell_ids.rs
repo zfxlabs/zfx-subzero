@@ -9,7 +9,8 @@ use std::collections::HashSet;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
-/// Defines an id for the whole [Cell][crate::cell::Cell] by combining all [CellId]s for each of its [Output].
+/// Defines an id for the whole [Cell][crate::cell::Cell] by combining all [CellId]s
+/// for each of its [Output][crate::cell::output::Output].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CellIds {
     pub inner: HashSet<CellId>,
@@ -114,7 +115,7 @@ impl CellIds {
     }
 
     /// Create an instance from [Inputs] of a [Cell][crate::cell::Cell].
-    /// For each input, the function [OutputIndex::cell_id] is called in order
+    /// For each input, the function [cell_id][crate::cell::output_index::OutputIndex::cell_id] is called in order
     /// to compose an Id and assign it to the final instance.
     ///
     /// ## Parameters
