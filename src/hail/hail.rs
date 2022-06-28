@@ -26,11 +26,14 @@ use std::net::SocketAddr;
 
 // Safety parameters
 
+/// Snow* parameter alpha -- required majority in the sample
 pub const ALPHA: f64 = 0.5;
+/// Snow* parameter beta1 -- safe early commitment
 pub const BETA1: u8 = 11;
+/// Snow* parameter beta2 -- commitment threshold
 pub const BETA2: u8 = 20;
 
-/// Hail is a Snow* based consensus for blocks.
+/// Hail is a Snow* based consensus for blocks. `Hail` is the main actor.
 pub struct Hail {
     /// The hash of the last accepted block (at the current block height).
     last_accepted_hash: Option<BlockHash>,
@@ -89,7 +92,7 @@ impl Hail {
 
     // Vertices
 
-    pub fn insert(&mut self, block: HailBlock) -> Result<()> {
+    fn insert(&mut self, block: HailBlock) -> Result<()> {
         let inner_block = block.inner();
         let vertex = block.vertex().unwrap();
         return if !self.dag.contains_key(&vertex) {
@@ -163,8 +166,8 @@ impl Hail {
 
     // Ancestral Preference
 
-    // The ancestral update updates the preferred path through the DAG every time a new
-    // vertex is added.
+    /// The ancestral update updates the preferred path through the DAG every time a new
+    /// vertex is added.
     pub fn update_ancestral_preference(&mut self, root_vx: Vertex) -> Result<()> {
         for vx in self.dag.dfs(&root_vx) {
             // conviction of T vs Pt.pref
@@ -254,6 +257,7 @@ impl Hail {
         Ok(None)
     }
 
+    /// Weighted sampling of validators
     pub fn sample(&self, minimum_weight: Weight) -> Result<Vec<(Id, SocketAddr)>> {
         let mut validators = vec![];
         for (id, (ip, w)) in self.committee.iter() {
@@ -271,6 +275,7 @@ impl Actor for Hail {
     }
 }
 
+/// Message sent by the [`alpha`][crate::alpha] protocol, containing the live validator and block information
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct LiveCommittee {
@@ -312,6 +317,7 @@ impl Handler<LiveCommittee> for Hail {
     }
 }
 
+/// Internal actor message for handling unsuccessful queries
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryIncomplete {
@@ -327,6 +333,7 @@ impl Handler<QueryIncomplete> for Hail {
     }
 }
 
+/// Internal actor message for handling successful queries
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct QueryComplete {
@@ -393,6 +400,9 @@ impl Handler<QueryComplete> for Hail {
     }
 }
 
+/// Internal actor message sent to handle block acceptance
+///
+/// The message originates from the [`QueryComplete`] handler
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct Accepted {
@@ -411,10 +421,11 @@ impl Handler<Accepted> for Hail {
     }
 }
 
-// Instead of having an infinite loop as per the paper which receives and processes
-// inbound unqueried blocks, we instead use the `Actor` and use `notify` whenever
-// a fresh block is received.
-
+/// Message sent for all new blocks
+///
+/// Instead of having an infinite loop as per the paper which receives and processes
+/// inbound unqueried blocks, we instead use the `Actor` and use `notify` whenever
+/// a fresh block is received.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "Result<()>")]
 pub struct FreshBlock {
@@ -461,6 +472,7 @@ impl Handler<FreshBlock> for Hail {
     }
 }
 
+/// External query about a block's status
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "QueryBlockAck")]
 pub struct QueryBlock {
@@ -468,6 +480,7 @@ pub struct QueryBlock {
     pub block: HailBlock,
 }
 
+/// Reply to [`QueryBlock`]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct QueryBlockAck {
     pub id: Id,
@@ -511,14 +524,14 @@ impl Handler<QueryBlock> for Hail {
     }
 }
 
-// Allow clients to fetch blocks for testing.
-
+/// Actor message allow clients to fetch blocks for testing.
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "BlockAck")]
 pub struct GetBlock {
     pub block_hash: BlockHash,
 }
 
+/// Reply message to [GetBlock]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct BlockAck {
     pub block: Option<Block>,
@@ -532,6 +545,9 @@ impl Handler<GetBlock> for Hail {
     }
 }
 
+/// Get a block by its height
+///
+/// The response message is [`BlockAck`] containing the requested block
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "BlockAck")]
 pub struct GetBlockByHeight {
@@ -550,14 +566,14 @@ impl Handler<GetBlockByHeight> for Hail {
     }
 }
 
-// Generate blocks
-
+/// Generate a new [Hail block][super::block::HailBlock]
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "GenerateBlockAck")]
 pub struct GenerateBlock {
     pub block: Block,
 }
 
+/// Acknowledgement for block [generation message][GenerateBlock]
 #[derive(Debug, Clone, Serialize, Deserialize, MessageResponse)]
 pub struct GenerateBlockAck {
     /// hash of applied transaction
@@ -588,6 +604,7 @@ impl Handler<GenerateBlock> for Hail {
     }
 }
 
+/// Message received from [sleet][crate::sleet] containing the newly accepted cells
 #[derive(Debug, Clone, Serialize, Deserialize, Message)]
 #[rtype(result = "()")]
 pub struct AcceptedCells {

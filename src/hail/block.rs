@@ -1,3 +1,4 @@
+//! [HailBlock] is a consensus specific representation of a block
 use super::vertex::Vertex;
 use super::{Error, Result};
 use crate::alpha::block::Block;
@@ -16,6 +17,7 @@ pub struct HailBlock {
 }
 
 impl HailBlock {
+    /// Create a new block
     pub fn new(parent: Option<Vertex>, block: Block) -> Self {
         HailBlock { parent, block }
     }
@@ -30,6 +32,7 @@ impl HailBlock {
         self.block.height.clone()
     }
 
+    /// Return the VRF output of the inner `Block`
     pub fn vrf_output(&self) -> VrfOutput {
         self.block.vrf_out.clone()
     }
