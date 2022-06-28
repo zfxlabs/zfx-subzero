@@ -35,7 +35,7 @@ impl Tx {
     /// Create new transaction with [TxStatus::Pending] status.
     ///
     /// * `parents` - a list of parent transactions, represented in [hash][Tx::hash].
-    /// Parent transactions can be obtained, for example, from the DAG of [Sleet]
+    /// Parent transactions can be obtained, for example, from the DAG of [Sleet][crate::sleet]
     /// to form a strong connection between new transaction and parent ones.
     /// * `cell` - a cell to enclose in this transaction
     pub fn new(parents: Vec<TxHash>, cell: Cell) -> Self {

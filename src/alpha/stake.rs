@@ -54,7 +54,8 @@ impl StakeOperation {
 
     /// Stake balance and create a new [Cell] with list of outputs
     /// from the supplied Stake Operation.
-    /// In order to construct the new cell with correct list of [inputs][Input] and [outputs][Output],
+    /// In order to construct the new cell with correct list of [inputs][crate::cell::input::Input]
+    /// and [outputs][crate::cell::output::Output],
     /// it calls [consume_from_cell][crate::cell::cell_operation::consume_from_cell] to
     /// take out the provided `capacity` from the owner's [outputs][Output] of the cell and
     /// return consumed and remaining balance, as well as the new inputs.

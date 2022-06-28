@@ -14,7 +14,7 @@ pub mod block;
 
 pub mod state;
 
-mod initial_staker;
+pub mod initial_staker;
 
 pub use alpha::*;
 

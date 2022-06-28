@@ -6,8 +6,8 @@ use super::{Error, Result};
 
 use crate::colored::Colorize;
 
-/// Part of [Cell] structure containing information about the balance and its owner.
-/// It is returned as a result from different kind of operations, which defines the type of [Cell]:
+/// Part of [Cell][crate::cell::Cell] structure containing information about the balance and its owner.
+/// It is returned as a result from different kind of operations, which defines the type of [Cell][crate::cell::Cell]:
 /// * [CellType::Coinbase] - assigned by [CoinbaseOperation](crate::alpha::coinbase::CoinbaseOperation)
 /// * [CellType::Transfer] - assigned by [TransferOperation](crate::alpha::transfer::TransferOperation)
 /// * [CellType::Stake] - assigned by [StakeOperation](crate::alpha::stake::StakeOperation)
@@ -18,7 +18,8 @@ pub struct Output {
     /// The type of data held within this output (generic).
     pub cell_type: CellType,
     /// The serialized data of different states, depending on `cell_type`,
-    /// such as: [CoinbaseState], [TransferState], [StakeState].
+    /// such as: [CoinbaseState][crate::alpha::coinbase::CoinbaseState],
+    /// [TransferState][crate::alpha::transfer::TransferState], [StakeState][crate::alpha::stake::StakeState].
     pub data: Vec<u8>,
     /// The owner of the cell output (TODO: should be made generic).
     pub lock: PublicKeyHash,

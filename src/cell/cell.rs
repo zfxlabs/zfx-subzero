@@ -2,11 +2,11 @@ use super::inputs::Inputs;
 use super::outputs::{Output, Outputs};
 use super::types::*;
 
-/// Cell is an extension to the UTXO model used by [sleet] and [hail] components
+/// Cell is an extension to the UTXO model used by [sleet][crate::sleet] and [hail][crate::hail] components
 /// when they interact with transactions by wrapping it inside [transactions](crate::sleet::tx::Tx).
 ///
 /// The main information withing a transaction is stored in its 2 properties:
-/// [inputs][Input] and [outputs][Output].
+/// [inputs][crate::cell::input::Input] and [outputs][crate::cell::output::Output].
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Cell {
     inputs: Inputs,
