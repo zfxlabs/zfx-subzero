@@ -12,8 +12,10 @@ use super::Result;
 use crate::cell::cell_operation::{consume_from_cell, ConsumeResult};
 use ed25519_dalek::Keypair;
 
+/// State of stake assigned to `data` property of [Output]
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct StakeState {
+    /// Id of a node which was responsible for staking an account
     pub node_id: Id,
 }
 
@@ -24,6 +26,7 @@ pub fn stake_output(node_id: Id, pkh: PublicKeyHash, capacity: Capacity) -> Resu
     Ok(Output { capacity, cell_type: CellType::Stake, data, lock: pkh })
 }
 
+/// Creates a stake from [Cell] with indicated capacity for account.
 pub struct StakeOperation {
     /// The cell being staked in this staking operation.
     cell: Cell,
@@ -36,10 +39,38 @@ pub struct StakeOperation {
 }
 
 impl StakeOperation {
+    /// Create a stake operation from the provided [Cell] to the new account with `address`.
+    /// The method [stake][StakeOperation::stake] should be called to complete the transfer.
+    ///
+    /// ## Parameters
+    /// * `cell` - the requested `capacity` will be taken out from this cell,
+    /// if it has outputs with enough balance for the owner with `address`.
+    /// * `node_id` - id of a node which stakes the balance.
+    /// * `address` - account's public key for whom to stake the balance from `cell`.
+    /// * `capacity` - a balance to stake for `address`.
     pub fn new(cell: Cell, node_id: Id, address: PublicKeyHash, capacity: Capacity) -> Self {
         StakeOperation { cell, node_id, address, capacity }
     }
 
+    /// Stake balance and create a new [Cell] with list of outputs
+    /// from the supplied Stake Operation.
+    /// In order to construct the new cell with correct list of [inputs][crate::cell::input::Input]
+    /// and [outputs][crate::cell::output::Output],
+    /// it calls [consume_from_cell][crate::cell::cell_operation::consume_from_cell] to
+    /// take out the provided `capacity` from the owner's [outputs][Output] of the cell and
+    /// return consumed and remaining balance, as well as the new inputs.
+    ///
+    /// If the remaining balance has more capacity than [FEE], then
+    /// the new cell will have:
+    /// * 1 [Output] with the staked balance for the new owner (`address`).
+    /// * 1 [Output] with the remaining balance minus [FEE] for the owner (`address`).
+    ///
+    /// If the remaining balance has less capacity than [FEE], then
+    /// only 1 [Output] with the staked balance is returned
+    /// for the new owner (`address`).
+    ///
+    /// ## Parameters
+    /// * `keypair` - the account's keypair for identifying outputs for staking.
     pub fn stake(&self, keypair: &Keypair) -> Result<Cell> {
         let ConsumeResult { consumed, residue, inputs } =
             consume_from_cell(&self.cell, self.capacity, keypair)?;

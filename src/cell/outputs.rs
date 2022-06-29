@@ -5,6 +5,7 @@ use super::types::Capacity;
 use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 
+/// An aggregated structure for storing a list of [Output]s.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Outputs {
     pub outputs: Vec<Output>,
@@ -57,12 +58,17 @@ impl DerefMut for Outputs {
 }
 
 impl Outputs {
+    /// Create new instance from a list of [Output]s.
+    ///
+    /// ## Parameters
+    /// * `outputs` - list of [Output]s for assigning to a single Outputs
     pub fn new(outputs: Vec<Output>) -> Self {
         let mut sorted = outputs.clone();
         sorted.sort();
         Outputs { outputs: sorted }
     }
 
+    /// Returns total capacity from all [Output]s.
     pub fn sum(&self) -> Capacity {
         let mut total = 0;
         for output in self.iter() {

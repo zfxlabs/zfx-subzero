@@ -114,8 +114,8 @@ impl CellIds {
         CellIds { inner: HashSet::new() }
     }
 
-    /// Create an instance from [Inputs] of a [Cell][crate::cell::Cell].
-    /// For each input, the function [cell_id][crate::cell::output_index::OutputIndex::cell_id] is called in order
+    /// Create an instance from [Inputs][crate::cell::inputs::Inputs] of a [Cell][crate::cell::Cell].
+    /// For each input, the function [cell_id][crate::cell::input::Input::cell_id] is called in order
     /// to compose an Id and assign it to the final instance.
     ///
     /// ## Parameters

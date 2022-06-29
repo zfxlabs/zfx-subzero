@@ -6,13 +6,20 @@ use super::{Error, Result};
 
 use crate::colored::Colorize;
 
+/// Part of [Cell][crate::cell::Cell] structure containing information about the balance and its owner.
+/// It is returned as a result from different kind of operations, which defines the type of [Cell][crate::cell::Cell]:
+/// * [CellType::Coinbase] - assigned by [CoinbaseOperation](crate::alpha::coinbase::CoinbaseOperation)
+/// * [CellType::Transfer] - assigned by [TransferOperation](crate::alpha::transfer::TransferOperation)
+/// * [CellType::Stake] - assigned by [StakeOperation](crate::alpha::stake::StakeOperation)
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Output {
     /// The capacity supplied by this cell output.
     pub capacity: Capacity,
     /// The type of data held within this output (generic).
     pub cell_type: CellType,
-    /// The data held within this output (generic).
+    /// The serialized data of different states, depending on `cell_type`,
+    /// such as: [CoinbaseState][crate::alpha::coinbase::CoinbaseState],
+    /// [TransferState][crate::alpha::transfer::TransferState], [StakeState][crate::alpha::stake::StakeState].
     pub data: Vec<u8>,
     /// The owner of the cell output (TODO: should be made generic).
     pub lock: PublicKeyHash,
@@ -65,31 +72,10 @@ impl Output {
         Ok(())
     }
 
-    // Applies a series of unspent output states to form a new output state.
-    pub fn apply<'a>(&'a self, outputs: Vec<Output>) -> Result<Output> {
-        match self.cell_type {
-            CellType::Coinbase => {
-                // Coinbase output cells are primitives which cannot be applied to other cells `data`.
-                if outputs.len() != 0 {
-                    return Err(Error::InvalidCoinbase);
-                }
-                Ok(self.clone())
-            }
-            CellType::Transfer => {
-                // Transfer output cells are primitives which cannot be applied to other cells `data`.
-                Ok(self.clone())
-            }
-            CellType::Stake => {
-                // Stake output cells are primitives which cannot be applied to other cells `data`.
-                if outputs.len() != 0 {
-                    return Err(Error::InvalidStake);
-                }
-                Ok(self.clone())
-            }
-        }
-    }
-
-    // Verifies that the `data` in the current output is consistent with its consumed output cells.
+    /// Verifies that the `data` in the current output is consistent with its consumed output cells.
+    ///
+    /// Throws [Error::InvalidCoinbase] or [Error::InvalidStake] (depending on cell type)
+    /// if `outputs` parameter is empty.
     pub fn verify(&self, outputs: Vec<Output>) -> Result<()> {
         match self.cell_type {
             CellType::Coinbase => {
