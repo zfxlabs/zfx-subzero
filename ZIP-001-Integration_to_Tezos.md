@@ -72,7 +72,7 @@ type Transfer := {
 
 #### Committee Co-ordinator
 
-A `Tezos` client program should monitor `Tezos` heads, filter for operations which pertain to the committee smart contract and forward these to the subzero `alpha` protocol service.
+A `Tezos` client program should monitor `Tezos` heads, filter for operations which pertain to the committee smart contract and forward these to the subzero `primary` protocol service.
 
 The client program:
 * Listens for `Stake` and `Transfer` operations committed to the `Tezos` blockchain and sends respective `Stake` and `Transfer` `subzero` operations which have been encoded as `Rust` decodable data to the consensus mempool worker.
