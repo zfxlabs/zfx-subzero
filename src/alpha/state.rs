@@ -210,13 +210,15 @@ impl State {
 mod test {
     use super::*;
 
-    use crate::alpha::block;
+    use crate::alpha::{block, constants};
     // use crate::alpha::coinbase::CoinbaseOperation;
     // use crate::alpha::transfer::TransferOperation;
     use crate::alpha::initial_staker::InitialStaker;
     use crate::cell::types::FEE;
+    use crate::util;
     use crate::zfx_id::Id;
 
+    use chrono;
     use std::str::FromStr;
 
     #[actix_rt::test]
@@ -231,24 +233,33 @@ mod test {
     // Not sure if we'll need this
     #[allow(dead_code)]
     fn initial_stakers() -> Vec<InitialStaker> {
+        let staking_start = util::get_utc_timestamp_millis();
+        let staking_end = staking_start + constants::STAKING_DURATION;
+
         vec![
 	    InitialStaker::from_hex(
 		"ad7f2ee3958a7f3fa2c84931770f5773ef7694fdd0bb217d90f29a94199c9d7307ca3851515c89344639fe6a4077923068d1d7fc6106701213c61d34ef8e9416".to_owned(),
 		Id::from_str("12My22AzQQosboCy6TCDFkTQwHTSuHhFN1VDcdDRPUe3H8j3DvY").unwrap(),
 		2000, // 2000 allocated
 		1000, // half of it staked so that we can transfer funds later
+        staking_start,
+        staking_end
 	    ).unwrap(),
 	    InitialStaker::from_hex(
 		"5a353c630d3faf8e2d333a0983c1c71d5e9b6aed8f4959578fbeb3d3f3172886393b576de0ac1fe86a4dd416cf032543ac1bd066eb82585f779f6ce21237c0cd".to_owned(),
 		Id::from_str("19Y53ymnBw4LWUpiAMUzPYmYqZmukRhNHm3VyAhzMqckRcuvkf").unwrap(),
 		2000,
 		1000,
+        staking_start,
+        staking_end
 	    ).unwrap(),
 	    InitialStaker::from_hex(
 		"6f4b736b9a6894858a81696d9c96cbdacf3d49099d212213f5abce33da18716f067f8a2b9aeb602cd4163291ebbf39e0e024634f3be19bde4c490465d9095a6b".to_owned(),
 		Id::from_str("1A2iUK1VQWMfvtmrBpXXkVJjM5eMWmTfMEcBx4TatSJeuoSH7n").unwrap(),
 		2000,
 		1000,
+        staking_start,
+        staking_end
 	    ).unwrap(),
 	]
     }

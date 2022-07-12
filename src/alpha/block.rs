@@ -2,8 +2,9 @@ use super::coinbase::CoinbaseOperation;
 use super::initial_staker::genesis_stakers;
 use super::stake::StakeOperation;
 use super::types::{BlockHash, BlockHeight, VrfOutput};
-use super::Result;
+use super::{constants, Result};
 use crate::cell::Cell;
+use crate::util;
 
 use std::convert::TryInto;
 
@@ -55,6 +56,7 @@ pub fn build_genesis() -> Result<Block> {
     }
     let allocations_op = CoinbaseOperation::new(allocations);
     let allocations_tx: Cell = allocations_op.try_into()?;
+    let current_time = util::get_utc_timestamp_millis();
     // Construct the genesis block.
     let mut cells = vec![];
     for staker in initial_stakers.iter() {
@@ -64,6 +66,8 @@ pub fn build_genesis() -> Result<Block> {
             staker.node_id.clone(),
             pkh.clone(),
             staker.staked_allocation.clone(),
+            current_time,
+            current_time + constants::STAKING_DURATION,
         );
         let stake_tx = stake_op.stake(&staker.keypair)?;
         cells.push(stake_tx);

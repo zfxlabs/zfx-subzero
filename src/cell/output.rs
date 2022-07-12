@@ -1,4 +1,5 @@
 use crate::alpha::stake::StakeState;
+use crate::util;
 
 use super::cell_type::CellType;
 use super::types::{Capacity, PublicKeyHash};
@@ -100,8 +101,21 @@ impl Output {
                 // TODO: Stake operations must have a valid `node_id`.
                 // TODO: Stake operations are only valid after the start time.
                 // TODO: Stake operations are only valid prior to the end time.
-                Ok(())
+                Output::verify_staking_times(&self.data)
             }
         }
+    }
+
+    fn verify_staking_times(data: &Vec<u8>) -> Result<()> {
+        let now = util::get_utc_timestamp_millis();
+
+        let stake_state: StakeState = bincode::deserialize(data).unwrap();
+        let validity = stake_state.start_time < now && stake_state.end_time > now;
+
+        if validity == false {
+            return Err(Error::InvalidStake);
+        }
+
+        Ok(())
     }
 }

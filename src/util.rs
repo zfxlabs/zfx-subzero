@@ -1,6 +1,7 @@
 //! Utility functions for consensus algorithms
 use std::net::{SocketAddr, ToSocketAddrs};
 
+use chrono::{DateTime, TimeZone, Utc};
 use rand::seq::SliceRandom;
 
 use crate::alpha::types::Weight;
@@ -46,6 +47,11 @@ pub fn sample_weighted(
     }
 }
 
+/// Gets system clock in millisec sicne unix epoch
+pub fn get_utc_timestamp_millis() -> u64 {
+    Utc::now().timestamp_millis() as u64
+}
+
 /// Parse a peer description from the format `IP` or `ID@IP` to its ID and address
 pub fn parse_id_and_ip(s: &str) -> Result<(Id, SocketAddr)> {
     let parts: Vec<&str> = s.split('@').collect();
@@ -74,9 +80,31 @@ pub fn has_coinbase_output(cell: &Cell) -> bool {
     false
 }
 
+/// Converts timestamp in millisec to DateTime UTC
+pub fn from_ts_millis(ts: u64) -> DateTime<Utc> {
+    Utc.timestamp((ts / 1_000) as i64, (ts % 1000) as u32 * 1_000_000)
+}
+
+/// Converts DateTime UTC to timestamp in millisec
+pub fn to_ts(time: DateTime<Utc>) -> u64 {
+    time.timestamp_millis() as u64
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[actix_rt::test]
+    async fn test_get_timestamp_conversion() {
+        let time = get_utc_timestamp_millis();
+        let date = from_ts_millis(time);
+
+        assert!(date.timestamp_millis() >= Utc::now().timestamp_millis());
+
+        let converted_millis = to_ts(date);
+
+        assert_eq!(time, converted_millis);
+    }
 
     #[actix_rt::test]
     async fn test_sampling_insufficient_stake() {

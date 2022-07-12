@@ -6,6 +6,8 @@
 mod alpha;
 pub mod types;
 
+mod constants;
+
 pub mod coinbase;
 pub mod stake;
 pub mod transfer;
