@@ -4,6 +4,7 @@
 //! to exist (primitives for transfers and staking namely), so that there is a notion of state
 //! capacity on the network (this is necessary in order to provide sybil resistance).
 mod alpha;
+mod constants;
 pub mod types;
 
 pub mod coinbase;

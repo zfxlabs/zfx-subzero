@@ -1,9 +1,11 @@
 use super::coinbase::CoinbaseOperation;
+use super::constants;
 use super::initial_staker::genesis_stakers;
 use super::stake::StakeOperation;
 use super::types::{BlockHash, BlockHeight, VrfOutput};
 use super::Result;
 use crate::cell::Cell;
+use crate::util;
 
 use std::convert::TryInto;
 
@@ -49,6 +51,7 @@ pub fn build_genesis() -> Result<Block> {
     // Aggregate the allocations into one coinbase output so that the conflict graph has one genesis
     // vertex.
     let mut allocations = vec![];
+    let current_time = util::get_utc_timestamp_millis();
     for staker in initial_stakers.iter() {
         let pkh = staker.public_key_hash()?;
         allocations.push((pkh.clone(), staker.total_allocation.clone()));
@@ -64,6 +67,8 @@ pub fn build_genesis() -> Result<Block> {
             staker.node_id.clone(),
             pkh.clone(),
             staker.staked_allocation.clone(),
+            current_time,
+            current_time + constants::STAKING_DURATION,
         );
         let stake_tx = stake_op.stake(&staker.keypair)?;
         cells.push(stake_tx);

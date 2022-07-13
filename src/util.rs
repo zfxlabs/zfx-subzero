@@ -1,6 +1,7 @@
 //! Utility functions for consensus algorithms
 use std::net::{SocketAddr, ToSocketAddrs};
 
+use chrono::{DateTime, TimeZone, Utc};
 use rand::seq::SliceRandom;
 
 use crate::alpha::types::Weight;
@@ -44,6 +45,21 @@ pub fn sample_weighted(
     } else {
         Some(sample)
     }
+}
+
+/// Gets system clock in millisec sicne unix epoch
+pub fn get_utc_timestamp_millis() -> u64 {
+    Utc::now().timestamp_millis() as u64
+}
+
+/// Converts timestamp in millisec to DateTime UTC
+pub fn from_ts_millis(ts: u64) -> DateTime<Utc> {
+    Utc.timestamp((ts / 1_000) as i64, (ts % 1000) as u32 * 1_000_000)
+}
+
+/// Converts DateTime UTC to timestamp in millisec
+pub fn to_ts(time: DateTime<Utc>) -> u64 {
+    time.timestamp_millis() as u64
 }
 
 /// Parse a peer description from the format `IP` or `ID@IP` to its ID and address
