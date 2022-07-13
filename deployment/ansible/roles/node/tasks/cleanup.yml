@@ -1,0 +1,5 @@
+---
+
+- name: "Kill any running nodes"
+  shell: "pkill -9 -f {{ zfx_subzero_executable }}"
+  ignore_errors: true

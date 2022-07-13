@@ -1,0 +1,6 @@
+---
+git_repo_no_auth: https://github.com/zfxlabs/zfx-subzero.git
+git_repo: https://{{ githubuser | urlencode }}:{{ githubpassword | urlencode }}@github.com/zfxlabs/zfx-subzero.git
+source_dir: /tmp/zfx-subzero
+release_dir: "{{ source_dir }}/target/release"
+zfx_subzero_executable: node

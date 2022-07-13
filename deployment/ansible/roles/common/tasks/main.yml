@@ -1,0 +1,3 @@
+---
+- import_tasks: install-tools.yml
+- import_tasks: install-rust.yml

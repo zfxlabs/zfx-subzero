@@ -1,0 +1,15 @@
+---
+
+- name: "Run node"
+  shell:
+    cmd: "nohup ./{{ zfx_subzero_executable }} -a {{ node_ip }} -b {{ bootstrap_node }} \
+    --keypair {{ keypair }} \
+    --use-tls --cert-path {{ cert_path }} -p {{ cert_key }} &"
+    chdir: "{{ release_dir }}"
+
+- name: "Verify node is running"
+  shell: "ps -ef | grep {{ keypair }} | grep -v grep"
+  register: result
+  until: result.stdout != ""
+  retries: 10
+  delay: 1

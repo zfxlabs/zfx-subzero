@@ -1,0 +1,20 @@
+---
+# This playbook installs the mandatory tools and deploys all zfx-subzero nodes
+
+- name: apply common configuration to all nodes
+  hosts: nodes
+  roles:
+    - common
+
+- name: configure and deploy the zfx-subzero nodes
+  hosts: nodes
+  roles:
+    - node
+  vars_prompt:
+    - name: "githubuser"
+      prompt: "Enter your github username"
+      private: false
+    - name: "githubpassword"
+      prompt: "Enter your github password"
+      unsafe: yes
+      private: true
