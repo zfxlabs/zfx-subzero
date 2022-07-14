@@ -61,7 +61,7 @@ impl InitialStaker {
 ///
 /// This list of stakers can be used to create a genesis block.
 pub fn genesis_stakers() -> Vec<InitialStaker> {
-    let staking_start = util::get_utc_timestamp_millis();
+    let staking_start = chrono::NaiveDateTime::parse_from_str("2022-07-14 11:20:34","%Y-%m-%d %H:%M:%S").unwrap().timestamp_millis() as u64;
     let staking_end = staking_start + constants::STAKING_DURATION;
 
     vec![
