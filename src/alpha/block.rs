@@ -64,6 +64,8 @@ pub fn build_genesis() -> Result<Block> {
             staker.node_id.clone(),
             pkh.clone(),
             staker.staked_allocation.clone(),
+            staker.staking_start,
+            staker.staking_end,
         );
         let stake_tx = stake_op.stake(&staker.keypair)?;
         cells.push(stake_tx);

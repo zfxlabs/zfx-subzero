@@ -26,6 +26,10 @@ zfx-subzero $ USE_TCP=1 ./deployment/scripts/testnode.sh 0
 . . .
 ```
 
+### Accurate time source for node clock synchronization
+
+To ensure proper operation of the nodes, the node must have an accurate time source by configuring a NTP/NTS daemon. NTS capable is recommended for maximum security.
+
 ### `testclient.sh`
 
 This is a test script to sends some transactions to a node in the testnet.
