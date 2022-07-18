@@ -1,29 +1,34 @@
 # (zfx-subzero) Integration Proposal
 
+
 ## Integration with Tezos
 
 ### Analysis
 
 The milestone #4 deliverables are modified from the original SoW in order to prioritise bridging between a network with another. The current `deku` solution uses a Tendermint light-client which communicates with a network running Tendermint consensus in order to obtain fraud proofs when an invalid state transition occurs.
 
-There are several aspects to `deku` which can usefully be re-used in a proposed solution since it provides infrastructure for creating and deploying smart contracts and implements interoperability primitives between Tezos nodes and other languages such as JavaScript.
+There are several aspects to `deku` which can usefully be re-used in a proposed solution since it provides infrastructure for creating and deploying smart contracts and implements interoperability primitives between Tezos nodes and other languages such as `JavaScript`.
 
-However our proposed solution differs from `deku` in how a subnetwork and its committee are specified. `deku` by default has a fixed initial committee of validators which modifies itself using proof of authority. Instead we propose to use on-chain baking information as the weight of committee members.
+However our proposed solution differs from `deku` in how a subnetwork and its committee are specified and in the type of subnetwork which executes alongside `Tezos`. `deku` by default has a fixed initial committee of validators which modifies itself using proof of authority. Instead we propose to use on-chain baking information in order to provide sybil resistance to committee members.
 
 ### Proposed Solution
 
-We propose to create a bridge between `Tezos` and `subzero` by defining a validation committee within a `Tezos` smart contract. This allows for a `Tezos` client to later verify that a block in a `subzero` network is signed by committee members specified by the smart contract.
+We propose to create a bridge between `Tezos` and `subzero` by defining a validation committee within a `Tezos` smart contract. This allows for a `Tezos` client to verify that a block in a `subzero` network is signed by the committee members specified by the smart contract. 
 
-The smart contract should allow registration of validators on the basis of being bakers within `Tezos`. This allows existing `Tezos` bakers to opt-in to the secure a subnetwork with existing stake. In order to assess whether someone is eligible for registration we propose to use the `VOTING_POWER` Michelson instruction for checking that the baker has a stake >6000XTZ, where subsequent changes in baking membership are monitored and relayed via a committee co-ordinator.
+We propose to create a committee smart contract which allows for the registration of validators based on being bakers within `Tezos`. This allows existing `Tezos` bakers to opt-in to subnetworks of interest in order to secure them. In order to assess whether an account is eligible for registration we propose to use the `VOTING_POWER` michelson instruction for checking that a baker has a stake greater than 6000 XTZ. This effectively permanently records interest from a baker in validating on the subnetwork.
 
-The core purpose of a committee registration is to bind a TLS certificate public key with a baker account address. The baker account gives weight to the validator in the subnetwork whilst the TLS certificate allows the subnetwork to limit network connections to bakers only.
+Since baking is dynamic in `Tezos` and bakers are free to unbond their stake at any time, the `subnetwork` validation committee inherits these same properties. This implies a solution which takes into account smart contract operations but also on-chain baking activity implied by the `Tezos` `alpha` protocol. 
+
+As such, a committee co-ordinator program must take into account both types of operations and relay them to the `subnetwork`. Similarly when value is redeemed from the `subnetwork` back into `Tezos`, co-ordinators must take into account both types of on-chain operations.
+
+The core purpose of a committee registration is to bind the TLS certificate public key used in a `subnetwork` to a baker account address. The baker account gives weight (sybil resistance) to the validator in the subnetwork whilst the TLS certificate allows the subnetwork to limit network connections to active bakers.
 
 ### Smart Contract State
 
 The smart contract should have three states to help with bootstrapping: 
-* `Genesis` at the beginning of subnetwork formation.
-* `Sealed` when the genesis committee is accepted by the smart contract owner.
-* `Open` when the committee is open to new registrations.
+* `Genesis` - The initialisation state of a subnetwork committee.
+* `Sealed` - The acceptation state of a genesis committee, accepted by the smart contract owner.
+* `Open` - The committee is open to new registrations from public bakers.
 
 This allows some time for members of the committee to prepare to bootstrap the subnetwork and prevents further subscriptions whilst the subnetwork is initialising.
 
@@ -39,9 +44,9 @@ type Register := {
   xid : XId,
   (* The identity of the Tezos baking account *)
   baking_account : Public_key_hash,
-  (* A subzero specific signing public key *)
+  (* Subnetwork specific signing public key *)
   public_key : Public_key,
-  (* (genesis) Subzero threshold key *)
+  (* Subnetwork threshold key *)
   threshold_public_key : Public_key option,
 }
 ```
@@ -72,14 +77,12 @@ type Transfer := {
 
 #### Committee Co-ordinator
 
-A `Tezos` client program should monitor `Tezos` heads, filter for operations which pertain to the committee smart contract and forward these to the subzero `primary` protocol service.
-
-Additionally, changes in baking state which occur to accounts registered within a committee should be relayed to `subzero`. This allows for removing bakers which stop baking on `Tezos`.
+A `Tezos` client program should monitor `Tezos` heads, filter for operations which pertain to the committee smart contract and forward these to the subzero `primary` protocol service. Changes in baking state which occur to accounts registered within a committee should be relayed to `subzero`. This allows for removing bakers which stop baking on `Tezos`.
 
 The client program:
 * Listens for `Register` and `Transfer` operations committed to the `Tezos` blockchain and sends respective `Register` and `Transfer` `subzero` operations which are encoded as `Rust` decodable data to a consensus mempool worker.
-* Implements Rust foreign functions which serialize `Stake` and `Transfer` subzero operations callable from `OCaml`.
-* Note: The `co-ordinator` should ensure that enough blocks have passed such that the operations sent to it are final.
+* Implements functions which serialize `Register` and `Transfer` subzero operations into `subzero` operations and are callable from `OCaml`.
+* The `co-ordinator` should ensure that operations sent to it are final before committing them to the `primary` protocol.
 
 #### Subzero `primary` protocol service
 
@@ -88,15 +91,15 @@ A primary protocol with support for `Register` and `Transfer` operations should 
 Initially at bootstrap:
 * Reads all existing known committee operations committed to the `Tezos` blockchain and synchronises the data according to the `subzero` `primary` protocol store.
 * Triggers an `ice` bootstrap which initialises the network committee metadata and begins recording validator uptimes. This is required in order for consensus to be aware of network endpoints.
-  * Triggers a `consensus` bootstrap which initialises the committee weight metadata. This is required in order for consensus to assign weight to committee members during validation.
+* Triggers a `consensus` bootstrap which initialises the committee weight metadata. This is required in order for consensus to assign weight to committee members during validation.
 
 Once the protocol service is running:
 * Receives blocks from `consensus` and applies the (totally) ordered operations to the state.
-* Blocks are tagged with a quorum certificate which contain the signature required for supplying blocks to a Tezos client (the bridging endpoint).
+* Blocks are tagged with a quorum certificate which contain the signature required for supplying blocks to a `Tezos` client (the bridging endpoint).
 
 ### Integration into `ice` (bootstrap)
 
-The smart contract committee co-ordinator should provide validator identities to `ice` at the `subzero` network bootstrapping stage and subsequently update `ice` with changes in the validator set. This allows validators in `subzero` to connect to one another through the `ice` peer to peer layer, for determining the liveness of peers.
+The smart contract committee co-ordinator should provide validator identities to `ice` at the `subzero` network bootstrapping stage and subsequently update `ice` with changes in the validator set. This allows validators in `subzero` to connect to one another through the `ice` peer to peer layer and allows for subnetworks to determine the relative liveness of peers.
 
 The integration program:
 * Bootstraps `ice` from the existing operations - note: `ice` has to be provided with network endpoints along with the identities `Id` designated in the stake operations so that it knows how to connect to the nodes securely.
@@ -104,3 +107,13 @@ The integration program:
 * When a sufficient degree (`2f+1`) of the networks validator set is `live`, the consensus is provided with a `LiveCommittee` in order to start or resume consensus.
 * When `f` validators or more become `Faulty`, `ice` should provide consensus with `FaultyCommittee` in order to pause block based consensus.
 * When a specific validator obtains or loses liveness, the `primary` protocol service is notified and persists a notion of `uptime` relating to the validating committee.
+
+### Distributed Key Generation
+
+In order for subnetworks to dynamically adjust the validator set, it is necessary for validators to perform a distributed key generation whenever the committee changes. There are multiple ways to do distributed key generation. Using a primitive such as `Scalable Byzantine Reliable Broadcast`[n] puts less pressure on the network validators and has better scaling properties whilst `Asynchronous Information Dispersal`[n] is less scalable but has less overall message overhead.
+
+Additionally it is possible if both algorithms put too much pressure on the network to encode messages within blocks in order to remove the network overhead entirely, at the cost of having to wait for a number of blocks prior to having a complete view change.
+
+* Implement `Scalable Byzantine Reliable Broadcast`.
+* Implement `Asynchronous Information Dispersal`.
+* Benchmark and test both algorithms in order to assess which is preferred.
