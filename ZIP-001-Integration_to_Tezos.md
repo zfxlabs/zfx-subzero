@@ -107,13 +107,3 @@ The integration program:
 * When a sufficient degree (`2f+1`) of the networks validator set is `live`, the consensus is provided with a `LiveCommittee` in order to start or resume consensus.
 * When `f` validators or more become `Faulty`, `ice` should provide consensus with `FaultyCommittee` in order to pause block based consensus.
 * When a specific validator obtains or loses liveness, the `primary` protocol service is notified and persists a notion of `uptime` relating to the validating committee.
-
-### Distributed Key Generation
-
-In order for subnetworks to dynamically adjust the validator set, it is necessary for validators to perform a distributed key generation whenever the committee changes. There are multiple ways to do distributed key generation. Using a primitive such as `Scalable Byzantine Reliable Broadcast`[n] puts less pressure on the network validators and has better scaling properties whilst `Asynchronous Information Dispersal`[n] is less scalable but has less overall message overhead.
-
-Additionally it is possible if both algorithms put too much pressure on the network to encode messages within blocks in order to remove the network overhead entirely, at the cost of having to wait for a number of blocks prior to having a complete view change.
-
-* Implement `Scalable Byzantine Reliable Broadcast`.
-* Implement `Asynchronous Information Dispersal`.
-* Benchmark and test both algorithms in order to assess which is preferred.
