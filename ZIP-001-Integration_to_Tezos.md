@@ -1,6 +1,5 @@
 # (zfx-subzero) Integration Proposal
 
-
 ## Integration with Tezos
 
 ### Analysis
@@ -17,20 +16,26 @@ We propose to create a bridge between `Tezos` and `subzero` by defining a valida
 
 We propose to create a committee smart contract which allows for the registration of validators based on being bakers within `Tezos`. This allows existing `Tezos` bakers to opt-in to subnetworks of interest in order to secure them. In order to assess whether an account is eligible for registration we propose to use the `VOTING_POWER` michelson instruction for checking that a baker has a stake greater than 6000 XTZ. This effectively permanently records interest from a baker in validating on the subnetwork.
 
-Since baking is dynamic in `Tezos` and bakers are free to unbond their stake at any time, the `subnetwork` validation committee inherits these same properties. This implies a solution which takes into account smart contract operations but also on-chain baking activity implied by the `Tezos` `alpha` protocol. 
+Since baking is dynamic in `Tezos` and bakers are free to unbond their stake at any time, the subnetwork validation committee inherits these same properties by capturing on-chain baking operations. This implies a solution which takes into account on-chain baking activity implied by the `Tezos` `alpha` protocol.
 
-As such, a committee co-ordinator program must take into account both types of operations and relay them to the `subnetwork`. Similarly when value is redeemed from the `subnetwork` back into `Tezos`, co-ordinators must take into account both types of on-chain operations.
+As such, the committee co-ordinator must react to both types of operations and be in-sync with `Tezos` blocks. This also implies that the subnetworks primary chain is in sync with `Tezos`. In this case we expect the block times to be the same in the subnetworks `primary` protocol, where significant improvements are made within a separate `evm` enabled chain. Having the `primary` subnetwork protocol run in-sync with `Tezos` is a benefit since committee updates should not be faster than a secondary chain which depends on the committee.
 
 The core purpose of a committee registration is to bind the TLS certificate public key used in a `subnetwork` to a baker account address. The baker account gives weight (sybil resistance) to the validator in the subnetwork whilst the TLS certificate allows the subnetwork to limit network connections to active bakers.
+
+The next aspect to the bridge is to do with cross chain transfers, of which, beyond being able to prove that a valid committee signed the block, a solution must ensure transactional atomicity between the two primary chains (`Tezos` and a subnetwork `primary` protocol). 
+
+For this aspect we propose to separate crosschain transactions into `T_burn` and `T_unlock` transactions to be recorded on chains A and B respectively. A `T_burn` transaction burns tokens on chain A by sending them to a zero address which forms a `Proof of Burn` on chain A. Once the block becomes final containing this transaction, a `T_unlock` transaction is used to mint tokens on chain B. 
+
+Please note that in the subsequent statements of work, it is likely that elements will require amendments a posteriori in order to make the solution function as expected. This is due to the nature of the work which requires implementation in order to acquire full visibility over a total solution.
 
 ### Smart Contract State
 
 The smart contract should have three states to help with bootstrapping: 
-* `Genesis` - The initialisation state of a subnetwork committee.
-* `Sealed` - The acceptation state of a genesis committee, accepted by the smart contract owner.
-* `Open` - The committee is open to new registrations from public bakers.
+* `Genesis` - The initialisation state of a subnetwork committee where an initial staking set is whitelisted.
+* `Sealed` - The acceptation state of a genesis committee, accepted by the smart contract owner. The initial staking set may bootstrap the network in this state.
+* `Open` - The committee is open to new registrations from public bakers. Anyone with sufficient baking power may register in this state.
 
-This allows some time for members of the committee to prepare to bootstrap the subnetwork and prevents further subscriptions whilst the subnetwork is initialising.
+The intent here is to allow some time for members of the committee to prepare to bootstrap the subnetwork and prevents further subscriptions whilst the subnetwork is initialising but implies a contract owner with control over the genesis committee of the subnetwork. We consider this design choice acceptable given proof of stake networks initialise their genesis blocks in a central point of trust.
 
 ### Smart Contract Operations
 
@@ -55,23 +60,13 @@ type Register := {
 * The validator submitting this operation *must* ensure that the TLS certificate public key is valid - the smart contract is not expected to check this - an erroneous TLS public key would result in a validator being unable to participate in consensus.
 * The validator submitting this operation *must* ensure that the threshold public key is valid, similar to the TLS public key.
 
-#### Transfer
+### Burn Transaction
 
-A `Tezos` participant should be able to `transfer` a quantity of `token` (initially `XTZ`) by submitting a `Transfer` operation to a `Tezos` smart contract in order for it to become accessible on the `subzero` network as stake.
+A `Tezos` participant should be able to burn a quantity of `token` by transferring funds to a void address. This also needs to be implemented in the other direction (burning funds on the subnetwork).
 
-```ocaml
-type Transfer := {
-  (* Type of transfer IN | OUT *)
-  transfer_type : Transfer_type,
-  (* Transfer recipient (source for out, destination for in) *)
-  recipient : Public_key_hash,
-  (* Amount of currency to transfer *)
-  amount : Qty,
-}
-```
+### Unlock Transaction
 
-* The smart contract should ensure that in the case of outbound (from `Tezos` to `Subzero`) transfers, the sender has sufficient `XTZ` available.
-* The smart contract should ensure in the case of inbound transfers, that the `recipient` and the operation signer are the same.
+A `Tezos` participant should be able to unlock a quantity of `token` on a subnetwork by submitting a proof of burn to the subnetwork and vice versa in the other direction.
 
 ### Operation Co-ordination
 
@@ -80,13 +75,13 @@ type Transfer := {
 A `Tezos` client program should monitor `Tezos` heads, filter for operations which pertain to the committee smart contract and forward these to the subzero `primary` protocol service. Changes in baking state which occur to accounts registered within a committee should be relayed to `subzero`. This allows for removing bakers which stop baking on `Tezos`.
 
 The client program:
-* Listens for `Register` and `Transfer` operations committed to the `Tezos` blockchain and sends respective `Register` and `Transfer` `subzero` operations which are encoded as `Rust` decodable data to a consensus mempool worker.
-* Implements functions which serialize `Register` and `Transfer` subzero operations into `subzero` operations and are callable from `OCaml`.
+* Listens for `Register` and `Burn` operations committed to the `Tezos` blockchain and sends respective `Register` and `Unlock` (containing a proof of burn) `subzero` operations which are encoded as `Rust` decodable data to a consensus mempool worker.
+* Implements functions which serialize `Register` and `Unlock` subzero operations into `subzero` operations and are callable from `OCaml`.
 * The `co-ordinator` should ensure that operations sent to it are final before committing them to the `primary` protocol.
 
 #### Subzero `primary` protocol service
 
-A primary protocol with support for `Register` and `Transfer` operations should be applied to the `subzero` network state. Note that this work is partially complete, missing changes relating to the integration with the `Tezos` committee co-ordinator.
+A primary protocol with support for `Register` and `Unlock` operations should be applied to the `subzero` network state. Note that this work is partially complete, missing changes relating to the integration with the `Tezos` committee co-ordinator.
 
 Initially at bootstrap:
 * Reads all existing known committee operations committed to the `Tezos` blockchain and synchronises the data according to the `subzero` `primary` protocol store.
@@ -107,3 +102,11 @@ The integration program:
 * When a sufficient degree (`2f+1`) of the networks validator set is `live`, the consensus is provided with a `LiveCommittee` in order to start or resume consensus.
 * When `f` validators or more become `Faulty`, `ice` should provide consensus with `FaultyCommittee` in order to pause block based consensus.
 * When a specific validator obtains or loses liveness, the `primary` protocol service is notified and persists a notion of `uptime` relating to the validating committee.
+
+### Reliable Broadcast
+
+In order for subnetworks to communicate reliably we propose to implement `Scalable Byzantine Reliable Broadcast`[n] which puts less pressure on network validators in terms of network overhead for reaching consensus. 
+
+* Implement `Scalable Byzantine Reliable Broadcast`.
+* Benchmark and test the implementation in order to assess which is preferred.
+
